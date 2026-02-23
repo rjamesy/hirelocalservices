@@ -34,7 +34,7 @@ test.describe('Smoke Tests', () => {
     // Submit button should be disabled (no location or business name)
     await expect(page.getByTestId('search-submit')).toBeDisabled()
     // Validation message should be visible
-    await expect(page.getByText('Please enter a suburb or postcode, or search by business name.')).toBeVisible()
+    await expect(page.getByText('Enter a suburb or postcode, or search by business name.')).toBeVisible()
   })
 
   test('business name search works', async ({ page }) => {

@@ -74,6 +74,7 @@ export default function SearchBar({
   const [radius, setRadius] = useState(defaultLocationToken ? defaultRadius : '25');
   const [keyword, setKeyword] = useState(defaultKeyword);
   const [showFilters, setShowFilters] = useState(!!defaultKeyword);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   // Suggestion state
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -88,6 +89,11 @@ export default function SearchBar({
   const hasValidLocation = locationToken !== null;
   const hasBusinessName = businessName.trim().length > 0;
   const canSearch = hasBusinessName || hasValidLocation;
+
+  // Clear error state once the form becomes valid
+  useEffect(() => {
+    if (canSearch) setSubmitAttempted(false);
+  }, [canSearch]);
 
   // Close suggestions on outside click
   useEffect(() => {
@@ -161,7 +167,10 @@ export default function SearchBar({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canSearch) return;
+    if (!canSearch) {
+      setSubmitAttempted(true);
+      return;
+    }
 
     const params = new URLSearchParams();
     if (category) params.set('category', category);
@@ -377,10 +386,10 @@ export default function SearchBar({
           </button>
         </div>
 
-        {/* Validation message */}
+        {/* Helper / validation message */}
         {!canSearch && (
-          <p className="mt-2 text-xs text-amber-600">
-            Please enter a suburb or postcode, or search by business name.
+          <p className={`mt-2 text-sm ${submitAttempted ? 'text-red-600' : 'text-gray-500'}`}>
+            Enter a suburb or postcode, or search by business name.
           </p>
         )}
 

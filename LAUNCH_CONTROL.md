@@ -29,7 +29,7 @@ Listing quality and usefulness
 User experience polish
 [x] No truncated input fields in search UI
 [x] Search layout corrected (search button second row, wider fields)
-[ ] No misleading validation warning colours
+[x] No misleading validation warning colours
 [ ] Button wording consistent and professional ("View Business" not "View Profile")
 [ ] Version number visible in footer
 [ ] Copyright visible in footer
@@ -81,7 +81,7 @@ Search UI improvements
 [x] Fix truncated placeholder text
 [x] Increase input widths
 [x] Move search button to second row
-[ ] Replace orange validation message with neutral helper text
+[x] Replace orange validation message with neutral helper text
 
 Business page improvements
 [ ] Replace "View Profile" with "View Business"

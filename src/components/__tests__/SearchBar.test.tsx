@@ -156,18 +156,27 @@ describe('SearchBar', () => {
     expect(screen.getByPlaceholderText('Suburb or postcode')).toBeInTheDocument()
   })
 
-  // ─── Validation Messages ───────────────────────────────────────
+  // ─── Helper / Validation Messages ─────────────────────────────
 
-  it('shows validation message when search cannot proceed', () => {
+  it('shows neutral helper text on initial render (not error)', () => {
     render(<SearchBar />)
-    expect(screen.getByText('Please enter a suburb or postcode, or search by business name.')).toBeInTheDocument()
+    const msg = screen.getByText('Enter a suburb or postcode, or search by business name.')
+    expect(msg).toBeInTheDocument()
+    expect(msg).toHaveClass('text-gray-500')
   })
 
-  it('hides validation message when business name is entered', () => {
+  it('shows error style after invalid submit attempt', () => {
+    render(<SearchBar />)
+    fireEvent.submit(screen.getByText('Search').closest('form')!)
+    const msg = screen.getByText('Enter a suburb or postcode, or search by business name.')
+    expect(msg).toHaveClass('text-red-600')
+  })
+
+  it('hides helper text when business name is entered', () => {
     render(<SearchBar />)
     const input = screen.getByPlaceholderText('Business name (optional)')
     fireEvent.change(input, { target: { value: 'Test' } })
-    expect(screen.queryByText('Please enter a suburb or postcode, or search by business name.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Enter a suburb or postcode, or search by business name.')).not.toBeInTheDocument()
   })
 
   // ─── Navigation ────────────────────────────────────────────────
