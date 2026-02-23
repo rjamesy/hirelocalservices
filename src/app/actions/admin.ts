@@ -1,0 +1,422 @@
+'use server'
+
+import { createClient } from '@/lib/supabase/server'
+import { ITEMS_PER_PAGE } from '@/lib/constants'
+import { revalidatePath } from 'next/cache'
+
+// ─── Helpers ────────────────────────────────────────────────────────
+
+async function verifyAdmin() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser()
+
+  if (error || !user) {
+    throw new Error('You must be logged in to perform this action')
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile || profile.role !== 'admin') {
+    throw new Error('You do not have admin permissions')
+  }
+
+  return { supabase, user }
+}
+
+// ─── Types ──────────────────────────────────────────────────────────
+
+export interface AdminListingItem {
+  id: string
+  name: string
+  slug: string
+  status: string
+  created_at: string
+  owner_email: string | null
+  subscription_status: string | null
+}
+
+export interface AdminReportItem {
+  id: string
+  reason: string
+  details: string | null
+  status: string
+  created_at: string
+  business_id: string
+  business_name: string | null
+  business_slug: string | null
+}
+
+export interface PaginatedResponse<T> {
+  data: T[]
+  totalCount: number
+  page: number
+  totalPages: number
+}
+
+// ─── Server Actions ─────────────────────────────────────────────────
+
+export async function getAdminListings(
+  page: number = 1,
+  status?: string
+): Promise<PaginatedResponse<AdminListingItem>> {
+  const { supabase } = await verifyAdmin()
+
+  const offset = (page - 1) * ITEMS_PER_PAGE
+
+  // Build the query for businesses with owner email and subscription status
+  let query = supabase
+    .from('businesses')
+    .select(
+      `
+      id,
+      name,
+      slug,
+      status,
+      created_at,
+      profiles!businesses_owner_id_fkey (email),
+      subscriptions (status)
+    `,
+      { count: 'exact' }
+    )
+    .order('created_at', { ascending: false })
+    .range(offset, offset + ITEMS_PER_PAGE - 1)
+
+  if (status) {
+    query = query.eq('status', status as 'draft' | 'published' | 'suspended')
+  }
+
+  const { data, count, error } = await query
+
+  if (error) {
+    console.error('Admin listings query error:', error)
+    return { data: [], totalCount: 0, page, totalPages: 0 }
+  }
+
+  const totalCount = count ?? 0
+  const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE)
+
+  const listings: AdminListingItem[] = (data ?? []).map((row: any) => {
+    // profiles comes back as an object (single FK relationship)
+    const profile = row.profiles
+    // subscriptions comes back as an array (one-to-many, but unique constraint means 0 or 1)
+    const subscription = Array.isArray(row.subscriptions)
+      ? row.subscriptions[0]
+      : row.subscriptions
+
+    return {
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
+      status: row.status,
+      created_at: row.created_at,
+      owner_email: profile?.email ?? null,
+      subscription_status: subscription?.status ?? null,
+    }
+  })
+
+  return { data: listings, totalCount, page, totalPages }
+}
+
+export async function getAdminReports(
+  page: number = 1,
+  status?: string
+): Promise<PaginatedResponse<AdminReportItem>> {
+  const { supabase } = await verifyAdmin()
+
+  const offset = (page - 1) * ITEMS_PER_PAGE
+
+  let query = supabase
+    .from('reports')
+    .select(
+      `
+      id,
+      reason,
+      details,
+      status,
+      created_at,
+      business_id,
+      businesses (name, slug)
+    `,
+      { count: 'exact' }
+    )
+    .order('created_at', { ascending: false })
+    .range(offset, offset + ITEMS_PER_PAGE - 1)
+
+  if (status) {
+    query = query.eq('status', status as 'open' | 'resolved')
+  }
+
+  const { data, count, error } = await query
+
+  if (error) {
+    console.error('Admin reports query error:', error)
+    return { data: [], totalCount: 0, page, totalPages: 0 }
+  }
+
+  const totalCount = count ?? 0
+  const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE)
+
+  const reports: AdminReportItem[] = (data ?? []).map((row: any) => {
+    const business = row.businesses
+
+    return {
+      id: row.id,
+      reason: row.reason,
+      details: row.details,
+      status: row.status,
+      created_at: row.created_at,
+      business_id: row.business_id,
+      business_name: business?.name ?? null,
+      business_slug: business?.slug ?? null,
+    }
+  })
+
+  return { data: reports, totalCount, page, totalPages }
+}
+
+export async function adminSuspendBusiness(businessId: string) {
+  const { supabase } = await verifyAdmin()
+
+  const { data: business, error: fetchError } = await supabase
+    .from('businesses')
+    .select('id, slug, status')
+    .eq('id', businessId)
+    .single()
+
+  if (fetchError || !business) {
+    return { error: 'Business not found' }
+  }
+
+  if (business.status === 'suspended') {
+    return { error: 'Business is already suspended' }
+  }
+
+  const { error } = await supabase
+    .from('businesses')
+    .update({ status: 'suspended' })
+    .eq('id', businessId)
+
+  if (error) {
+    return { error: 'Failed to suspend business. Please try again.' }
+  }
+
+  revalidatePath('/admin')
+  revalidatePath(`/business/${business.slug}`)
+  return { success: true }
+}
+
+export async function adminUnsuspendBusiness(businessId: string) {
+  const { supabase } = await verifyAdmin()
+
+  const { data: business, error: fetchError } = await supabase
+    .from('businesses')
+    .select('id, slug, status')
+    .eq('id', businessId)
+    .single()
+
+  if (fetchError || !business) {
+    return { error: 'Business not found' }
+  }
+
+  if (business.status !== 'suspended') {
+    return { error: 'Business is not currently suspended' }
+  }
+
+  // Restore to published status. The business visibility still depends on
+  // having an active subscription (enforced by RLS and the is_business_visible
+  // function), so this is safe.
+  const { error } = await supabase
+    .from('businesses')
+    .update({ status: 'published' })
+    .eq('id', businessId)
+
+  if (error) {
+    return { error: 'Failed to unsuspend business. Please try again.' }
+  }
+
+  revalidatePath('/admin')
+  revalidatePath(`/business/${business.slug}`)
+  return { success: true }
+}
+
+export async function adminResolveReport(reportId: string) {
+  const { supabase } = await verifyAdmin()
+
+  const { data: report, error: fetchError } = await supabase
+    .from('reports')
+    .select('id, status')
+    .eq('id', reportId)
+    .single()
+
+  if (fetchError || !report) {
+    return { error: 'Report not found' }
+  }
+
+  if (report.status === 'resolved') {
+    return { error: 'Report is already resolved' }
+  }
+
+  const { error } = await supabase
+    .from('reports')
+    .update({ status: 'resolved' })
+    .eq('id', reportId)
+
+  if (error) {
+    return { error: 'Failed to resolve report. Please try again.' }
+  }
+
+  revalidatePath('/admin')
+  return { success: true }
+}
+
+// ─── Unlist / Restore ───────────────────────────────────────────────
+
+export async function unlistBusiness(businessId: string, addToBlacklist?: boolean) {
+  const { supabase, user } = await verifyAdmin()
+
+  const { data: business, error: fetchError } = await supabase
+    .from('businesses')
+    .select('id, slug, name, verification_status')
+    .eq('id', businessId)
+    .single()
+
+  if (fetchError || !business) {
+    return { error: 'Business not found' }
+  }
+
+  if (business.verification_status === 'suspended') {
+    return { error: 'Business is already unlisted (suspended)' }
+  }
+
+  const { error } = await supabase
+    .from('businesses')
+    .update({ verification_status: 'suspended' })
+    .eq('id', businessId)
+
+  if (error) {
+    return { error: 'Failed to unlist business' }
+  }
+
+  // Refresh search index to remove from results
+  await supabase.rpc('refresh_search_index', { p_business_id: businessId })
+
+  // Optional: add name to blacklist
+  if (addToBlacklist && business.name) {
+    await supabase.from('blacklist').insert({
+      term: business.name.toLowerCase(),
+      match_type: 'exact',
+      reason: 'Unlisted by admin',
+      added_by: user.id,
+      is_active: true,
+    })
+  }
+
+  // Log audit
+  try {
+    await supabase.rpc('insert_audit_log', {
+      p_action: 'listing_unlisted',
+      p_entity_type: 'business',
+      p_entity_id: businessId,
+      p_actor_id: user.id,
+      p_details: { name: business.name, blacklisted: addToBlacklist ?? false },
+    })
+  } catch {
+    // Non-blocking
+  }
+
+  revalidatePath('/admin')
+  revalidatePath(`/business/${business.slug}`)
+  return { success: true }
+}
+
+export async function restoreUnlistedBusiness(businessId: string) {
+  const { supabase, user } = await verifyAdmin()
+
+  const { data: business, error: fetchError } = await supabase
+    .from('businesses')
+    .select('id, slug, name, verification_status')
+    .eq('id', businessId)
+    .single()
+
+  if (fetchError || !business) {
+    return { error: 'Business not found' }
+  }
+
+  if (business.verification_status !== 'suspended') {
+    return { error: 'Business is not currently unlisted (suspended)' }
+  }
+
+  const { error } = await supabase
+    .from('businesses')
+    .update({ verification_status: 'approved' })
+    .eq('id', businessId)
+
+  if (error) {
+    return { error: 'Failed to restore business' }
+  }
+
+  // Refresh search index to re-add to results
+  await supabase.rpc('refresh_search_index', { p_business_id: businessId })
+
+  // Log audit
+  try {
+    await supabase.rpc('insert_audit_log', {
+      p_action: 'listing_unlisted',
+      p_entity_type: 'business',
+      p_entity_id: businessId,
+      p_actor_id: user.id,
+      p_details: { name: business.name, action: 'restored' },
+    })
+  } catch {
+    // Non-blocking
+  }
+
+  revalidatePath('/admin')
+  revalidatePath(`/business/${business.slug}`)
+  return { success: true }
+}
+
+// ─── Verification Queue ─────────────────────────────────────────────
+
+export async function getVerificationQueue(
+  page: number = 1
+): Promise<PaginatedResponse<{
+  id: string
+  name: string
+  slug: string
+  listing_source: string
+  verification_status: string
+  created_at: string
+}>> {
+  const { supabase } = await verifyAdmin()
+
+  const offset = (page - 1) * ITEMS_PER_PAGE
+
+  const { data, count, error } = await supabase
+    .from('businesses')
+    .select('id, name, slug, listing_source, verification_status, created_at', {
+      count: 'exact',
+    })
+    .eq('verification_status', 'review')
+    .order('created_at', { ascending: true })
+    .range(offset, offset + ITEMS_PER_PAGE - 1)
+
+  if (error) {
+    return { data: [], totalCount: 0, page, totalPages: 0 }
+  }
+
+  const totalCount = count ?? 0
+  return {
+    data: data ?? [],
+    totalCount,
+    page,
+    totalPages: Math.ceil(totalCount / ITEMS_PER_PAGE),
+  }
+}

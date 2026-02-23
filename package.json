@@ -1,0 +1,50 @@
+{
+  "name": "hire-local-services",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "npm run build && npx playwright test",
+    "test:all": "npm run test && npm run test:e2e",
+    "seed:osm": "tsx scripts/seed-osm-businesses.ts"
+  },
+  "dependencies": {
+    "@stripe/stripe-js": "^5.5.0",
+    "@supabase/ssr": "^0.6.1",
+    "@supabase/supabase-js": "^2.49.1",
+    "next": "^14.2.21",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "stripe": "^17.5.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^22.12.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^5.1.4",
+    "@vitest/coverage-v8": "^4.0.18",
+    "autoprefixer": "^10.4.20",
+    "dotenv": "^17.3.1",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.2.21",
+    "jsdom": "^28.1.0",
+    "pg": "^8.18.0",
+    "postcss": "^8.5.1",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.3",
+    "vitest": "^4.0.18"
+  }
+}

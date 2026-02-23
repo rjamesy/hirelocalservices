@@ -1,0 +1,176 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { stripe } from '@/lib/stripe'
+import { getBaseUrl } from '@/lib/utils'
+import { PLANS, getPlanByPriceId, getValidPriceIds } from '@/lib/constants'
+
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+
+    // Authenticate user
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'You must be logged in to subscribe' },
+        { status: 401 }
+      )
+    }
+
+    // Parse request body — accepts either priceId or planId
+    const body = await request.json()
+    const { businessId, planId } = body
+    let { priceId } = body
+
+    // Resolve planId to priceId if needed
+    if (!priceId && planId) {
+      const planDef = PLANS.find((p) => p.id === planId)
+      if (planDef) {
+        priceId = process.env[planDef.priceIdEnvVar]
+      }
+    }
+
+    if (!priceId) {
+      return NextResponse.json(
+        { error: 'Please select a plan' },
+        { status: 400 }
+      )
+    }
+
+    // Validate the price ID is one of our known plans
+    const validPriceIds = getValidPriceIds()
+    if (!validPriceIds.includes(priceId)) {
+      return NextResponse.json(
+        { error: 'Invalid plan selected' },
+        { status: 400 }
+      )
+    }
+
+    const plan = getPlanByPriceId(priceId)
+    if (!plan) {
+      return NextResponse.json(
+        { error: 'Invalid plan selected' },
+        { status: 400 }
+      )
+    }
+
+    // Get the user's business
+    const { data: business, error: bizError } = await supabase
+      .from('businesses')
+      .select('id')
+      .eq('owner_id', user.id)
+      .single()
+
+    if (bizError || !business) {
+      return NextResponse.json(
+        { error: 'You must create a business listing before subscribing' },
+        { status: 400 }
+      )
+    }
+
+    // Check if a subscription already exists for this business
+    const { data: existingSub } = await supabase
+      .from('subscriptions')
+      .select('id, stripe_customer_id, status')
+      .eq('business_id', business.id)
+      .maybeSingle()
+
+    // If there's already an active subscription, don't create another
+    if (
+      existingSub &&
+      ['active', 'past_due'].includes(existingSub.status)
+    ) {
+      return NextResponse.json(
+        { error: 'You already have an active subscription. Manage it from the billing page.' },
+        { status: 400 }
+      )
+    }
+
+    // Get or create a Stripe customer
+    let stripeCustomerId = existingSub?.stripe_customer_id
+
+    if (!stripeCustomerId) {
+      // Look up the user's profile email
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('id', user.id)
+        .single()
+
+      const customer = await stripe.customers.create({
+        email: profile?.email ?? user.email,
+        metadata: {
+          supabase_user_id: user.id,
+          business_id: business.id,
+        },
+      })
+
+      stripeCustomerId = customer.id
+
+      // Store the Stripe customer ID in the subscriptions table.
+      if (existingSub) {
+        await supabase
+          .from('subscriptions')
+          .update({ stripe_customer_id: stripeCustomerId })
+          .eq('id', existingSub.id)
+      } else {
+        await supabase.from('subscriptions').insert({
+          business_id: business.id,
+          stripe_customer_id: stripeCustomerId,
+          status: 'incomplete',
+          plan: plan.id,
+          stripe_price_id: priceId,
+        })
+      }
+    }
+
+    const baseUrl = getBaseUrl()
+
+    // Free Trial uses subscription mode with a 30-day trial
+    const isFreeTrialPlan = plan.id === 'free_trial'
+
+    // Create the Stripe Checkout session
+    const sessionConfig: Record<string, unknown> = {
+      customer: stripeCustomerId,
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      success_url: `${baseUrl}/dashboard/billing?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/dashboard/billing`,
+      metadata: {
+        business_id: business.id,
+        user_id: user.id,
+        plan_tier: plan.id,
+      },
+      subscription_data: {
+        metadata: {
+          business_id: business.id,
+          user_id: user.id,
+          plan_tier: plan.id,
+        },
+        ...(isFreeTrialPlan ? { trial_period_days: 30 } : {}),
+      },
+    }
+
+    const session = await stripe.checkout.sessions.create(
+      sessionConfig as Parameters<typeof stripe.checkout.sessions.create>[0]
+    )
+
+    return NextResponse.json({ url: session.url })
+  } catch (error) {
+    console.error('Stripe checkout error:', error)
+    return NextResponse.json(
+      { error: 'An unexpected error occurred. Please try again.' },
+      { status: 500 }
+    )
+  }
+}
