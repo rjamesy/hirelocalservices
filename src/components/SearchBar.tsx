@@ -186,18 +186,20 @@ export default function SearchBar({
     router.push(`/search?${params.toString()}`);
   };
 
+  const inputClass = `
+    h-[42px] w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900
+    placeholder:text-gray-400
+    focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
+    transition-colors
+  `;
+
   return (
-    <form onSubmit={handleSubmit} className={isHero ? 'w-full' : 'w-full'}>
-      <div
-        className={`
-          rounded-xl bg-white shadow-lg border border-gray-200
-          ${isHero ? 'p-4 sm:p-6' : 'p-3 sm:p-4'}
-        `}
-      >
-        {/* Row 1: Search fields */}
-        <div className="flex flex-wrap gap-3">
+    <form onSubmit={handleSubmit} className="w-full max-w-[876px] mx-auto">
+      <div className="rounded-xl bg-white shadow-lg border border-gray-200 py-[18px] px-5">
+        {/* Single row: all fields + search button */}
+        <div className="flex gap-3 items-end flex-nowrap">
           {/* Business Name Input */}
-          <div className="min-w-[240px] flex-1 shrink-0">
+          <div className="w-[240px] shrink-0">
             {isHero && (
               <label className="block text-xs font-medium text-gray-500 mb-1">
                 Business Name
@@ -209,18 +211,12 @@ export default function SearchBar({
               value={businessName}
               onChange={(e) => setBusinessName(e.target.value)}
               placeholder="Business name (optional)"
-              className={`
-                w-full rounded-lg border border-gray-300 bg-white text-gray-900
-                placeholder:text-gray-400
-                focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
-                transition-colors
-                ${isHero ? 'px-4 py-3 text-base' : 'px-3 py-2 text-sm'}
-              `}
+              className={inputClass}
             />
           </div>
 
           {/* Category Select */}
-          <div className="min-w-[200px] flex-1 shrink-0">
+          <div className="w-[180px] shrink-0">
             {isHero && (
               <label className="block text-xs font-medium text-gray-500 mb-1">
                 Category
@@ -230,12 +226,7 @@ export default function SearchBar({
               data-testid="search-category"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className={`
-                w-full rounded-lg border border-gray-300 bg-white text-gray-900
-                focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
-                transition-colors
-                ${isHero ? 'px-4 py-3 text-base' : 'px-3 py-2 text-sm'}
-              `}
+              className={inputClass}
             >
               <option value="">All Categories</option>
               {categories.map((cat) => (
@@ -247,7 +238,7 @@ export default function SearchBar({
           </div>
 
           {/* Location Input with Typeahead */}
-          <div ref={suggestRef} className="relative min-w-[240px] flex-1 shrink-0">
+          <div ref={suggestRef} className="relative w-[240px] shrink-0">
             {isHero && (
               <label className="block text-xs font-medium text-gray-500 mb-1">
                 Location
@@ -255,7 +246,7 @@ export default function SearchBar({
             )}
             <div className="relative">
               <svg
-                className={`absolute left-3 text-gray-400 pointer-events-none ${isHero ? 'top-3.5 h-5 w-5' : 'top-2.5 h-4 w-4'}`}
+                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none"
                 fill="none"
                 viewBox="0 0 24 24"
                 strokeWidth={2}
@@ -282,18 +273,17 @@ export default function SearchBar({
                 onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
                 placeholder="Suburb or postcode"
                 className={`
-                  w-full rounded-lg border bg-white text-gray-900
+                  h-[42px] w-full rounded-md border bg-white pl-9 pr-3 text-sm text-gray-900
                   placeholder:text-gray-400
                   focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
                   transition-colors
                   ${locationInput && !locationToken ? 'border-amber-400' : 'border-gray-300'}
-                  ${isHero ? 'pl-10 pr-4 py-3 text-base' : 'pl-9 pr-3 py-2 text-sm'}
                 `}
               />
               {/* Green check when location is valid */}
               {locationToken && (
                 <svg
-                  className={`absolute right-3 text-green-500 ${isHero ? 'top-3.5 h-5 w-5' : 'top-2.5 h-4 w-4'}`}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-green-500"
                   fill="none"
                   viewBox="0 0 24 24"
                   strokeWidth={2}
@@ -306,14 +296,14 @@ export default function SearchBar({
 
             {/* Suggestion Dropdown */}
             {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute z-50 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg max-h-60 overflow-auto">
+              <div className="absolute z-50 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg max-h-60 overflow-auto">
                 {suggestions.map((s, i) => (
                   <button
                     key={`${s.postcode}-${s.suburb}`}
                     type="button"
                     data-testid="location-suggest-item"
                     onClick={() => selectSuggestion(s)}
-                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-brand-50 transition-colors ${
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-brand-50 transition-colors ${
                       i === highlightedIndex ? 'bg-brand-50 text-brand-700' : 'text-gray-900'
                     }`}
                   >
@@ -326,7 +316,7 @@ export default function SearchBar({
           </div>
 
           {/* Radius Select */}
-          <div className="min-w-[140px] shrink-0">
+          <div className="w-[140px] shrink-0">
             {isHero && (
               <label className="block text-xs font-medium text-gray-500 mb-1">
                 Radius
@@ -337,13 +327,7 @@ export default function SearchBar({
               value={radius}
               onChange={(e) => setRadius(e.target.value)}
               disabled={!hasValidLocation}
-              className={`
-                w-full rounded-lg border border-gray-300 bg-white text-gray-900
-                focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
-                transition-colors
-                disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed
-                ${isHero ? 'px-4 py-3 text-base' : 'px-3 py-2 text-sm'}
-              `}
+              className={`${inputClass} disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed`}
             >
               {radiusOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -354,23 +338,34 @@ export default function SearchBar({
           </div>
         </div>
 
-        {/* Row 2: Search Button */}
-        <div className="mt-3 flex justify-end">
+        {/* Row 2: Helper text left, Search button right */}
+        <div className="mt-2.5 flex justify-between items-center">
+          <div>
+            {!canSearch && (
+              <p className={`text-sm ${submitAttempted ? 'text-red-600' : 'text-gray-500'}`}>
+                Enter a suburb or postcode, or search by business name.
+              </p>
+            )}
+            {locationInput && !locationToken && (
+              <p className="text-xs text-amber-500">
+                Please select a location from the dropdown suggestions.
+              </p>
+            )}
+          </div>
           <button
             type="submit"
             data-testid="search-submit"
             disabled={!canSearch}
-            className={`
-              min-w-[180px] rounded-lg bg-brand-600 font-medium text-white
-              hover:bg-brand-700 active:bg-brand-800
-              focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2
-              transition-colors flex items-center justify-center gap-2
+            className="
+              w-[160px] h-[42px] rounded-md bg-[#4f46e5] text-sm font-medium text-white
+              hover:bg-[#4338ca] active:bg-[#3730a3]
+              focus:outline-none focus:ring-2 focus:ring-[#4f46e5]/50 focus:ring-offset-2
+              transition-colors flex items-center justify-center gap-2 shrink-0
               disabled:bg-gray-300 disabled:cursor-not-allowed
-              ${isHero ? 'px-6 py-3 text-base' : 'px-4 py-2 text-sm'}
-            `}
+            "
           >
             <svg
-              className={isHero ? 'h-5 w-5' : 'h-4 w-4'}
+              className="h-4 w-4"
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth={2}
@@ -385,20 +380,6 @@ export default function SearchBar({
             Search
           </button>
         </div>
-
-        {/* Helper / validation message */}
-        {!canSearch && (
-          <p className={`mt-2 text-sm ${submitAttempted ? 'text-red-600' : 'text-gray-500'}`}>
-            Enter a suburb or postcode, or search by business name.
-          </p>
-        )}
-
-        {/* Location not selected warning */}
-        {locationInput && !locationToken && (
-          <p className="mt-1 text-xs text-amber-500">
-            Please select a location from the dropdown suggestions.
-          </p>
-        )}
 
         {/* More Filters Toggle */}
         <div className="mt-3">
@@ -434,13 +415,7 @@ export default function SearchBar({
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
                   placeholder="e.g. emergency, 24/7, eco-friendly"
-                  className={`
-                    w-full rounded-lg border border-gray-300 bg-white text-gray-900
-                    placeholder:text-gray-400
-                    focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none
-                    transition-colors
-                    ${isHero ? 'px-4 py-3 text-base' : 'px-3 py-2 text-sm'}
-                  `}
+                  className={inputClass}
                 />
               </div>
             </div>
