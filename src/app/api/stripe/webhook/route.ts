@@ -13,12 +13,26 @@ export const dynamic = 'force-dynamic'
 // ─── Helpers ────────────────────────────────────────────────────────
 
 /**
- * Extract the business_id from Stripe object metadata.
+ * Extract user_id from metadata. Falls back to business_id → owner_id lookup.
  */
-function getBusinessId(
-  metadata: Stripe.Metadata | null | undefined
-): string | null {
-  return metadata?.business_id ?? null
+async function getUserId(
+  metadata: Stripe.Metadata | null | undefined,
+  supabase: ReturnType<typeof createAdminClient>
+): Promise<string | null> {
+  if (metadata?.user_id) return metadata.user_id
+
+  // Backward compat: look up via business_id
+  const businessId = metadata?.business_id
+  if (businessId) {
+    const { data } = await supabase
+      .from('businesses')
+      .select('owner_id')
+      .eq('id', businessId)
+      .maybeSingle()
+    return data?.owner_id ?? null
+  }
+
+  return null
 }
 
 /**
@@ -28,11 +42,9 @@ function getPlanTier(
   metadata: Stripe.Metadata | null | undefined,
   priceId?: string | null
 ): PlanTier {
-  // Try metadata first
   const tierFromMeta = metadata?.plan_tier as PlanTier | undefined
   if (tierFromMeta) return tierFromMeta
 
-  // Infer from price ID
   if (priceId) {
     const plan = getPlanByPriceId(priceId)
     if (plan) return plan.id
@@ -50,6 +62,44 @@ function getSubscriptionPriceId(
   const item = subscription.items?.data?.[0]
   if (!item) return null
   return typeof item.price === 'string' ? item.price : item.price?.id ?? null
+}
+
+/**
+ * Map Stripe subscription status to our status enum.
+ */
+function mapStripeStatus(stripeStatus: string): string {
+  switch (stripeStatus) {
+    case 'active':
+    case 'trialing':
+      return 'active'
+    case 'past_due':
+      return 'past_due'
+    case 'canceled':
+      return 'canceled'
+    case 'unpaid':
+      return 'unpaid'
+    default:
+      return 'incomplete'
+  }
+}
+
+/**
+ * Update billing_status on all businesses owned by a user.
+ */
+async function syncBusinessBillingStatus(
+  supabase: ReturnType<typeof createAdminClient>,
+  userId: string,
+  billingStatus: 'active' | 'billing_suspended'
+) {
+  const updateData: Record<string, unknown> = { billing_status: billingStatus }
+  if (billingStatus === 'active') {
+    updateData.trial_ends_at = null
+  }
+  await supabase
+    .from('businesses')
+    .update(updateData)
+    .eq('owner_id', userId)
+    .eq('is_seed', false)
 }
 
 // ─── Webhook Handler ────────────────────────────────────────────────
@@ -100,9 +150,9 @@ export async function POST(request: NextRequest) {
           break
         }
 
-        const businessId = getBusinessId(session.metadata)
-        if (!businessId) {
-          console.error('checkout.session.completed: missing business_id in metadata')
+        const userId = await getUserId(session.metadata, supabase)
+        if (!userId) {
+          console.error('checkout.session.completed: missing user_id in metadata')
           break
         }
 
@@ -128,31 +178,38 @@ export async function POST(request: NextRequest) {
         const priceId = getSubscriptionPriceId(subscription)
         const planTier = getPlanTier(session.metadata, priceId)
 
-        // Upsert the subscription record
+        // Upsert into user_subscriptions
         const { error } = await supabase
-          .from('subscriptions')
+          .from('user_subscriptions')
           .upsert(
             {
-              business_id: businessId,
+              user_id: userId,
               stripe_customer_id: stripeCustomerId,
               stripe_subscription_id: subscriptionId,
-              status: subscription.status === 'active' || subscription.status === 'trialing' ? 'active' : 'incomplete',
+              status: mapStripeStatus(subscription.status) as any,
+              current_period_start: new Date(
+                subscription.current_period_start * 1000
+              ).toISOString(),
               current_period_end: new Date(
                 subscription.current_period_end * 1000
               ).toISOString(),
               cancel_at_period_end: subscription.cancel_at_period_end,
               plan: planTier,
               stripe_price_id: priceId,
+              trial_ends_at: null,
             },
-            { onConflict: 'business_id' }
+            { onConflict: 'user_id' }
           )
 
         if (error) {
           console.error(
-            'checkout.session.completed: failed to upsert subscription:',
+            'checkout.session.completed: failed to upsert user_subscription:',
             error
           )
         }
+
+        // Set billing_status='active' on all user's businesses
+        await syncBusinessBillingStatus(supabase, userId, 'active')
 
         break
       }
@@ -160,37 +217,12 @@ export async function POST(request: NextRequest) {
       // ─── Subscription updated ───────────────────────────────────
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription
-
-        const businessId = getBusinessId(subscription.metadata)
         const stripeSubscriptionId = subscription.id
 
-        // Map Stripe status to our status enum
-        let status: string
-        switch (subscription.status) {
-          case 'active':
-          case 'trialing':
-            status = 'active'
-            break
-          case 'past_due':
-            status = 'past_due'
-            break
-          case 'canceled':
-            status = 'canceled'
-            break
-          case 'unpaid':
-            status = 'unpaid'
-            break
-          case 'incomplete':
-            status = 'incomplete'
-            break
-          default:
-            status = 'incomplete'
-        }
-
+        const status = mapStripeStatus(subscription.status)
         const priceId = getSubscriptionPriceId(subscription)
         const planTier = getPlanTier(subscription.metadata, priceId)
 
-        // Update by stripe_subscription_id (most reliable identifier)
         const updateData: Record<string, unknown> = {
           status,
           current_period_end: new Date(
@@ -201,23 +233,32 @@ export async function POST(request: NextRequest) {
           stripe_price_id: priceId,
         }
 
+        // Update user_subscriptions by stripe_subscription_id
         const { error } = await supabase
-          .from('subscriptions')
+          .from('user_subscriptions')
           .update(updateData)
           .eq('stripe_subscription_id', stripeSubscriptionId)
 
         if (error) {
-          // Fallback: try updating by business_id if available
-          if (businessId) {
-            await supabase
-              .from('subscriptions')
-              .update(updateData)
-              .eq('business_id', businessId)
-          } else {
-            console.error(
-              'customer.subscription.updated: failed to update subscription:',
-              error
-            )
+          console.error(
+            'customer.subscription.updated: failed to update user_subscription:',
+            error
+          )
+        }
+
+        // Sync billing_status on businesses
+        // Find the user who owns this subscription
+        const { data: userSub } = await supabase
+          .from('user_subscriptions')
+          .select('user_id')
+          .eq('stripe_subscription_id', stripeSubscriptionId)
+          .maybeSingle()
+
+        if (userSub) {
+          if (['canceled', 'unpaid'].includes(status)) {
+            await syncBusinessBillingStatus(supabase, userSub.user_id, 'billing_suspended')
+          } else if (['active', 'past_due'].includes(status)) {
+            await syncBusinessBillingStatus(supabase, userSub.user_id, 'active')
           }
         }
 
@@ -229,31 +270,31 @@ export async function POST(request: NextRequest) {
         const subscription = event.data.object as Stripe.Subscription
         const stripeSubscriptionId = subscription.id
 
+        // Find user before updating
+        const { data: userSub } = await supabase
+          .from('user_subscriptions')
+          .select('user_id')
+          .eq('stripe_subscription_id', stripeSubscriptionId)
+          .maybeSingle()
+
         const { error } = await supabase
-          .from('subscriptions')
+          .from('user_subscriptions')
           .update({
-            status: 'canceled',
+            status: 'canceled' as any,
             cancel_at_period_end: false,
           })
           .eq('stripe_subscription_id', stripeSubscriptionId)
 
         if (error) {
-          // Fallback: try by business_id
-          const businessId = getBusinessId(subscription.metadata)
-          if (businessId) {
-            await supabase
-              .from('subscriptions')
-              .update({
-                status: 'canceled',
-                cancel_at_period_end: false,
-              })
-              .eq('business_id', businessId)
-          } else {
-            console.error(
-              'customer.subscription.deleted: failed to update subscription:',
-              error
-            )
-          }
+          console.error(
+            'customer.subscription.deleted: failed to update user_subscription:',
+            error
+          )
+        }
+
+        // Suspend all user's businesses
+        if (userSub) {
+          await syncBusinessBillingStatus(supabase, userSub.user_id, 'billing_suspended')
         }
 
         break
@@ -274,13 +315,13 @@ export async function POST(request: NextRequest) {
         }
 
         const { error } = await supabase
-          .from('subscriptions')
-          .update({ status: 'past_due' })
+          .from('user_subscriptions')
+          .update({ status: 'past_due' as any })
           .eq('stripe_subscription_id', subscriptionId)
 
         if (error) {
           console.error(
-            'invoice.payment_failed: failed to update subscription:',
+            'invoice.payment_failed: failed to update user_subscription:',
             error
           )
         }

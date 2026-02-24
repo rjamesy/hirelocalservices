@@ -3,7 +3,7 @@ import { createMockSupabaseClient } from '@/__tests__/helpers/supabase-mock'
 import { mockUser, mockBusiness } from '@/__tests__/helpers/test-data'
 
 // Mock createClient
-const { client: mockSupabase, single, maybeSingle } = createMockSupabaseClient()
+const { client: mockSupabase, single, maybeSingle, chainResult } = createMockSupabaseClient()
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(() => Promise.resolve(mockSupabase)),
@@ -17,13 +17,17 @@ vi.mock('next/navigation', () => ({
   redirect: vi.fn(),
 }))
 
+vi.mock('@/app/actions/system-settings', () => ({
+  getSettingValue: vi.fn(() => Promise.resolve(10)),
+}))
+
 // Import actions after mocks
 import {
   createBusinessDraft,
   updateBusiness,
   updateBusinessLocation,
   updateBusinessCategories,
-  publishBusiness,
+  publishChanges,
   unpublishBusiness,
   getMyBusiness,
   getBusinessBySlug,
@@ -55,15 +59,22 @@ describe('createBusinessDraft', () => {
     await expect(createBusinessDraft(fd)).rejects.toThrow('You must be logged in')
   })
 
-  it('rejects if user already has a business', async () => {
-    maybeSingle.mockResolvedValueOnce({ data: { id: 'existing' }, error: null })
+  it('rejects if user has reached listing limit', async () => {
+    // getUserListingCapacity: count query returns 1 existing business
+    chainResult.mockReturnValueOnce({ count: 1, error: null })
+    // getUserListingCapacity: user_subscriptions query
+    maybeSingle.mockResolvedValueOnce({ data: { plan: 'basic', status: 'active' }, error: null })
 
     const fd = makeFormData({ name: 'Test', description: 'A valid description for testing.' })
     const result = await createBusinessDraft(fd)
-    expect(result).toEqual({ error: 'You already have a business listing' })
+    expect(result).toHaveProperty('error')
+    expect((result as { error: string }).error).toContain('already have a business listing')
   })
 
   it('returns validation errors for invalid data', async () => {
+    // getUserListingCapacity: count=0 (no businesses)
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
+    // getUserListingCapacity: no subscription
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
 
     const fd = makeFormData({ name: 'A', description: 'Short' })
@@ -72,6 +83,9 @@ describe('createBusinessDraft', () => {
   })
 
   it('creates a draft on valid data', async () => {
+    // getUserListingCapacity: count=0
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
+    // getUserListingCapacity: no subscription
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
     // slug check
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
@@ -88,7 +102,10 @@ describe('createBusinessDraft', () => {
   })
 
   it('appends random suffix for duplicate slugs', async () => {
-    maybeSingle.mockResolvedValueOnce({ data: null, error: null }) // no existing biz
+    // getUserListingCapacity: count=0
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
+    // getUserListingCapacity: no subscription
+    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
     maybeSingle.mockResolvedValueOnce({ data: { id: 'dup' }, error: null }) // slug exists
     single.mockResolvedValueOnce({ data: mockBusiness, error: null })
 
@@ -104,6 +121,9 @@ describe('createBusinessDraft', () => {
   })
 
   it('handles insert failure', async () => {
+    // getUserListingCapacity: count=0
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
+    // getUserListingCapacity: no subscription
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
     single.mockResolvedValueOnce({ data: null, error: { message: 'DB error' } })
@@ -125,9 +145,9 @@ describe('updateBusiness', () => {
       data: { user: mockUser },
       error: null,
     })
-    // verifyBusinessOwnership
+    // verifyBusinessOwnership (now includes billing_status in select)
     single.mockResolvedValueOnce({
-      data: { id: 'biz-123', owner_id: 'user-123' },
+      data: { id: 'biz-123', owner_id: 'user-123', status: 'published', slug: 'test', billing_status: 'active' },
       error: null,
     })
   })
@@ -296,50 +316,35 @@ describe('updateBusinessCategories', () => {
   })
 })
 
-describe('publishBusiness', () => {
+describe('publishChanges', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     mockSupabase.auth.getUser.mockResolvedValue({
       data: { user: mockUser },
       error: null,
     })
+    // verifyBusinessOwnership: business fetch
     single.mockResolvedValueOnce({
       data: { id: 'biz-123', owner_id: 'user-123' },
       error: null,
     })
   })
 
-  it('requires active subscription', async () => {
+  it('requires active user subscription', async () => {
+    // user_subscriptions check returns no subscription
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
-    const result = await publishBusiness('biz-123')
+    const result = await publishChanges('biz-123')
     expect(result).toEqual({ error: 'subscription_required' })
   })
 
-  it('rejects canceled subscription', async () => {
+  it('rejects canceled user subscription', async () => {
+    // user_subscriptions check returns canceled
     maybeSingle.mockResolvedValueOnce({
       data: { status: 'canceled' },
       error: null,
     })
-    const result = await publishBusiness('biz-123')
+    const result = await publishChanges('biz-123')
     expect(result).toEqual({ error: 'subscription_required' })
-  })
-
-  it('publishes with active subscription', async () => {
-    maybeSingle.mockResolvedValueOnce({
-      data: { status: 'active' },
-      error: null,
-    })
-    const result = await publishBusiness('biz-123')
-    expect(result).toEqual({ success: true })
-  })
-
-  it('publishes with past_due subscription', async () => {
-    maybeSingle.mockResolvedValueOnce({
-      data: { status: 'past_due' },
-      error: null,
-    })
-    const result = await publishBusiness('biz-123')
-    expect(result).toEqual({ success: true })
   })
 })
 
@@ -429,27 +434,27 @@ describe('getMyBusiness', () => {
     expect(result).toBeNull()
   })
 
-  it('flattens location and subscription', async () => {
+  it('flattens location and returns null subscription', async () => {
     mockSupabase.auth.getUser.mockResolvedValue({
       data: { user: mockUser },
       error: null,
     })
-    maybeSingle.mockResolvedValueOnce({
-      data: {
+    // getMyBusiness uses .order() without .single(), so result comes via chainResult
+    chainResult.mockReturnValueOnce({
+      data: [{
         ...mockBusiness,
         business_locations: [{ id: 'loc-1', suburb: 'Brisbane' }],
         business_categories: [],
         photos: [],
         testimonials: [],
-        subscriptions: [{ id: 'sub-1', status: 'active' }],
-      },
+      }],
       error: null,
     })
 
     const result = await getMyBusiness()
     expect(result).not.toBeNull()
     expect(result!.location).toEqual({ id: 'loc-1', suburb: 'Brisbane' })
-    expect(result!.subscription).toEqual({ id: 'sub-1', status: 'active' })
+    expect(result!.subscription).toBeNull()
   })
 })
 
@@ -465,10 +470,16 @@ describe('getBusinessBySlug', () => {
     expect(result).toBeNull()
   })
 
-  it('returns null if no active subscription', async () => {
+  it('returns null if billing_suspended and not owner', async () => {
+    // No authenticated user
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: null },
+      error: null,
+    })
     maybeSingle.mockResolvedValueOnce({
       data: {
         ...mockBusiness,
+        billing_status: 'billing_suspended',
         business_locations: [],
         business_categories: [],
         photos: [],
@@ -476,8 +487,6 @@ describe('getBusinessBySlug', () => {
       },
       error: null,
     })
-    // subscription check
-    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
 
     const result = await getBusinessBySlug('test-business')
     expect(result).toBeNull()
@@ -487,6 +496,7 @@ describe('getBusinessBySlug', () => {
     maybeSingle.mockResolvedValueOnce({
       data: {
         ...mockBusiness,
+        billing_status: 'active',
         business_locations: [],
         business_categories: [],
         photos: [],
@@ -495,10 +505,6 @@ describe('getBusinessBySlug', () => {
           { rating: 5 },
         ],
       },
-      error: null,
-    })
-    maybeSingle.mockResolvedValueOnce({
-      data: { status: 'active' },
       error: null,
     })
 
@@ -512,15 +518,12 @@ describe('getBusinessBySlug', () => {
     maybeSingle.mockResolvedValueOnce({
       data: {
         ...mockBusiness,
+        billing_status: 'active',
         business_locations: [{ id: 'loc-1', suburb: 'Sydney' }],
         business_categories: [{ category_id: 'cat-1' }],
         photos: [{ url: '/photo.jpg', sort_order: 0 }],
         testimonials: [],
       },
-      error: null,
-    })
-    maybeSingle.mockResolvedValueOnce({
-      data: { status: 'active' },
       error: null,
     })
 

@@ -4,10 +4,19 @@ import { getBusinessMetrics } from '@/app/actions/metrics'
 import { cn } from '@/lib/utils'
 import { getPlanById } from '@/lib/constants'
 import { isTrialExpired, TRIAL_DURATION_DAYS } from '@/lib/ranking'
+import { createClient } from '@/lib/supabase/server'
 import type { PlanTier } from '@/lib/types'
+import PauseUnpauseButton from './PauseUnpauseButton'
 
-function StatusCard({ status, hasSubscription }: { status: string; hasSubscription: boolean }) {
+function StatusCard({ status, billingStatus, hasSubscription }: { status: string; billingStatus: string; hasSubscription: boolean }) {
   const configs: Record<string, { bg: string; border: string; text: string; heading: string; message: string }> = {
+    billing_suspended: {
+      bg: 'bg-orange-50',
+      border: 'border-orange-200',
+      text: 'text-orange-800',
+      heading: 'Billing suspended',
+      message: 'Your trial has expired. Upgrade to a paid plan to restore your listing.',
+    },
     draft: {
       bg: 'bg-yellow-50',
       border: 'border-yellow-200',
@@ -24,6 +33,13 @@ function StatusCard({ status, hasSubscription }: { status: string; hasSubscripti
       heading: 'Your listing is live',
       message: 'Customers can find and contact you through your public profile.',
     },
+    paused: {
+      bg: 'bg-gray-50',
+      border: 'border-gray-200',
+      text: 'text-gray-800',
+      heading: 'Your listing is paused',
+      message: 'Hidden from customers. Unpause to make it visible again.',
+    },
     suspended: {
       bg: 'bg-red-50',
       border: 'border-red-200',
@@ -33,29 +49,39 @@ function StatusCard({ status, hasSubscription }: { status: string; hasSubscripti
     },
   }
 
-  const config = configs[status] ?? configs.draft
+  // billing_suspended takes priority
+  const effectiveStatus = billingStatus === 'billing_suspended' ? 'billing_suspended' : status
+  const config = configs[effectiveStatus] ?? configs.draft
 
   return (
     <div className={cn('rounded-lg border p-4', config.bg, config.border)}>
       <div className="flex items-start gap-3">
         <div className="flex-shrink-0 mt-0.5">
-          {status === 'published' ? (
+          {effectiveStatus === 'published' ? (
             <svg className={cn('h-5 w-5', config.text)} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-          ) : status === 'suspended' ? (
+          ) : effectiveStatus === 'paused' ? (
             <svg className={cn('h-5 w-5', config.text)} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
             </svg>
           ) : (
             <svg className={cn('h-5 w-5', config.text)} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
             </svg>
           )}
         </div>
         <div>
           <h3 className={cn('text-sm font-medium', config.text)}>{config.heading}</h3>
           <p className={cn('mt-1 text-sm', config.text, 'opacity-80')}>{config.message}</p>
+          {effectiveStatus === 'billing_suspended' && (
+            <Link
+              href="/dashboard/billing"
+              className="mt-3 inline-flex items-center rounded-md bg-orange-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-orange-700 transition-colors"
+            >
+              Upgrade Now
+            </Link>
+          )}
         </div>
       </div>
     </div>
@@ -99,25 +125,37 @@ export default async function DashboardPage() {
     )
   }
 
-  // Business exists - show dashboard
+  // Business exists - fetch user subscription from user_subscriptions
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const { data: userSub } = user
+    ? await supabase
+        .from('user_subscriptions')
+        .select('status, plan, current_period_end, cancel_at_period_end, trial_ends_at')
+        .eq('user_id', user.id)
+        .maybeSingle()
+    : { data: null }
+
   const status = (business as Record<string, unknown>).status as string ?? 'draft'
-  const subscription = business.subscription
-  const hasActiveSubscription = subscription && ['active', 'past_due'].includes(subscription.status)
-  const planTier = (subscription as { plan?: PlanTier } | null)?.plan ?? 'basic'
+  const billingStatus = (business as Record<string, unknown>).billing_status as string ?? 'active'
+  const isBillingSuspended = billingStatus === 'billing_suspended'
+  const hasActiveSubscription = userSub && ['active', 'past_due'].includes(userSub.status)
+  const planTier = (userSub?.plan as PlanTier) ?? 'basic'
   const currentPlan = getPlanById(planTier)
   const isPremiumTier = planTier === 'premium' || planTier === 'premium_annual'
 
   // Calculate days until renewal
   let daysUntilRenewal: number | null = null
-  if (subscription?.current_period_end) {
-    const endDate = new Date(subscription.current_period_end)
+  if (userSub?.current_period_end) {
+    const endDate = new Date(userSub.current_period_end)
     const now = new Date()
     daysUntilRenewal = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
   }
 
   // Trial expiration check
   const isTrial = planTier === 'free_trial'
-  const trialExpired = isTrial && isTrialExpired(planTier, subscription?.current_period_end ?? null)
+  const trialExpired = isTrial && isTrialExpired(planTier, userSub?.current_period_end ?? null)
   const trialDaysLeft = isTrial && !trialExpired ? daysUntilRenewal : null
 
   // Fetch real metrics
@@ -136,8 +174,41 @@ export default async function DashboardPage() {
 
       {/* Status card */}
       <div className="mt-6">
-        <StatusCard status={status} hasSubscription={!!hasActiveSubscription} />
+        <StatusCard status={status} billingStatus={billingStatus} hasSubscription={!!hasActiveSubscription} />
       </div>
+
+      {/* Pause/Unpause button for published/paused listings (not if billing suspended) */}
+      {!isBillingSuspended && (status === 'published' || status === 'paused') && (
+        <div className="mt-4">
+          <PauseUnpauseButton businessId={businessId} currentStatus={status} />
+        </div>
+      )}
+
+      {/* Unpublished changes indicator */}
+      {!isBillingSuspended && !!(business as Record<string, unknown>).pending_changes && (
+        <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <div className="flex items-start gap-3">
+            <svg className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+            </svg>
+            <div>
+              <h3 className="text-sm font-medium text-blue-800">Unpublished changes</h3>
+              <p className="mt-1 text-sm text-blue-700">
+                You have draft changes that haven&apos;t been published yet.
+              </p>
+              <Link
+                href="/dashboard/listing"
+                className="mt-2 inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-700"
+              >
+                Review & Publish
+                <svg className="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12h15m0 0l-6.75-6.75M19.5 12l-6.75 6.75" />
+                </svg>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Verification status */}
       {(() => {
@@ -184,7 +255,7 @@ export default async function DashboardPage() {
       })()}
 
       {/* Prompts */}
-      {status === 'draft' && !hasActiveSubscription && (
+      {!isBillingSuspended && status === 'draft' && !hasActiveSubscription && (
         <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
           <div className="flex items-start gap-3">
             <svg className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -206,7 +277,7 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {status === 'draft' && hasActiveSubscription && (
+      {!isBillingSuspended && status === 'draft' && hasActiveSubscription && (
         <div className="mt-4 rounded-lg border border-brand-200 bg-brand-50 p-4">
           <div className="flex items-start gap-3">
             <svg className="h-5 w-5 text-brand-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -229,7 +300,7 @@ export default async function DashboardPage() {
       )}
 
       {/* Trial expiration warning */}
-      {isTrial && trialExpired && (
+      {!isBillingSuspended && isTrial && trialExpired && (
         <div className="mt-4 rounded-lg border border-orange-200 bg-orange-50 p-4">
           <div className="flex items-start gap-3">
             <svg className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -251,7 +322,7 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {isTrial && !trialExpired && trialDaysLeft !== null && (
+      {!isBillingSuspended && isTrial && !trialExpired && trialDaysLeft !== null && (
         <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
           <div className="flex items-start gap-3">
             <svg className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -391,72 +462,91 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Quick links */}
+      {/* Quick links — hide edit/photos/testimonials when billing suspended */}
       <div className="mt-8">
         <h2 className="text-lg font-semibold text-gray-900">Quick Links</h2>
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Link
-            href="/dashboard/listing"
-            className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-brand-300 hover:bg-brand-50 transition-colors"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 group-hover:bg-brand-100">
-              <svg className="h-5 w-5 text-brand-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">Edit Listing</p>
-              <p className="text-xs text-gray-500">Update your business details</p>
-            </div>
-          </Link>
-
-          <Link
-            href="/dashboard/photos"
-            className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-brand-300 hover:bg-brand-50 transition-colors"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 group-hover:bg-brand-100">
-              <svg className="h-5 w-5 text-brand-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v13.5A1.5 1.5 0 003.75 21z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">Manage Photos</p>
-              <p className="text-xs text-gray-500">Add or reorder your photos</p>
-            </div>
-          </Link>
-
-          {status === 'published' && (
+          {isBillingSuspended ? (
             <Link
-              href={`/business/${(business as Record<string, unknown>).slug}`}
-              className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-brand-300 hover:bg-brand-50 transition-colors"
+              href="/dashboard/billing"
+              className="group flex items-center gap-3 rounded-lg border border-orange-200 bg-orange-50 p-4 hover:border-orange-300 hover:bg-orange-100 transition-colors"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 group-hover:bg-brand-100">
-                <svg className="h-5 w-5 text-brand-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 group-hover:bg-orange-200">
+                <svg className="h-5 w-5 text-orange-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-900">View Public Profile</p>
-                <p className="text-xs text-gray-500">See how customers see you</p>
+                <p className="text-sm font-medium text-orange-900">Upgrade Plan</p>
+                <p className="text-xs text-orange-700">Restore your listing by subscribing</p>
               </div>
             </Link>
-          )}
+          ) : (
+            <>
+              <Link
+                href="/dashboard/listing"
+                className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-brand-300 hover:bg-brand-50 transition-colors"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 group-hover:bg-brand-100">
+                  <svg className="h-5 w-5 text-brand-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Edit Listing</p>
+                  <p className="text-xs text-gray-500">Update your business details</p>
+                </div>
+              </Link>
 
-          {status !== 'published' && (
-            <Link
-              href="/dashboard/testimonials"
-              className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-brand-300 hover:bg-brand-50 transition-colors"
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 group-hover:bg-brand-100">
-                <svg className="h-5 w-5 text-brand-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">Testimonials</p>
-                <p className="text-xs text-gray-500">Add customer testimonials</p>
-              </div>
-            </Link>
+              <Link
+                href="/dashboard/photos"
+                className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-brand-300 hover:bg-brand-50 transition-colors"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 group-hover:bg-brand-100">
+                  <svg className="h-5 w-5 text-brand-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v13.5A1.5 1.5 0 003.75 21z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Manage Photos</p>
+                  <p className="text-xs text-gray-500">Add or reorder your photos</p>
+                </div>
+              </Link>
+
+              {(status === 'published' || status === 'paused') && (
+                <Link
+                  href={`/business/${(business as Record<string, unknown>).slug}`}
+                  className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-brand-300 hover:bg-brand-50 transition-colors"
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 group-hover:bg-brand-100">
+                    <svg className="h-5 w-5 text-brand-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">View Public Profile</p>
+                    <p className="text-xs text-gray-500">See how customers see you</p>
+                  </div>
+                </Link>
+              )}
+
+              {status !== 'published' && status !== 'paused' && (
+                <Link
+                  href="/dashboard/testimonials"
+                  className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-brand-300 hover:bg-brand-50 transition-colors"
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 group-hover:bg-brand-100">
+                    <svg className="h-5 w-5 text-brand-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Testimonials</p>
+                    <p className="text-xs text-gray-500">Add customer testimonials</p>
+                  </div>
+                </Link>
+              )}
+            </>
           )}
         </div>
       </div>

@@ -20,27 +20,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get the user's business and subscription
-    const { data: business, error: bizError } = await supabase
-      .from('businesses')
-      .select('id')
-      .eq('owner_id', user.id)
-      .single()
-
-    if (bizError || !business) {
-      return NextResponse.json(
-        { error: 'Business not found' },
-        { status: 404 }
-      )
-    }
-
-    const { data: subscription, error: subError } = await supabase
-      .from('subscriptions')
+    // Get the user's subscription directly
+    const { data: userSub, error: subError } = await supabase
+      .from('user_subscriptions')
       .select('stripe_customer_id')
-      .eq('business_id', business.id)
+      .eq('user_id', user.id)
       .maybeSingle()
 
-    if (subError || !subscription?.stripe_customer_id) {
+    if (subError || !userSub?.stripe_customer_id) {
       return NextResponse.json(
         { error: 'No billing account found. Please subscribe first.' },
         { status: 400 }
@@ -51,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     // Create a Stripe billing portal session
     const portalSession = await stripe.billingPortal.sessions.create({
-      customer: subscription.stripe_customer_id,
+      customer: userSub.stripe_customer_id,
       return_url: `${baseUrl}/dashboard/billing`,
     })
 

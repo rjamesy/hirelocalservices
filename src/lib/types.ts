@@ -15,6 +15,15 @@ export type ListingSource = 'manual' | 'osm' | 'csv_import'
 
 export type ClaimStatus = 'unclaimed' | 'pending' | 'claimed'
 
+export type PendingChanges = {
+  name?: string
+  description?: string | null
+  phone?: string | null
+  email_contact?: string | null
+  website?: string | null
+  abn?: string | null
+}
+
 export type Business = {
   id: string
   owner_id: string
@@ -25,13 +34,16 @@ export type Business = {
   email_contact: string | null
   website: string | null
   abn: string | null
-  status: 'draft' | 'published' | 'suspended'
+  status: 'draft' | 'published' | 'suspended' | 'paused'
   is_seed: boolean
   claim_status: ClaimStatus
   seed_source: string | null
   seed_source_id: string | null
   verification_status: VerificationStatus
   listing_source: ListingSource
+  billing_status: BillingStatus
+  trial_ends_at: string | null
+  pending_changes: PendingChanges | null
   created_at: string
   updated_at: string
 }
@@ -157,6 +169,8 @@ export type Testimonial = {
 
 export type PlanTier = 'free_trial' | 'basic' | 'premium' | 'premium_annual'
 
+export type BillingStatus = 'active' | 'trial' | 'billing_suspended'
+
 export type Subscription = {
   id: string
   business_id: string
@@ -167,6 +181,21 @@ export type Subscription = {
   stripe_price_id: string | null
   current_period_end: string | null
   cancel_at_period_end: boolean
+  updated_at: string
+}
+
+export type UserSubscription = {
+  id: string
+  user_id: string
+  stripe_customer_id: string | null
+  stripe_subscription_id: string | null
+  status: SubscriptionStatus
+  plan: PlanTier
+  stripe_price_id: string | null
+  current_period_start: string | null
+  current_period_end: string | null
+  cancel_at_period_end: boolean
+  trial_ends_at: string | null
   updated_at: string
 }
 
@@ -225,6 +254,7 @@ export type SystemSettingKey =
   | 'email_template_body'
   | 'ai_verification_enabled'
   | 'ai_verification_strictness'
+  | 'max_premium_listings'
 
 export type SystemSetting = {
   key: SystemSettingKey
@@ -235,9 +265,14 @@ export type SystemSetting = {
 
 export type AuditAction =
   | 'listing_created'
+  | 'listing_updated'
   | 'listing_claimed'
   | 'listing_suspended'
+  | 'listing_unsuspended'
   | 'listing_unlisted'
+  | 'listing_claim_submitted'
+  | 'listing_claim_approved'
+  | 'listing_claim_rejected'
   | 'seed_ingested'
   | 'reset_executed'
   | 'settings_changed'
@@ -330,7 +365,7 @@ export type Database = {
       }
       businesses: {
         Row: Business
-        Insert: Omit<Business, 'id' | 'created_at' | 'updated_at' | 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'verification_status' | 'listing_source'> & Partial<Pick<Business, 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'verification_status' | 'listing_source'>>
+        Insert: Omit<Business, 'id' | 'created_at' | 'updated_at' | 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at'> & Partial<Pick<Business, 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at'>>
         Update: Partial<Omit<Business, 'id' | 'created_at' | 'owner_id'>>
         Relationships: [
           {
@@ -443,6 +478,20 @@ export type Database = {
             columns: ['business_id']
             isOneToOne: true
             referencedRelation: 'businesses'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      user_subscriptions: {
+        Row: UserSubscription
+        Insert: Pick<UserSubscription, 'user_id'> & Partial<Omit<UserSubscription, 'id' | 'updated_at' | 'user_id'>>
+        Update: Partial<Omit<UserSubscription, 'id' | 'user_id'>>
+        Relationships: [
+          {
+            foreignKeyName: 'user_subscriptions_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: true
+            referencedRelation: 'profiles'
             referencedColumns: ['id']
           },
         ]
@@ -684,11 +733,12 @@ export type Database = {
     Enums: {
       subscription_status: SubscriptionStatus
       report_reason: ReportReason
-      business_status: 'draft' | 'published' | 'suspended'
+      business_status: 'draft' | 'published' | 'suspended' | 'paused'
       user_role: 'business' | 'admin'
       verification_status: VerificationStatus
       listing_source: ListingSource
       claim_status_enum: ClaimStatus
+      plan_tier: PlanTier
     }
   }
 }

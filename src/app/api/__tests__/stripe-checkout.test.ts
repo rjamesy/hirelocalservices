@@ -64,12 +64,7 @@ describe('POST /api/stripe/checkout', () => {
       data: { user: mockUser },
       error: null,
     })
-    // business lookup
-    single.mockResolvedValueOnce({
-      data: { id: 'biz-123' },
-      error: null,
-    })
-    // existing sub
+    // user_subscriptions check - no existing
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
     // profile for email
     single.mockResolvedValueOnce({
@@ -102,29 +97,12 @@ describe('POST /api/stripe/checkout', () => {
     expect(response.status).toBe(400)
   })
 
-  it('returns 400 when no business exists', async () => {
-    mockSupabase.auth.getUser.mockResolvedValue({
-      data: { user: mockUser },
-      error: null,
-    })
-    single.mockResolvedValueOnce({
-      data: null,
-      error: { message: 'Not found' },
-    })
-
-    const response = await POST(makeRequest({ priceId: 'price_basic' }))
-    expect(response.status).toBe(400)
-  })
-
   it('returns 400 when active subscription exists', async () => {
     mockSupabase.auth.getUser.mockResolvedValue({
       data: { user: mockUser },
       error: null,
     })
-    single.mockResolvedValueOnce({
-      data: { id: 'biz-123' },
-      error: null,
-    })
+    // user_subscriptions check - active subscription exists
     maybeSingle.mockResolvedValueOnce({
       data: { id: 'sub-1', stripe_customer_id: 'cus_123', status: 'active' },
       error: null,
@@ -141,11 +119,9 @@ describe('POST /api/stripe/checkout', () => {
       data: { user: mockUser },
       error: null,
     })
-    single.mockResolvedValueOnce({
-      data: { id: 'biz-123' },
-      error: null,
-    })
+    // user_subscriptions check - no existing
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    // profile for email
     single.mockResolvedValueOnce({
       data: { email: 'user@test.com' },
       error: null,
@@ -160,11 +136,9 @@ describe('POST /api/stripe/checkout', () => {
       data: { user: mockUser },
       error: null,
     })
-    single.mockResolvedValueOnce({
-      data: { id: 'biz-123' },
-      error: null,
-    })
+    // user_subscriptions check - no existing
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    // profile for email
     single.mockResolvedValueOnce({
       data: { email: 'user@test.com' },
       error: null,
@@ -180,15 +154,12 @@ describe('POST /api/stripe/checkout', () => {
     )
   })
 
-  it('returns checkout URL', async () => {
+  it('returns checkout URL for canceled subscription', async () => {
     mockSupabase.auth.getUser.mockResolvedValue({
       data: { user: mockUser },
       error: null,
     })
-    single.mockResolvedValueOnce({
-      data: { id: 'biz-123' },
-      error: null,
-    })
+    // user_subscriptions check - canceled subscription with stripe customer
     maybeSingle.mockResolvedValueOnce({
       data: { id: 'sub-1', stripe_customer_id: 'cus_123', status: 'canceled' },
       error: null,

@@ -44,18 +44,19 @@ describe('POST /api/stripe/portal', () => {
     expect(response.status).toBe(401)
   })
 
-  it('returns 404 when no business found', async () => {
+  it('returns 400 when no subscription found', async () => {
     mockSupabase.auth.getUser.mockResolvedValue({
       data: { user: mockUser },
       error: null,
     })
-    single.mockResolvedValueOnce({
+    // user_subscriptions query returns null
+    maybeSingle.mockResolvedValueOnce({
       data: null,
-      error: { message: 'Not found' },
+      error: null,
     })
 
     const response = await POST(makeRequest())
-    expect(response.status).toBe(404)
+    expect(response.status).toBe(400)
   })
 
   it('returns 400 when no stripe customer ID', async () => {
@@ -63,10 +64,7 @@ describe('POST /api/stripe/portal', () => {
       data: { user: mockUser },
       error: null,
     })
-    single.mockResolvedValueOnce({
-      data: { id: 'biz-123' },
-      error: null,
-    })
+    // user_subscriptions query returns record without stripe_customer_id
     maybeSingle.mockResolvedValueOnce({
       data: { stripe_customer_id: null },
       error: null,
@@ -81,10 +79,7 @@ describe('POST /api/stripe/portal', () => {
       data: { user: mockUser },
       error: null,
     })
-    single.mockResolvedValueOnce({
-      data: { id: 'biz-123' },
-      error: null,
-    })
+    // user_subscriptions query returns valid record
     maybeSingle.mockResolvedValueOnce({
       data: { stripe_customer_id: 'cus_123' },
       error: null,
@@ -101,10 +96,7 @@ describe('POST /api/stripe/portal', () => {
       data: { user: mockUser },
       error: null,
     })
-    single.mockResolvedValueOnce({
-      data: { id: 'biz-123' },
-      error: null,
-    })
+    // user_subscriptions query errors
     maybeSingle.mockResolvedValueOnce({
       data: null,
       error: { message: 'DB error' },

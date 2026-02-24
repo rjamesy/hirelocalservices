@@ -58,28 +58,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get the user's business
-    const { data: business, error: bizError } = await supabase
-      .from('businesses')
-      .select('id')
-      .eq('owner_id', user.id)
-      .single()
-
-    if (bizError || !business) {
-      return NextResponse.json(
-        { error: 'You must create a business listing before subscribing' },
-        { status: 400 }
-      )
-    }
-
-    // Check if a subscription already exists for this business
+    // Check existing user subscription
     const { data: existingSub } = await supabase
-      .from('subscriptions')
+      .from('user_subscriptions')
       .select('id, stripe_customer_id, status')
-      .eq('business_id', business.id)
+      .eq('user_id', user.id)
       .maybeSingle()
 
-    // If there's already an active subscription, don't create another
+    // If there's already an active paid subscription, don't create another
     if (
       existingSub &&
       ['active', 'past_due'].includes(existingSub.status)
@@ -105,24 +91,23 @@ export async function POST(request: NextRequest) {
         email: profile?.email ?? user.email,
         metadata: {
           supabase_user_id: user.id,
-          business_id: business.id,
         },
       })
 
       stripeCustomerId = customer.id
 
-      // Store the Stripe customer ID in the subscriptions table.
+      // Store the Stripe customer ID in user_subscriptions
       if (existingSub) {
         await supabase
-          .from('subscriptions')
+          .from('user_subscriptions')
           .update({ stripe_customer_id: stripeCustomerId })
           .eq('id', existingSub.id)
       } else {
-        await supabase.from('subscriptions').insert({
-          business_id: business.id,
+        await supabase.from('user_subscriptions').insert({
+          user_id: user.id,
           stripe_customer_id: stripeCustomerId,
-          status: 'incomplete',
-          plan: plan.id,
+          status: 'incomplete' as const,
+          plan: plan.id as any,
           stripe_price_id: priceId,
         })
       }
@@ -133,7 +118,7 @@ export async function POST(request: NextRequest) {
     // Free Trial uses subscription mode with a 30-day trial
     const isFreeTrialPlan = plan.id === 'free_trial'
 
-    // Create the Stripe Checkout session
+    // Create the Stripe Checkout session (per-user, not per-business)
     const sessionConfig: Record<string, unknown> = {
       customer: stripeCustomerId,
       mode: 'subscription',
@@ -147,13 +132,11 @@ export async function POST(request: NextRequest) {
       success_url: `${baseUrl}/dashboard/billing?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/dashboard/billing`,
       metadata: {
-        business_id: business.id,
         user_id: user.id,
         plan_tier: plan.id,
       },
       subscription_data: {
         metadata: {
-          business_id: business.id,
           user_id: user.id,
           plan_tier: plan.id,
         },

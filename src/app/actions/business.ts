@@ -5,6 +5,8 @@ import { businessSchema, locationSchema } from '@/lib/validations'
 import { slugify } from '@/lib/utils'
 import { quickBlacklistCheck } from '@/lib/blacklist'
 import { revalidatePath } from 'next/cache'
+import { logAudit } from '@/lib/audit'
+import { getUserListingCapacity } from '@/lib/listing-limits'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -56,15 +58,15 @@ async function verifyBusinessOwnership(businessId: string) {
 export async function createBusinessDraft(formData: FormData) {
   const { supabase, user } = await getAuthenticatedUser()
 
-  // Check if the user already has a business
-  const { data: existing } = await supabase
-    .from('businesses')
-    .select('id')
-    .eq('owner_id', user.id)
-    .maybeSingle()
-
-  if (existing) {
-    return { error: 'You already have a business listing' }
+  // Check listing capacity based on user's plan tier
+  const capacity = await getUserListingCapacity(supabase, user.id)
+  if (!capacity.canClaimMore) {
+    return {
+      error:
+        capacity.maxAllowed === 1
+          ? 'You already have a business listing'
+          : `You have reached your limit of ${capacity.maxAllowed} listings.`,
+    }
   }
 
   // Validate form data
@@ -143,12 +145,23 @@ export async function createBusinessDraft(formData: FormData) {
     // Verification failure shouldn't block business creation
   }
 
+  await logAudit(supabase, {
+    action: 'listing_created',
+    entityType: 'listing',
+    entityId: business.id,
+    actorId: user.id,
+    details: {
+      listing_name: parsed.data.name,
+      new_status: 'draft',
+    },
+  })
+
   revalidatePath('/dashboard')
   return { data: business }
 }
 
 export async function updateBusiness(businessId: string, formData: FormData) {
-  const { supabase } = await verifyBusinessOwnership(businessId)
+  const { supabase, user } = await verifyBusinessOwnership(businessId)
 
   const rawData = {
     name: formData.get('name') as string,
@@ -164,6 +177,54 @@ export async function updateBusiness(businessId: string, formData: FormData) {
     return { error: parsed.error.flatten().fieldErrors }
   }
 
+  // Fetch current business status
+  const { data: currentBiz } = await supabase
+    .from('businesses')
+    .select('status, slug, billing_status')
+    .eq('id', businessId)
+    .single()
+
+  if (currentBiz?.billing_status === 'billing_suspended') {
+    return { error: 'This listing is suspended due to billing. Please upgrade your plan.' }
+  }
+
+  const isLive = currentBiz?.status === 'published' || currentBiz?.status === 'paused'
+
+  if (isLive) {
+    // Published/paused: write to pending_changes only — live version unchanged
+    const pendingChanges = {
+      name: parsed.data.name,
+      description: parsed.data.description || null,
+      phone: parsed.data.phone || null,
+      email_contact: parsed.data.email_contact || null,
+      website: parsed.data.website || null,
+      abn: parsed.data.abn || null,
+    }
+
+    const { data: business, error } = await supabase
+      .from('businesses')
+      .update({ pending_changes: pendingChanges as unknown as Record<string, unknown> })
+      .eq('id', businessId)
+      .select()
+      .single()
+
+    if (error) {
+      return { error: 'Failed to save draft changes. Please try again.' }
+    }
+
+    await logAudit(supabase, {
+      action: 'listing_updated',
+      entityType: 'listing',
+      entityId: businessId,
+      actorId: user.id,
+      details: { listing_name: parsed.data.name, draft_save: true },
+    })
+
+    revalidatePath('/dashboard')
+    return { data: business }
+  }
+
+  // Draft: write directly to main columns (not public)
   const { data: business, error } = await supabase
     .from('businesses')
     .update({
@@ -182,7 +243,7 @@ export async function updateBusiness(businessId: string, formData: FormData) {
     return { error: 'Failed to update business. Please try again.' }
   }
 
-  // Sync business_contacts
+  // Sync business_contacts for drafts
   await supabase
     .from('business_contacts')
     .upsert({
@@ -192,7 +253,7 @@ export async function updateBusiness(businessId: string, formData: FormData) {
       website: parsed.data.website || null,
     }, { onConflict: 'business_id' })
 
-  // Re-run verification (best-effort)
+  // Re-run verification for drafts (best-effort)
   try {
     const { runVerification } = await import('@/app/actions/verification')
     await Promise.race([
@@ -202,6 +263,14 @@ export async function updateBusiness(businessId: string, formData: FormData) {
   } catch {
     // Verification failure shouldn't block update
   }
+
+  await logAudit(supabase, {
+    action: 'listing_updated',
+    entityType: 'listing',
+    entityId: businessId,
+    actorId: user.id,
+    details: { listing_name: parsed.data.name },
+  })
 
   revalidatePath('/dashboard')
   revalidatePath(`/business/${business.slug}`)
@@ -377,31 +446,226 @@ export async function updateBusinessCategories(
   return { success: true }
 }
 
-export async function publishBusiness(businessId: string) {
-  const { supabase } = await verifyBusinessOwnership(businessId)
+export async function publishChanges(businessId: string) {
+  const { supabase, user } = await verifyBusinessOwnership(businessId)
 
-  // Check verification status
+  // Check user subscription
+  const { data: userSub } = await supabase
+    .from('user_subscriptions')
+    .select('status')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (!userSub || !['active', 'past_due'].includes(userSub.status)) {
+    return { error: 'subscription_required' }
+  }
+
+  // Fetch current business
   const { data: biz } = await supabase
     .from('businesses')
-    .select('verification_status')
+    .select(`
+      id, name, description, phone, email_contact, website, abn,
+      status, slug, pending_changes, verification_status, billing_status,
+      business_locations (lat, lng),
+      business_contacts (phone, email)
+    `)
     .eq('id', businessId)
     .single()
 
-  if (biz && biz.verification_status !== 'approved') {
-    return { error: 'verification_required' }
+  if (!biz) {
+    return { error: 'Business not found' }
   }
 
-  // Check if there is an active subscription
-  const { data: subscription } = await supabase
-    .from('subscriptions')
+  if ((biz as any).billing_status === 'billing_suspended') {
+    return { error: 'This listing is suspended due to billing. Please upgrade your plan.' }
+  }
+
+  // Determine the content to validate: pending_changes merged with main columns
+  const pending = (biz.pending_changes ?? {}) as Record<string, unknown>
+  const contentToValidate = {
+    name: (pending.name as string) ?? biz.name,
+    description: (pending.description as string | null) ?? biz.description,
+    phone: (pending.phone as string | null) ?? biz.phone,
+    email_contact: (pending.email_contact as string | null) ?? biz.email_contact,
+    website: (pending.website as string | null) ?? biz.website,
+    abn: (pending.abn as string | null) ?? biz.abn,
+  }
+
+  // Run verification pipeline
+  const {
+    runDeterministicChecks,
+    runAIContentReview,
+    makeVerificationDecision,
+  } = await import('@/lib/verification')
+
+  const rawLocations = biz.business_locations as any
+  const location = Array.isArray(rawLocations) ? rawLocations[0] : rawLocations
+  const rawContacts = biz.business_contacts as any
+  const contact = Array.isArray(rawContacts) ? rawContacts[0] : rawContacts
+
+  // Fetch nearby businesses for duplicate check
+  const { data: nearbyBusinesses } = await supabase
+    .from('businesses')
+    .select('name, business_locations (lat, lng)')
+    .neq('id', businessId)
+    .limit(100)
+
+  const existingForCheck = (nearbyBusinesses ?? []).map((b: any) => {
+    const loc = Array.isArray(b.business_locations) ? b.business_locations[0] : null
+    return { name: b.name, lat: loc?.lat ?? null, lng: loc?.lng ?? null }
+  })
+
+  const deterministic = runDeterministicChecks(
+    {
+      name: contentToValidate.name,
+      description: contentToValidate.description,
+      phone: contact?.phone ?? contentToValidate.phone,
+      email: contact?.email ?? contentToValidate.email_contact,
+      lat: location?.lat ?? null,
+      lng: location?.lng ?? null,
+    },
+    existingForCheck
+  )
+
+  const aiResult = await runAIContentReview({
+    name: contentToValidate.name,
+    description: contentToValidate.description,
+    phone: contact?.phone ?? contentToValidate.phone,
+    email: contact?.email ?? contentToValidate.email_contact,
+    lat: location?.lat ?? null,
+    lng: location?.lng ?? null,
+  })
+
+  const decision = makeVerificationDecision(
+    deterministic,
+    aiResult,
+    contentToValidate.name,
+    contentToValidate.description
+  )
+
+  // Create verification job
+  await supabase.from('verification_jobs').insert({
+    business_id: businessId,
+    status: decision,
+    deterministic_result: deterministic as unknown as Record<string, unknown>,
+    ai_result: aiResult as unknown as Record<string, unknown> | null,
+    final_decision: decision,
+  } as any)
+
+  if (decision === 'approved') {
+    // Apply pending_changes to main columns
+    const updateData: Record<string, unknown> = {
+      ...contentToValidate,
+      pending_changes: null,
+      status: 'published',
+      verification_status: 'approved',
+    }
+
+    await supabase.from('businesses').update(updateData).eq('id', businessId)
+
+    // Sync business_contacts
+    await supabase
+      .from('business_contacts')
+      .upsert({
+        business_id: businessId,
+        phone: contentToValidate.phone || null,
+        email: contentToValidate.email_contact || null,
+        website: contentToValidate.website || null,
+      }, { onConflict: 'business_id' })
+
+    // Refresh search index
+    await supabase.rpc('refresh_search_index', { p_business_id: businessId })
+
+    await logAudit(supabase, {
+      action: 'listing_updated',
+      entityType: 'listing',
+      entityId: businessId,
+      actorId: user.id,
+      details: { listing_name: contentToValidate.name, published: true },
+    })
+
+    revalidatePath('/dashboard')
+    revalidatePath(`/business/${biz.slug}`)
+    return { success: true, published: true }
+  }
+
+  // Pending/rejected: keep pending_changes intact, set verification_status
+  await supabase
+    .from('businesses')
+    .update({ verification_status: 'pending' })
+    .eq('id', businessId)
+
+  revalidatePath('/dashboard')
+  revalidatePath('/admin/verification')
+  return {
+    success: true,
+    published: false,
+    message: 'Your listing changes are being reviewed. Your live listing is unchanged.',
+  }
+}
+
+export async function pauseBusiness(businessId: string) {
+  const { supabase, user } = await verifyBusinessOwnership(businessId)
+
+  const { data: biz } = await supabase
+    .from('businesses')
     .select('status')
-    .eq('business_id', businessId)
+    .eq('id', businessId)
+    .single()
+
+  if (!biz || biz.status !== 'published') {
+    return { error: 'Only published listings can be paused' }
+  }
+
+  const { error } = await supabase
+    .from('businesses')
+    .update({ status: 'paused' })
+    .eq('id', businessId)
+
+  if (error) {
+    return { error: 'Failed to pause listing. Please try again.' }
+  }
+
+  // Refresh search index to remove from search
+  await supabase.rpc('refresh_search_index', { p_business_id: businessId })
+
+  await logAudit(supabase, {
+    action: 'listing_updated',
+    entityType: 'listing',
+    entityId: businessId,
+    actorId: user.id,
+    details: { status_change: 'published -> paused' },
+  })
+
+  revalidatePath('/dashboard')
+  return { success: true }
+}
+
+export async function unpauseBusiness(businessId: string) {
+  const { supabase, user } = await verifyBusinessOwnership(businessId)
+
+  const { data: biz } = await supabase
+    .from('businesses')
+    .select('status, verification_status')
+    .eq('id', businessId)
+    .single()
+
+  if (!biz || biz.status !== 'paused') {
+    return { error: 'Only paused listings can be unpaused' }
+  }
+
+  if (biz.verification_status !== 'approved') {
+    return { error: 'Your listing must be verified before unpausing' }
+  }
+
+  // Check user subscription
+  const { data: userSub } = await supabase
+    .from('user_subscriptions')
+    .select('status')
+    .eq('user_id', user.id)
     .maybeSingle()
 
-  if (
-    !subscription ||
-    !['active', 'past_due'].includes(subscription.status)
-  ) {
+  if (!userSub || !['active', 'past_due'].includes(userSub.status)) {
     return { error: 'subscription_required' }
   }
 
@@ -411,8 +675,19 @@ export async function publishBusiness(businessId: string) {
     .eq('id', businessId)
 
   if (error) {
-    return { error: 'Failed to publish business. Please try again.' }
+    return { error: 'Failed to unpause listing. Please try again.' }
   }
+
+  // Refresh search index to add back to search
+  await supabase.rpc('refresh_search_index', { p_business_id: businessId })
+
+  await logAudit(supabase, {
+    action: 'listing_updated',
+    entityType: 'listing',
+    entityId: businessId,
+    actorId: user.id,
+    details: { status_change: 'paused -> published' },
+  })
 
   revalidatePath('/dashboard')
   return { success: true }
@@ -456,7 +731,25 @@ export async function unpublishBusiness(businessId: string) {
   return { success: true }
 }
 
-export async function getMyBusiness() {
+export async function getMyBusinesses() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return []
+
+  const { data } = await supabase
+    .from('businesses')
+    .select('id, name, slug, status, billing_status')
+    .eq('owner_id', user.id)
+    .eq('is_seed', false)
+    .order('created_at', { ascending: false })
+
+  return data ?? []
+}
+
+export async function getMyBusiness(selectedId?: string) {
   const supabase = await createClient()
   const {
     data: { user },
@@ -466,7 +759,44 @@ export async function getMyBusiness() {
     return null
   }
 
-  const { data: business, error } = await supabase
+  // If a specific business was requested, fetch it directly (verify ownership)
+  if (selectedId) {
+    const { data: business, error } = await supabase
+      .from('businesses')
+      .select(
+        `
+        *,
+        business_locations (*),
+        business_categories (
+          category_id,
+          categories (*)
+        ),
+        photos (*),
+        testimonials (*)
+      `
+      )
+      .eq('id', selectedId)
+      .eq('owner_id', user.id)
+      .eq('is_seed', false)
+      .maybeSingle()
+
+    if (error || !business) return null
+
+    const location = Array.isArray(business.business_locations)
+      ? business.business_locations[0] ?? null
+      : business.business_locations
+
+    return {
+      ...business,
+      location,
+      subscription: null,
+      categories: business.business_categories,
+      photos: business.photos ?? [],
+      testimonials: business.testimonials ?? [],
+    }
+  }
+
+  const { data: businesses, error } = await supabase
     .from('businesses')
     .select(
       `
@@ -477,21 +807,23 @@ export async function getMyBusiness() {
         categories (*)
       ),
       photos (*),
-      testimonials (*),
-      subscriptions (*)
+      testimonials (*)
     `
     )
     .eq('owner_id', user.id)
-    .maybeSingle()
+    .eq('is_seed', false)
+    .order('created_at', { ascending: false })
+
+  // Pick the best listing: prefer published+claimed, then published, then most recent
+  const business = businesses?.sort((a, b) => {
+    const score = (biz: typeof a) =>
+      (biz.status === 'published' ? 2 : 0) + (biz.claim_status === 'claimed' ? 1 : 0)
+    return score(b) - score(a)
+  })[0] ?? null
 
   if (error || !business) {
     return null
   }
-
-  // Flatten subscription (one-to-one relationship)
-  const subscription = Array.isArray(business.subscriptions)
-    ? business.subscriptions[0] ?? null
-    : business.subscriptions
 
   // Flatten location (one-to-one relationship)
   const location = Array.isArray(business.business_locations)
@@ -501,7 +833,7 @@ export async function getMyBusiness() {
   return {
     ...business,
     location,
-    subscription,
+    subscription: null,
     categories: business.business_categories,
     photos: business.photos ?? [],
     testimonials: business.testimonials ?? [],
@@ -533,23 +865,13 @@ export async function getBusinessBySlug(slug: string) {
     return null
   }
 
-  // Non-seed manual listings need a subscription to be visible
-  if (business.listing_source === 'manual' && !business.is_seed) {
-    const { data: subscription } = await supabase
-      .from('subscriptions')
-      .select('status')
-      .eq('business_id', business.id)
-      .maybeSingle()
-
-    if (
-      !subscription ||
-      !['active', 'past_due'].includes(subscription.status)
-    ) {
-      // Allow owner to see their own draft/unpublished business
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user || user.id !== business.owner_id) {
-        return null
-      }
+  // billing_suspended listings are hidden from non-owners
+  if (business.billing_status === 'billing_suspended') {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user || user.id !== business.owner_id) {
+      return null
     }
   }
 

@@ -79,13 +79,14 @@ describe('POST /api/stripe/webhook', () => {
           mode: 'subscription',
           subscription: 'sub_123',
           customer: 'cus_123',
-          metadata: { business_id: 'biz-123', plan_tier: 'premium' },
+          metadata: { user_id: 'user-123', plan_tier: 'premium' },
         },
       },
     })
     mockSubscriptionsRetrieve.mockResolvedValue({
       id: 'sub_123',
       status: 'active',
+      current_period_start: Math.floor(Date.now() / 1000),
       current_period_end: Math.floor(Date.now() / 1000) + 30 * 86400,
       cancel_at_period_end: false,
       items: { data: [{ price: { id: 'price_premium' } }] },
@@ -93,7 +94,7 @@ describe('POST /api/stripe/webhook', () => {
 
     const response = await POST(makeWebhookRequest('{}'))
     expect(response.status).toBe(200)
-    expect(mockAdminSupabase.from).toHaveBeenCalledWith('subscriptions')
+    expect(mockAdminSupabase.from).toHaveBeenCalledWith('user_subscriptions')
   })
 
   it('maps trialing status to active', async () => {
@@ -104,13 +105,14 @@ describe('POST /api/stripe/webhook', () => {
           mode: 'subscription',
           subscription: 'sub_123',
           customer: 'cus_123',
-          metadata: { business_id: 'biz-123', plan_tier: 'free_trial' },
+          metadata: { user_id: 'user-123', plan_tier: 'free_trial' },
         },
       },
     })
     mockSubscriptionsRetrieve.mockResolvedValue({
       id: 'sub_123',
       status: 'trialing',
+      current_period_start: Math.floor(Date.now() / 1000),
       current_period_end: Math.floor(Date.now() / 1000) + 30 * 86400,
       cancel_at_period_end: false,
       items: { data: [{ price: { id: 'price_free' } }] },

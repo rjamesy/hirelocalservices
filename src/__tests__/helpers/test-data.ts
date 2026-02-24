@@ -1,6 +1,7 @@
 import type {
   Business,
   Subscription,
+  UserSubscription,
   Photo,
   Testimonial,
   Category,
@@ -54,6 +55,9 @@ export const mockBusiness: Business = {
   seed_source_id: null,
   verification_status: 'approved',
   listing_source: 'manual',
+  pending_changes: null,
+  billing_status: 'active',
+  trial_ends_at: null,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-06-01T00:00:00Z',
 }
@@ -81,6 +85,21 @@ export const mockSubscription: Subscription = {
   stripe_price_id: 'price_premium',
   current_period_end: '2025-01-01T00:00:00Z',
   cancel_at_period_end: false,
+  updated_at: '2024-06-01T00:00:00Z',
+}
+
+export const mockUserSubscription: UserSubscription = {
+  id: 'usub-123',
+  user_id: 'user-123',
+  stripe_customer_id: 'cus_test123',
+  stripe_subscription_id: 'sub_test123',
+  status: 'active',
+  plan: 'premium',
+  stripe_price_id: 'price_premium',
+  current_period_start: '2024-06-01T00:00:00Z',
+  current_period_end: '2025-01-01T00:00:00Z',
+  cancel_at_period_end: false,
+  trial_ends_at: null,
   updated_at: '2024-06-01T00:00:00Z',
 }
 

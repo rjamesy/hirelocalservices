@@ -10,6 +10,8 @@ import {
 } from '@/lib/claim-scoring'
 import { quickBlacklistCheck } from '@/lib/blacklist'
 import { TRIAL_DURATION_DAYS } from '@/lib/ranking'
+import { logAudit } from '@/lib/audit'
+import { getUserListingCapacity } from '@/lib/listing-limits'
 
 async function requireAuth() {
   const supabase = await createClient()
@@ -33,32 +35,54 @@ async function requireAdmin() {
   return { supabase, user }
 }
 
-// ─── Auto-assign trial subscription on claim ────────────────────────
+// ─── Ensure user has a subscription, assign trial if needed ──────────
 
-async function assignTrialSubscription(
+async function ensureUserSubscription(
   supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
   businessId: string
 ) {
-  // Check if business already has a subscription
+  // 1. Check if user already has an active subscription
   const { data: existing } = await supabase
-    .from('subscriptions')
-    .select('id')
-    .eq('business_id', businessId)
+    .from('user_subscriptions')
+    .select('id, plan, status')
+    .eq('user_id', userId)
     .maybeSingle()
 
-  if (existing) return // Already has a subscription
+  if (existing && ['active', 'past_due'].includes(existing.status)) {
+    // User has active plan — set business billing_status based on plan
+    const billingStatus = existing.plan === 'free_trial' ? 'trial' : 'active'
+    await supabase
+      .from('businesses')
+      .update({ billing_status: billingStatus })
+      .eq('id', businessId)
+    return
+  }
 
+  // 2. No active subscription — create free trial
   const now = new Date()
   const trialEnd = new Date(now.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000)
 
-  await supabase.from('subscriptions').insert({
-    business_id: businessId,
-    status: 'active',
-    plan: 'free_trial',
-    current_period_end: trialEnd.toISOString(),
-    current_period_start: now.toISOString(),
-    cancel_at_period_end: false,
-  })
+  await supabase.from('user_subscriptions').upsert(
+    {
+      user_id: userId,
+      status: 'active' as const,
+      plan: 'free_trial' as const,
+      current_period_end: trialEnd.toISOString(),
+      current_period_start: now.toISOString(),
+      cancel_at_period_end: false,
+      trial_ends_at: trialEnd.toISOString(),
+    },
+    { onConflict: 'user_id' }
+  )
+
+  await supabase
+    .from('businesses')
+    .update({
+      billing_status: 'trial',
+      trial_ends_at: trialEnd.toISOString(),
+    })
+    .eq('id', businessId)
 }
 
 // ─── Claim Business (with scoring) ──────────────────────────────────
@@ -86,15 +110,15 @@ export async function claimBusiness(
     return { error: `This business name contains a blocked term and cannot be claimed.` }
   }
 
-  // Check user doesn't already have a business
-  const { data: existingBiz } = await supabase
-    .from('businesses')
-    .select('id')
-    .eq('owner_id', user.id)
-    .maybeSingle()
-
-  if (existingBiz) {
-    return { error: 'You already have a business listing' }
+  // Check listing capacity based on user's plan tier
+  const capacity = await getUserListingCapacity(supabase, user.id)
+  if (!capacity.canClaimMore) {
+    return {
+      error:
+        capacity.maxAllowed === 1
+          ? 'You already have a business listing. Upgrade to Premium for multiple listings.'
+          : `You have reached your limit of ${capacity.maxAllowed} listings.`,
+    }
   }
 
   // Fetch the seed business with location
@@ -238,14 +262,21 @@ export async function claimBusiness(
 
   // If auto-approved, transfer ownership immediately
   if (step === 'approved') {
-    await supabase
+    const { error: bizError } = await supabase
       .from('businesses')
       .update({
         owner_id: user.id,
         claim_status: 'claimed',
         is_seed: false,
+        status: 'published',
+        verification_status: 'approved',
       })
       .eq('id', businessId)
+
+    if (bizError) {
+      console.error('[claimBusiness] Failed to transfer ownership:', bizError)
+      return { error: 'Claim approved but failed to transfer ownership. Contact support.' }
+    }
 
     // Mark contacts as verified
     await supabase
@@ -253,8 +284,8 @@ export async function claimBusiness(
       .update({ verified_at: new Date().toISOString() })
       .eq('business_id', businessId)
 
-    // Auto-assign trial subscription if none exists
-    await assignTrialSubscription(supabase, businessId)
+    // Ensure user has a subscription (trial if none exists)
+    await ensureUserSubscription(supabase, user.id, businessId)
 
     // Reject other pending claims
     await supabase
@@ -265,14 +296,6 @@ export async function claimBusiness(
       })
       .eq('business_id', businessId)
       .eq('status', 'pending')
-
-    // Trigger verification pipeline
-    try {
-      const { runVerification } = await import('@/app/actions/verification')
-      await runVerification(businessId, 'claim')
-    } catch {
-      // Non-blocking
-    }
   } else {
     // Mark business claim_status as 'pending'
     await supabase
@@ -281,8 +304,23 @@ export async function claimBusiness(
       .eq('id', businessId)
   }
 
+  await logAudit(supabase, {
+    action: 'listing_claim_submitted',
+    entityType: 'listing',
+    entityId: businessId,
+    actorId: user.id,
+    details: {
+      listing_name: business.name,
+      claimed_business_name: parsed.data.businessName,
+      verification_method: verificationMethod,
+      match_score: matchScore.weighted_total,
+      result: step,
+    },
+  })
+
   revalidatePath(`/dashboard/claim/${businessId}`)
   revalidatePath('/admin/claims')
+  revalidatePath('/dashboard')
   return { step, matchScore }
 }
 
@@ -348,8 +386,14 @@ export async function approveClaim(claimId: string, notes?: string) {
     return { error: 'Claim is not pending' }
   }
 
+  // Check claimer has capacity for another listing
+  const capacity = await getUserListingCapacity(supabase, claim.claimer_id)
+  if (!capacity.canClaimMore) {
+    return { error: 'Claimer has reached their listing limit. Cannot approve.' }
+  }
+
   // Update claim status
-  await supabase
+  const { error: claimUpdateError } = await supabase
     .from('business_claims')
     .update({
       status: 'approved',
@@ -359,15 +403,27 @@ export async function approveClaim(claimId: string, notes?: string) {
     })
     .eq('id', claimId)
 
-  // Transfer business ownership and mark as claimed
-  await supabase
+  if (claimUpdateError) {
+    console.error('[approveClaim] Failed to update claim status:', claimUpdateError)
+    return { error: 'Failed to update claim status' }
+  }
+
+  // Transfer business ownership, keep published, mark verified
+  const { error: bizUpdateError } = await supabase
     .from('businesses')
     .update({
       owner_id: claim.claimer_id,
       claim_status: 'claimed',
       is_seed: false,
+      status: 'published',
+      verification_status: 'approved',
     })
     .eq('id', claim.business_id)
+
+  if (bizUpdateError) {
+    console.error('[approveClaim] Failed to transfer business ownership:', bizUpdateError)
+    return { error: 'Failed to transfer business ownership. Check server logs.' }
+  }
 
   // Mark contacts as verified
   await supabase
@@ -375,8 +431,8 @@ export async function approveClaim(claimId: string, notes?: string) {
     .update({ verified_at: new Date().toISOString() })
     .eq('business_id', claim.business_id)
 
-  // Auto-assign trial subscription if none exists
-  await assignTrialSubscription(supabase, claim.business_id)
+  // Ensure claimer has a subscription (trial if none exists)
+  await ensureUserSubscription(supabase, claim.claimer_id, claim.business_id)
 
   // Reject any other pending claims for this business
   await supabase
@@ -390,15 +446,21 @@ export async function approveClaim(claimId: string, notes?: string) {
     .eq('status', 'pending')
     .neq('id', claimId)
 
-  // Trigger verification on the business
-  try {
-    const { runVerification } = await import('@/app/actions/verification')
-    await runVerification(claim.business_id, 'claim_approved')
-  } catch {
-    // Non-blocking
-  }
+  await logAudit(supabase, {
+    action: 'listing_claim_approved',
+    entityType: 'listing',
+    entityId: claim.business_id,
+    actorId: user.id,
+    details: {
+      claim_id: claimId,
+      claimer_id: claim.claimer_id,
+      admin_notes: notes || null,
+    },
+  })
 
   revalidatePath('/admin/claims')
+  revalidatePath('/admin')
+  revalidatePath('/dashboard')
   return { success: true }
 }
 
@@ -444,6 +506,17 @@ export async function rejectClaim(claimId: string, notes?: string) {
       .update({ claim_status: 'unclaimed' })
       .eq('id', claim.business_id)
   }
+
+  await logAudit(supabase, {
+    action: 'listing_claim_rejected',
+    entityType: 'listing',
+    entityId: claim.business_id,
+    actorId: user.id,
+    details: {
+      claim_id: claimId,
+      admin_notes: notes || null,
+    },
+  })
 
   revalidatePath('/admin/claims')
   return { success: true }

@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   createBusinessDraft,
   updateBusiness,
   updateBusinessLocation,
   updateBusinessCategories,
-  publishBusiness,
+  publishChanges,
   getMyBusiness,
 } from '@/app/actions/business'
 import { businessSchema, locationSchema } from '@/lib/validations'
@@ -24,6 +24,15 @@ interface Category {
   parent_id: string | null
 }
 
+interface PendingChanges {
+  name?: string
+  description?: string | null
+  phone?: string | null
+  email_contact?: string | null
+  website?: string | null
+  abn?: string | null
+}
+
 interface BusinessData {
   id: string
   name: string
@@ -34,6 +43,8 @@ interface BusinessData {
   website: string | null
   abn: string | null
   status?: string
+  verification_status?: string
+  pending_changes?: PendingChanges | null
   location: {
     suburb: string
     state: string
@@ -52,9 +63,7 @@ interface BusinessData {
     text: string
     rating: number
   }>
-  subscription: {
-    status: string
-  } | null
+  billing_status?: string
 }
 
 type FieldErrors = Record<string, string[] | undefined>
@@ -114,8 +123,10 @@ function Toast({
 
 // ─── Main Component ────────────────────────────────────────────────────
 
-export default function ListingPage() {
+function ListingContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const bid = searchParams.get('bid')
 
   // Global state
   const [loading, setLoading] = useState(true)
@@ -148,6 +159,8 @@ export default function ListingPage() {
   const [serviceRadius, setServiceRadius] = useState(25)
   const [step3Errors, setStep3Errors] = useState<FieldErrors>({})
 
+  const isBillingSuspended = business?.billing_status === 'billing_suspended'
+
   // ─── Fetch data on mount ─────────────────────────────────────────
 
   const fetchData = useCallback(async () => {
@@ -156,7 +169,7 @@ export default function ListingPage() {
 
       // Fetch business and categories in parallel
       const [businessData, categoriesRes] = await Promise.all([
-        getMyBusiness(),
+        getMyBusiness(bid ?? undefined),
         fetch('/api/categories').then((res) =>
           res.ok ? res.json() : []
         ),
@@ -170,13 +183,14 @@ export default function ListingPage() {
         const biz = businessData as unknown as BusinessData
         setBusiness(biz)
 
-        // Pre-fill step 1
-        setName(biz.name ?? '')
-        setPhone(biz.phone ?? '')
-        setWebsite(biz.website ?? '')
-        setEmailContact(biz.email_contact ?? '')
-        setDescription(biz.description ?? '')
-        setAbn(biz.abn ?? '')
+        // Pre-fill step 1: overlay pending_changes on top of live values
+        const pc = biz.pending_changes
+        setName(pc?.name ?? biz.name ?? '')
+        setPhone(pc?.phone ?? biz.phone ?? '')
+        setWebsite(pc?.website ?? biz.website ?? '')
+        setEmailContact(pc?.email_contact ?? biz.email_contact ?? '')
+        setDescription(pc?.description ?? biz.description ?? '')
+        setAbn(pc?.abn ?? biz.abn ?? '')
 
         // Pre-fill step 2
         if (biz.categories) {
@@ -198,7 +212,7 @@ export default function ListingPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [bid])
 
   useEffect(() => {
     fetchData()
@@ -263,7 +277,11 @@ export default function ListingPage() {
         }
       }
 
-      setToast({ message: 'Business details saved.', type: 'success' })
+      const isLive = business && (business.status === 'published' || business.status === 'paused')
+      setToast({
+        message: isLive ? 'Draft saved. Publish when ready.' : 'Business details saved.',
+        type: 'success',
+      })
       return true
     } catch {
       setToast({ message: 'An unexpected error occurred.', type: 'error' })
@@ -388,11 +406,18 @@ export default function ListingPage() {
 
   async function handlePublish() {
     if (!business) return
+    if (isBillingSuspended) {
+      setToast({
+        message: 'Your billing is suspended. Please upgrade your plan first.',
+        type: 'error',
+      })
+      return
+    }
 
     setSaving(true)
     try {
-      const result = await publishBusiness(business.id)
-      if (result.error) {
+      const result = await publishChanges(business.id)
+      if ('error' in result && result.error) {
         if (result.error === 'subscription_required') {
           setToast({
             message: 'You need an active subscription to publish. Redirecting to billing...',
@@ -408,8 +433,17 @@ export default function ListingPage() {
         return
       }
 
-      setToast({ message: 'Your listing is now live!', type: 'success' })
-      router.push('/dashboard')
+      if ('published' in result && result.published) {
+        setToast({ message: 'Your listing is now live!', type: 'success' })
+        router.push('/dashboard')
+      } else {
+        // AI validation sent to review
+        setToast({
+          message: result.message || 'Your changes are being reviewed. Your live listing is unchanged.',
+          type: 'success',
+        })
+        setBusiness((prev) => prev ? { ...prev, verification_status: 'pending' } : prev)
+      }
     } catch {
       setToast({ message: 'An unexpected error occurred.', type: 'error' })
     } finally {
@@ -476,6 +510,28 @@ export default function ListingPage() {
           ? 'Update your business details below.'
           : 'Fill in your business details to get started.'}
       </p>
+
+      {isBillingSuspended && (
+        <div className="mt-4 rounded-lg border border-orange-200 bg-orange-50 p-4">
+          <div className="flex items-start gap-3">
+            <svg className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            <div>
+              <h3 className="text-sm font-medium text-orange-800">Billing suspended</h3>
+              <p className="mt-1 text-sm text-orange-700">
+                Your trial has expired. Upgrade to a paid plan to publish and edit your listing.
+              </p>
+              <a
+                href="/dashboard/billing"
+                className="mt-2 inline-flex items-center rounded-md bg-orange-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-orange-700 transition-colors"
+              >
+                Upgrade Plan
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Steps indicator */}
       <nav className="mt-8" aria-label="Progress">
@@ -865,6 +921,34 @@ export default function ListingPage() {
               </p>
             </div>
 
+            {/* Verification status banners */}
+            {business?.verification_status === 'pending' && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <div className="flex items-start gap-3">
+                  <svg className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                  </svg>
+                  <div>
+                    <h3 className="text-sm font-medium text-amber-800">Changes under review</h3>
+                    <p className="mt-1 text-sm text-amber-700">Your changes are being reviewed. Your live listing is unchanged.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            {business?.verification_status === 'rejected' && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                <div className="flex items-start gap-3">
+                  <svg className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                  </svg>
+                  <div>
+                    <h3 className="text-sm font-medium text-red-800">Changes not approved</h3>
+                    <p className="mt-1 text-sm text-red-700">Your changes were not approved. Please edit and resubmit.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Preview card */}
             <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
               {/* Business header */}
@@ -957,37 +1041,64 @@ export default function ListingPage() {
             </div>
 
             {/* Publish action */}
-            {business && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      Ready to go live?
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      Publishing makes your listing visible to customers across Australia.
+            {business && (() => {
+              const isDraft = business.status === 'draft'
+              const isLive = business.status === 'published' || business.status === 'paused'
+              const hasPending = !!business.pending_changes
+              const isPendingReview = business.verification_status === 'pending'
+
+              if (isPendingReview) {
+                return (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-sm font-medium text-amber-800">
+                      Your changes are currently being reviewed. You can edit and re-submit once the review is complete.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handlePublish}
-                    disabled={saving}
-                    className="inline-flex items-center justify-center rounded-lg bg-green-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {saving ? (
-                      <LoadingSpinner />
-                    ) : (
-                      <>
-                        <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.58-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
-                        </svg>
-                        Publish Listing
-                      </>
-                    )}
-                  </button>
+                )
+              }
+
+              if (isLive && !hasPending) {
+                return (
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    <p className="text-sm text-gray-500">No unpublished changes. Your listing is up to date.</p>
+                  </div>
+                )
+              }
+
+              return (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {isDraft ? 'Ready to go live?' : 'Publish your changes?'}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {isDraft
+                          ? 'Publishing makes your listing visible to customers across Australia.'
+                          : 'Your changes will be validated before going live.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handlePublish}
+                      disabled={saving}
+                      className="inline-flex items-center justify-center rounded-lg bg-green-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {saving ? (
+                        <LoadingSpinner />
+                      ) : (
+                        <>
+                          <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.58-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+                          </svg>
+                          {isDraft ? 'Publish Listing' : 'Publish Changes'}
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
           </div>
         )}
 
@@ -1049,5 +1160,21 @@ export default function ListingPage() {
         />
       )}
     </div>
+  )
+}
+
+// ─── Main Component (with Suspense for useSearchParams) ─────────────
+
+export default function ListingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-20">
+          <LoadingSpinner />
+        </div>
+      }
+    >
+      <ListingContent />
+    </Suspense>
   )
 }

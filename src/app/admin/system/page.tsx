@@ -6,7 +6,7 @@ import { getSettings, updateSetting } from '@/app/actions/system-settings'
 import { getBlacklistEntries, addBlacklistEntry, removeBlacklistEntry } from '@/app/actions/blacklist'
 import { resetAllData } from '@/app/actions/data-reset'
 
-type Tab = 'seed' | 'ai' | 'email' | 'ranking' | 'reset' | 'blacklist'
+type Tab = 'seed' | 'ai' | 'email' | 'ranking' | 'listings' | 'reset' | 'blacklist'
 
 export default function AdminSystemPage() {
   const [tab, setTab] = useState<Tab>('seed')
@@ -98,6 +98,7 @@ export default function AdminSystemPage() {
     { key: 'ai', label: 'AI Verification' },
     { key: 'email', label: 'Email Template' },
     { key: 'ranking', label: 'Ranking' },
+    { key: 'listings', label: 'Listings' },
     { key: 'reset', label: 'Data Reset' },
     { key: 'blacklist', label: 'Blacklist' },
   ]
@@ -475,6 +476,38 @@ export default function AdminSystemPage() {
                 />
                 <button
                   onClick={() => saveSetting('exposure_balance_strength', Number(settings.exposure_balance_strength ?? 10))}
+                  disabled={saving}
+                  className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === 'listings' && (
+          <div className="space-y-6">
+            <h2 className="text-lg font-semibold text-gray-900">Listing Limits</h2>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Max Premium Listings (per user)
+              </label>
+              <p className="text-xs text-gray-500 mb-2">
+                Premium and Annual Premium users can create up to this many listings. Basic and trial users are limited to 1.
+              </p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={Number(settings.max_premium_listings ?? 10)}
+                  onChange={(e) => setSettings((s) => ({ ...s, max_premium_listings: Number(e.target.value) }))}
+                  className="w-24 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                />
+                <button
+                  onClick={() => saveSetting('max_premium_listings', Number(settings.max_premium_listings ?? 10))}
                   disabled={saving}
                   className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
                 >
