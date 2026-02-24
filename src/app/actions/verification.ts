@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { logAudit } from '@/lib/audit'
 import {
   runDeterministicChecks,
   runAIContentReview,
@@ -127,14 +128,15 @@ export async function getAdminVerificationQueue(page = 1) {
     .from('businesses')
     .select(
       `
-      id, name, slug, listing_source, verification_status, created_at,
+      id, name, slug, description, phone, email_contact, website, abn,
+      listing_source, verification_status, created_at, pending_changes,
       verification_jobs (
         id, deterministic_result, ai_result, final_decision, created_at
       )
     `,
       { count: 'exact' }
     )
-    .eq('verification_status', 'review')
+    .eq('verification_status', 'pending')
     .order('created_at', { ascending: true })
     .range(from, to)
 
@@ -208,11 +210,51 @@ export async function adminApproveVerification(
 ) {
   const { supabase, user } = await requireAdmin()
 
-  // Update business
-  await supabase
+  // Fetch business with pending_changes
+  const { data: biz } = await supabase
     .from('businesses')
-    .update({ verification_status: 'approved' })
+    .select('id, slug, pending_changes')
     .eq('id', businessId)
+    .single()
+
+  // If there are pending_changes, apply them to main columns
+  if (biz?.pending_changes) {
+    const pending = biz.pending_changes as Record<string, unknown>
+    const updateData: Record<string, unknown> = {
+      verification_status: 'approved',
+      status: 'published',
+      pending_changes: null,
+    }
+
+    // Merge pending fields into main columns
+    if (pending.name !== undefined) updateData.name = pending.name
+    if (pending.description !== undefined) updateData.description = pending.description
+    if (pending.phone !== undefined) updateData.phone = pending.phone
+    if (pending.email_contact !== undefined) updateData.email_contact = pending.email_contact
+    if (pending.website !== undefined) updateData.website = pending.website
+    if (pending.abn !== undefined) updateData.abn = pending.abn
+
+    await supabase.from('businesses').update(updateData).eq('id', businessId)
+
+    // Sync business_contacts with new values
+    await supabase
+      .from('business_contacts')
+      .upsert({
+        business_id: businessId,
+        phone: (pending.phone as string) || null,
+        email: (pending.email_contact as string) || null,
+        website: (pending.website as string) || null,
+      }, { onConflict: 'business_id' })
+
+    // Refresh search index
+    await supabase.rpc('refresh_search_index', { p_business_id: businessId })
+  } else {
+    // No pending changes — just approve
+    await supabase
+      .from('businesses')
+      .update({ verification_status: 'approved' })
+      .eq('id', businessId)
+  }
 
   // Create admin review if there's a verification job
   const { data: latestJob } = await supabase
@@ -237,8 +279,18 @@ export async function adminApproveVerification(
     })
   }
 
+  await logAudit(supabase, {
+    action: 'verification_completed',
+    entityType: 'listing',
+    entityId: businessId,
+    actorId: user.id,
+    details: { decision: 'approved', admin_notes: notes || null },
+  })
+
   revalidatePath('/admin/verification')
   revalidatePath('/admin')
+  revalidatePath('/dashboard')
+  if (biz?.slug) revalidatePath(`/business/${biz.slug}`)
   return { success: true }
 }
 
@@ -248,6 +300,7 @@ export async function adminRejectVerification(
 ) {
   const { supabase, user } = await requireAdmin()
 
+  // Set rejected — keep pending_changes intact so user can edit and re-submit
   await supabase
     .from('businesses')
     .update({ verification_status: 'rejected' })
@@ -274,6 +327,14 @@ export async function adminRejectVerification(
       notes: notes || null,
     })
   }
+
+  await logAudit(supabase, {
+    action: 'verification_completed',
+    entityType: 'listing',
+    entityId: businessId,
+    actorId: user.id,
+    details: { decision: 'rejected', admin_notes: notes || null },
+  })
 
   revalidatePath('/admin/verification')
   revalidatePath('/admin')

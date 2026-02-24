@@ -260,7 +260,7 @@ export function makeVerificationDecision(
   ai: AIReviewResults | null,
   businessName?: string,
   businessDescription?: string | null
-): Extract<VerificationStatus, 'approved' | 'review' | 'rejected'> {
+): Extract<VerificationStatus, 'approved' | 'pending' | 'rejected'> {
   // Hard reject: blocked category (adult, escort, retail)
   if (businessName) {
     const blockedTerm = checkBlockedCategory(businessName, businessDescription ?? null)
@@ -274,7 +274,7 @@ export function makeVerificationDecision(
 
   // No AI available: use deterministic only
   if (!ai) {
-    return deterministic.pass ? 'approved' : 'review'
+    return deterministic.pass ? 'approved' : 'pending'
   }
 
   // AI-informed rejection: blocked category
@@ -295,6 +295,6 @@ export function makeVerificationDecision(
     return 'approved'
   }
 
-  // Edge cases: send to review
-  return 'review'
+  // Edge cases: keep pending for admin review
+  return 'pending'
 }

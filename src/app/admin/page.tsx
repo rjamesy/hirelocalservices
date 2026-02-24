@@ -9,6 +9,7 @@ export default async function AdminDashboardPage() {
     { count: totalBusinesses },
     { count: publishedCount },
     { count: draftCount },
+    { count: pausedCount },
     { count: suspendedCount },
     { count: openReportsCount },
     { count: pendingClaimsCount },
@@ -29,6 +30,10 @@ export default async function AdminDashboardPage() {
     supabase
       .from('businesses')
       .select('*', { count: 'exact', head: true })
+      .eq('status', 'paused'),
+    supabase
+      .from('businesses')
+      .select('*', { count: 'exact', head: true })
       .eq('status', 'suspended'),
     supabase
       .from('reports')
@@ -41,7 +46,7 @@ export default async function AdminDashboardPage() {
     supabase
       .from('businesses')
       .select('*', { count: 'exact', head: true })
-      .eq('verification_status', 'review'),
+      .eq('verification_status', 'pending'),
     supabase
       .from('businesses')
       .select('*', { count: 'exact', head: true })
@@ -76,6 +81,12 @@ export default async function AdminDashboardPage() {
       href: '/admin/listings?status=draft',
     },
     {
+      label: 'Paused',
+      value: pausedCount ?? 0,
+      color: 'bg-gray-400',
+      href: '/admin/listings?status=paused',
+    },
+    {
       label: 'Suspended',
       value: suspendedCount ?? 0,
       color: 'bg-red-500',
@@ -103,19 +114,19 @@ export default async function AdminDashboardPage() {
       label: 'Claimed Businesses',
       value: claimedCount ?? 0,
       color: 'bg-teal-500',
-      href: '/admin/listings',
+      href: '/admin/listings?claim_status=claimed',
     },
     {
       label: 'Seed Listings',
       value: seedCount ?? 0,
       color: 'bg-sky-500',
-      href: '/admin/listings',
+      href: '/admin/listings?is_seed=true',
     },
     {
       label: 'Active Subscriptions',
       value: activeSubsCount ?? 0,
       color: 'bg-emerald-500',
-      href: '/admin/listings',
+      href: '/admin/listings?subscription=active',
     },
   ]
 

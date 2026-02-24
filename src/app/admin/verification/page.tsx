@@ -4,13 +4,28 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getAdminVerificationQueue, adminApproveVerification, adminRejectVerification } from '@/app/actions/verification'
 
+type PendingChanges = {
+  name?: string
+  description?: string | null
+  phone?: string | null
+  email_contact?: string | null
+  website?: string | null
+  abn?: string | null
+}
+
 type VerificationRow = {
   id: string
   name: string
   slug: string
+  description: string | null
+  phone: string | null
+  email_contact: string | null
+  website: string | null
+  abn: string | null
   listing_source: string
   verification_status: string
   created_at: string
+  pending_changes: PendingChanges | null
   verification_jobs: {
     id: string
     deterministic_result: any
@@ -145,6 +160,27 @@ export default function AdminVerificationPage() {
 
                 {ai?.summary && (
                   <p className="mt-3 text-sm text-gray-600 italic">{ai.summary}</p>
+                )}
+
+                {/* Pending changes diff */}
+                {item.pending_changes && (
+                  <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4">
+                    <h4 className="text-sm font-medium text-blue-800 mb-2">Pending Changes</h4>
+                    <div className="space-y-1 text-sm">
+                      {Object.entries(item.pending_changes).map(([key, newVal]) => {
+                        const liveVal = (item as Record<string, unknown>)[key]
+                        const changed = newVal !== liveVal
+                        if (!changed) return null
+                        return (
+                          <div key={key} className="grid grid-cols-[120px_1fr_1fr] gap-2">
+                            <span className="font-medium text-gray-600 capitalize">{key.replace('_', ' ')}</span>
+                            <span className="text-red-600 line-through">{String(liveVal ?? '(empty)')}</span>
+                            <span className="text-green-700">{String(newVal ?? '(empty)')}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
                 )}
 
                 {/* Notes + Actions */}

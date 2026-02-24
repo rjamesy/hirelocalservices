@@ -12,6 +12,11 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }))
 
+const mockLogAudit = vi.fn()
+vi.mock('@/lib/audit', () => ({
+  logAudit: (...args: unknown[]) => mockLogAudit(...args),
+}))
+
 import {
   getAdminListings,
   adminSuspendBusiness,
@@ -124,20 +129,28 @@ describe('adminSuspendBusiness', () => {
 
   it('returns error if already suspended', async () => {
     single.mockResolvedValueOnce({
-      data: { id: 'biz-1', slug: 'test', status: 'suspended' },
+      data: { id: 'biz-1', slug: 'test', name: 'Test Biz', status: 'suspended' },
       error: null,
     })
     const result = await adminSuspendBusiness('biz-1')
     expect(result).toEqual({ error: 'Business is already suspended' })
   })
 
-  it('suspends a published business', async () => {
+  it('suspends a published business and logs audit', async () => {
     single.mockResolvedValueOnce({
-      data: { id: 'biz-1', slug: 'test', status: 'published' },
+      data: { id: 'biz-1', slug: 'test', name: 'Test Biz', status: 'published' },
       error: null,
     })
     const result = await adminSuspendBusiness('biz-1')
     expect(result).toEqual({ success: true })
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        action: 'listing_suspended',
+        entityType: 'listing',
+        entityId: 'biz-1',
+      })
+    )
   })
 })
 
@@ -155,33 +168,37 @@ describe('adminUnsuspendBusiness', () => {
 
   it('returns error if not suspended', async () => {
     single.mockResolvedValueOnce({
-      data: { id: 'biz-1', slug: 'test', status: 'published' },
+      data: { id: 'biz-1', slug: 'test', name: 'Test Biz', status: 'published' },
       error: null,
     })
     const result = await adminUnsuspendBusiness('biz-1')
     expect(result).toEqual({ error: 'Business is not currently suspended' })
   })
 
-  it('unsuspends a suspended business', async () => {
+  it('unsuspends a suspended business and logs audit', async () => {
     single.mockResolvedValueOnce({
-      data: { id: 'biz-1', slug: 'test', status: 'suspended' },
+      data: { id: 'biz-1', slug: 'test', name: 'Test Biz', status: 'suspended' },
       error: null,
     })
     const result = await adminUnsuspendBusiness('biz-1')
     expect(result).toEqual({ success: true })
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        action: 'listing_unsuspended',
+        entityType: 'listing',
+        entityId: 'biz-1',
+      })
+    )
   })
 
   it('unsuspend restores to published (not draft)', async () => {
-    // This test verifies the round-trip: suspend then unsuspend
-    // 1. Suspend succeeds
     single.mockResolvedValueOnce({
-      data: { id: 'biz-1', slug: 'test', status: 'suspended' },
+      data: { id: 'biz-1', slug: 'test', name: 'Test Biz', status: 'suspended' },
       error: null,
     })
     const result = await adminUnsuspendBusiness('biz-1')
     expect(result).toEqual({ success: true })
-    // The server action code sets status='published' (verified by code inspection)
-    // If it set 'draft', the business would become invisible — this is the key invariant
   })
 })
 

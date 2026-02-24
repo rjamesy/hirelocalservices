@@ -106,9 +106,9 @@ describe('Listing State Machine', () => {
       expect(result).toBe('approved')
     })
 
-    it('should send to review when deterministic fails and no AI', () => {
+    it('should keep pending when deterministic fails and no AI', () => {
       const result = makeVerificationDecision(failDeterministic, null)
-      expect(result).toBe('review')
+      expect(result).toBe('pending')
     })
 
     it('should reject when spam score >= 0.7', () => {
@@ -151,7 +151,7 @@ describe('Listing State Machine', () => {
       expect(result).toBe('rejected')
     })
 
-    it('should send to review for edge cases (medium spam + medium real_business)', () => {
+    it('should keep pending for edge cases (medium spam + medium real_business)', () => {
       const edgeCaseAI: AIReviewResults = {
         spam_likelihood: 0.4,
         toxicity: 0.1,
@@ -161,7 +161,7 @@ describe('Listing State Machine', () => {
         summary: 'Uncertain',
       }
       const result = makeVerificationDecision(cleanDeterministic, edgeCaseAI)
-      expect(result).toBe('review')
+      expect(result).toBe('pending')
     })
   })
 

@@ -172,7 +172,7 @@ describe('Admin AI Controls', () => {
         pass: false,
       }
       const result = makeVerificationDecision(det, null)
-      expect(result).toBe('review')
+      expect(result).toBe('pending')
     })
 
     it('should reject high spam even without AI', () => {

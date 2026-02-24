@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { adminSuspendBusiness, adminUnsuspendBusiness } from '@/app/actions/admin'
 
 interface AdminBusiness {
   id: string
@@ -16,7 +17,7 @@ interface AdminBusiness {
   subscription_status?: string
 }
 
-type StatusFilter = 'all' | 'published' | 'draft' | 'suspended'
+type StatusFilter = 'all' | 'published' | 'draft' | 'paused' | 'suspended'
 
 const PAGE_SIZE = 20
 
@@ -27,6 +28,9 @@ export default function AdminListingsPage() {
   const initialStatus = (searchParams.get('status') as StatusFilter) || 'all'
   const initialPage = parseInt(searchParams.get('page') || '1', 10)
   const initialSearch = searchParams.get('q') || ''
+  const claimStatusParam = searchParams.get('claim_status') || ''
+  const isSeedParam = searchParams.get('is_seed') || ''
+  const subscriptionParam = searchParams.get('subscription') || ''
 
   const [businesses, setBusinesses] = useState<AdminBusiness[]>([])
   const [loading, setLoading] = useState(true)
@@ -36,6 +40,15 @@ export default function AdminListingsPage() {
   const [page, setPage] = useState(initialPage)
   const [totalCount, setTotalCount] = useState(0)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+
+  // Special filters from dashboard tiles
+  const specialFilter = claimStatusParam
+    ? `Claimed Businesses`
+    : isSeedParam
+    ? `Seed Listings`
+    : subscriptionParam
+    ? `Active Subscriptions`
+    : null
 
   const supabase = createClient()
 
@@ -54,21 +67,22 @@ export default function AdminListingsPage() {
     const from = (page - 1) * PAGE_SIZE
     const to = from + PAGE_SIZE - 1
 
-    let query = supabase
-      .from('businesses')
-      .select(
-        `
-        id,
-        name,
-        slug,
-        status,
-        created_at,
-        owner_id,
+    // Use inner join on subscriptions when filtering by subscription status
+    const selectFields = subscriptionParam
+      ? `
+        id, name, slug, status, created_at, owner_id,
+        profiles!businesses_owner_id_fkey ( email ),
+        subscriptions!inner ( status )
+      `
+      : `
+        id, name, slug, status, created_at, owner_id,
         profiles!businesses_owner_id_fkey ( email ),
         subscriptions ( status )
-      `,
-        { count: 'exact' }
-      )
+      `
+
+    let query = supabase
+      .from('businesses')
+      .select(selectFields, { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(from, to)
 
@@ -78,6 +92,17 @@ export default function AdminListingsPage() {
 
     if (debouncedSearch) {
       query = query.ilike('name', `%${debouncedSearch}%`)
+    }
+
+    // Apply special filters from dashboard tiles
+    if (claimStatusParam) {
+      query = query.eq('claim_status', claimStatusParam as 'unclaimed' | 'pending' | 'claimed')
+    }
+    if (isSeedParam === 'true') {
+      query = query.eq('is_seed', true)
+    }
+    if (subscriptionParam) {
+      query = query.eq('subscriptions.status', subscriptionParam as 'active' | 'past_due' | 'canceled' | 'unpaid')
     }
 
     const { data, count, error } = await query
@@ -112,7 +137,7 @@ export default function AdminListingsPage() {
 
     setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, statusFilter, debouncedSearch])
+  }, [page, statusFilter, debouncedSearch, claimStatusParam, isSeedParam, subscriptionParam])
 
   useEffect(() => {
     fetchBusinesses()
@@ -124,18 +149,18 @@ export default function AdminListingsPage() {
     if (statusFilter !== 'all') params.set('status', statusFilter)
     if (page > 1) params.set('page', String(page))
     if (debouncedSearch) params.set('q', debouncedSearch)
+    // Preserve special filters from dashboard tiles
+    if (claimStatusParam) params.set('claim_status', claimStatusParam)
+    if (isSeedParam) params.set('is_seed', isSeedParam)
+    if (subscriptionParam) params.set('subscription', subscriptionParam)
     const qs = params.toString()
     router.replace(`/admin/listings${qs ? `?${qs}` : ''}`, { scroll: false })
-  }, [statusFilter, page, debouncedSearch, router])
+  }, [statusFilter, page, debouncedSearch, claimStatusParam, isSeedParam, subscriptionParam, router])
 
   async function handleSuspend(businessId: string) {
     setActionLoading(businessId)
-    const { error } = await supabase
-      .from('businesses')
-      .update({ status: 'suspended' })
-      .eq('id', businessId)
-
-    if (!error) {
+    const result = await adminSuspendBusiness(businessId)
+    if (!result.error) {
       await fetchBusinesses()
     }
     setActionLoading(null)
@@ -143,12 +168,8 @@ export default function AdminListingsPage() {
 
   async function handleUnsuspend(businessId: string) {
     setActionLoading(businessId)
-    const { error } = await supabase
-      .from('businesses')
-      .update({ status: 'published' })
-      .eq('id', businessId)
-
-    if (!error) {
+    const result = await adminUnsuspendBusiness(businessId)
+    if (!result.error) {
       await fetchBusinesses()
     }
     setActionLoading(null)
@@ -160,6 +181,7 @@ export default function AdminListingsPage() {
     { label: 'All', value: 'all' },
     { label: 'Published', value: 'published' },
     { label: 'Draft', value: 'draft' },
+    { label: 'Paused', value: 'paused' },
     { label: 'Suspended', value: 'suspended' },
   ]
 
@@ -175,6 +197,12 @@ export default function AdminListingsPage() {
         return (
           <span className="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-800">
             Draft
+          </span>
+        )
+      case 'paused':
+        return (
+          <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">
+            Paused
           </span>
         )
       case 'suspended':
@@ -227,6 +255,21 @@ export default function AdminListingsPage() {
         <h1 className="text-2xl font-bold text-gray-900">All Listings</h1>
         <p className="text-sm text-gray-500">{totalCount} total</p>
       </div>
+
+      {/* Special filter banner */}
+      {specialFilter && (
+        <div className="mb-4 flex items-center gap-3 rounded-lg bg-brand-50 border border-brand-200 px-4 py-2.5">
+          <span className="text-sm font-medium text-brand-800">
+            Filtered: {specialFilter}
+          </span>
+          <Link
+            href="/admin/listings"
+            className="rounded-md px-2.5 py-1 text-xs font-medium text-brand-600 hover:bg-brand-100 transition-colors"
+          >
+            Clear filter
+          </Link>
+        </div>
+      )}
 
       {/* Search bar */}
       <div className="mb-4">

@@ -30,12 +30,13 @@ export async function logAuditEvent(params: {
 }) {
   try {
     const supabase = await createClient()
-    await supabase.rpc('insert_audit_log', {
-      p_action: params.action,
-      p_entity_type: params.entityType ?? null,
-      p_entity_id: params.entityId ?? null,
-      p_actor_id: params.actorId ?? null,
-      p_details: params.details ?? {},
+    const { logAudit } = await import('@/lib/audit')
+    await logAudit(supabase, {
+      action: params.action,
+      entityType: params.entityType ?? '',
+      entityId: params.entityId ?? '',
+      actorId: params.actorId ?? '',
+      details: params.details,
     })
   } catch {
     // Non-blocking — swallow errors

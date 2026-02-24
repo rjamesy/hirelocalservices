@@ -7,9 +7,14 @@ import type { AuditLogEntry } from '@/lib/types'
 
 const ACTION_COLORS: Record<string, string> = {
   listing_created: 'bg-green-100 text-green-800',
+  listing_updated: 'bg-blue-100 text-blue-800',
   listing_claimed: 'bg-blue-100 text-blue-800',
   listing_suspended: 'bg-red-100 text-red-800',
+  listing_unsuspended: 'bg-green-100 text-green-800',
   listing_unlisted: 'bg-orange-100 text-orange-800',
+  listing_claim_submitted: 'bg-indigo-100 text-indigo-800',
+  listing_claim_approved: 'bg-green-100 text-green-800',
+  listing_claim_rejected: 'bg-red-100 text-red-800',
   seed_ingested: 'bg-sky-100 text-sky-800',
   reset_executed: 'bg-red-100 text-red-800',
   settings_changed: 'bg-purple-100 text-purple-800',

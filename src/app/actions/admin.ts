@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { ITEMS_PER_PAGE } from '@/lib/constants'
 import { revalidatePath } from 'next/cache'
+import { logAudit } from '@/lib/audit'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -182,11 +183,11 @@ export async function getAdminReports(
 }
 
 export async function adminSuspendBusiness(businessId: string) {
-  const { supabase } = await verifyAdmin()
+  const { supabase, user } = await verifyAdmin()
 
   const { data: business, error: fetchError } = await supabase
     .from('businesses')
-    .select('id, slug, status')
+    .select('id, slug, name, status')
     .eq('id', businessId)
     .single()
 
@@ -207,17 +208,29 @@ export async function adminSuspendBusiness(businessId: string) {
     return { error: 'Failed to suspend business. Please try again.' }
   }
 
+  await logAudit(supabase, {
+    action: 'listing_suspended',
+    entityType: 'listing',
+    entityId: businessId,
+    actorId: user.id,
+    details: {
+      listing_name: business.name,
+      previous_status: business.status,
+      new_status: 'suspended',
+    },
+  })
+
   revalidatePath('/admin')
   revalidatePath(`/business/${business.slug}`)
   return { success: true }
 }
 
 export async function adminUnsuspendBusiness(businessId: string) {
-  const { supabase } = await verifyAdmin()
+  const { supabase, user } = await verifyAdmin()
 
   const { data: business, error: fetchError } = await supabase
     .from('businesses')
-    .select('id, slug, status')
+    .select('id, slug, name, status')
     .eq('id', businessId)
     .single()
 
@@ -240,6 +253,18 @@ export async function adminUnsuspendBusiness(businessId: string) {
   if (error) {
     return { error: 'Failed to unsuspend business. Please try again.' }
   }
+
+  await logAudit(supabase, {
+    action: 'listing_unsuspended',
+    entityType: 'listing',
+    entityId: businessId,
+    actorId: user.id,
+    details: {
+      listing_name: business.name,
+      previous_status: 'suspended',
+      new_status: 'published',
+    },
+  })
 
   revalidatePath('/admin')
   revalidatePath(`/business/${business.slug}`)
@@ -318,18 +343,13 @@ export async function unlistBusiness(businessId: string, addToBlacklist?: boolea
     })
   }
 
-  // Log audit
-  try {
-    await supabase.rpc('insert_audit_log', {
-      p_action: 'listing_unlisted',
-      p_entity_type: 'business',
-      p_entity_id: businessId,
-      p_actor_id: user.id,
-      p_details: { name: business.name, blacklisted: addToBlacklist ?? false },
-    })
-  } catch {
-    // Non-blocking
-  }
+  await logAudit(supabase, {
+    action: 'listing_unlisted',
+    entityType: 'listing',
+    entityId: businessId,
+    actorId: user.id,
+    details: { listing_name: business.name, blacklisted: addToBlacklist ?? false },
+  })
 
   revalidatePath('/admin')
   revalidatePath(`/business/${business.slug}`)
@@ -365,18 +385,13 @@ export async function restoreUnlistedBusiness(businessId: string) {
   // Refresh search index to re-add to results
   await supabase.rpc('refresh_search_index', { p_business_id: businessId })
 
-  // Log audit
-  try {
-    await supabase.rpc('insert_audit_log', {
-      p_action: 'listing_unlisted',
-      p_entity_type: 'business',
-      p_entity_id: businessId,
-      p_actor_id: user.id,
-      p_details: { name: business.name, action: 'restored' },
-    })
-  } catch {
-    // Non-blocking
-  }
+  await logAudit(supabase, {
+    action: 'listing_unlisted',
+    entityType: 'listing',
+    entityId: businessId,
+    actorId: user.id,
+    details: { listing_name: business.name, action: 'restored' },
+  })
 
   revalidatePath('/admin')
   revalidatePath(`/business/${business.slug}`)
@@ -404,7 +419,7 @@ export async function getVerificationQueue(
     .select('id, name, slug, listing_source, verification_status, created_at', {
       count: 'exact',
     })
-    .eq('verification_status', 'review')
+    .eq('verification_status', 'pending')
     .order('created_at', { ascending: true })
     .range(offset, offset + ITEMS_PER_PAGE - 1)
 
