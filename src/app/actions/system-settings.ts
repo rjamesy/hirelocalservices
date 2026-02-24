@@ -48,7 +48,8 @@ export async function updateSetting(key: SystemSettingKey, value: unknown) {
     )
 
   if (error) {
-    return { error: 'Failed to update setting' }
+    console.error('Failed to update setting:', key, error)
+    return { error: `Failed to update setting "${key}": ${error.message}` }
   }
 
   // Log audit event

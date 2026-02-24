@@ -69,7 +69,7 @@ export async function validateLocationToken(
     query = query.ilike('suburb', token.suburb)
   }
   if (token.state) {
-    query = query.eq('state', token.state.toUpperCase())
+    query = query.eq('state', String(token.state).toUpperCase())
   }
 
   const { data, error } = await query.limit(1).maybeSingle()
@@ -91,9 +91,9 @@ export async function searchBusinesses(
 ): Promise<SearchBusinessesResponse> {
   const supabase = await createClient()
 
-  const page = params.page ?? 1
+  const page = Math.max(1, Math.min(params.page ?? 1, 1000))
   const offset = (page - 1) * ITEMS_PER_PAGE
-  const businessName = params.businessName?.trim() || ''
+  const businessName = (params.businessName?.trim() || '').slice(0, 200)
   const hasBusinessName = businessName.length > 0
 
   // ── Server-side validation ──
@@ -127,12 +127,13 @@ export async function searchBusinesses(
     lng = validation.lng ?? null
   }
 
-  // Determine radius: only apply if we have coordinates
-  const radiusKm = lat && lng ? (params.radius_km ?? 25) : null
+  // Determine radius: only apply if we have coordinates (clamped to 1–200 km)
+  const rawRadius = params.radius_km ?? 25
+  const radiusKm = lat && lng ? Math.max(1, Math.min(rawRadius, 200)) : null
 
   // ── Build the keyword for the RPC ──
-  // Combine businessName and keyword if both present
-  const keyword = businessName || params.keyword || null
+  // Combine businessName and keyword if both present (limit length)
+  const keyword = businessName || (params.keyword?.trim() || '').slice(0, 200) || null
 
   // Call the database RPC function
   const { data, error } = await supabase.rpc('search_businesses', {

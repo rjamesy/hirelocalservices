@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import packageJson from '../../package.json';
 
 const categoryLinks = [
   { name: 'Cleaning', slug: 'cleaning' },
@@ -146,6 +147,9 @@ export default function Footer() {
         <div className="mt-12 border-t border-gray-800 pt-8 text-center space-y-2">
           <p className="text-sm text-gray-500">
             &copy; {currentYear} HireLocalServices. All rights reserved.
+          </p>
+          <p className="text-xs text-gray-600" data-testid="footer-version">
+            v{packageJson.version}
           </p>
           <p className="text-xs text-gray-600">
             Some listing data sourced from{' '}

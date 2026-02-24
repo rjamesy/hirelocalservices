@@ -390,8 +390,13 @@ export default async function BusinessPage({ params }: BusinessPageProps) {
                   Contact Information
                 </h3>
                 <p className="mt-2 text-sm text-gray-500">
-                  Contact information available after claiming this business.
+                  Contact details not available for this listing.
                 </p>
+                {business.claim_status === 'unclaimed' && (
+                  <p className="mt-1 text-xs text-gray-400">
+                    Business owners can claim this listing to add contact details.
+                  </p>
+                )}
               </div>
             )}
 

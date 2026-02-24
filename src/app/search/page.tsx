@@ -121,17 +121,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   })
 
   // Build the base URL for pagination
-  const paginationParams = new URLSearchParams()
-  if (category) paginationParams.set('category', category)
-  if (businessName) paginationParams.set('businessName', businessName)
-  if (locationToken) {
-    paginationParams.set('suburb', locationToken.suburb)
-    paginationParams.set('state', locationToken.state)
-    paginationParams.set('postcode', locationToken.postcode)
-  }
-  if (params.radius) paginationParams.set('radius', params.radius)
-  if (keyword) paginationParams.set('keyword', keyword)
-  const baseUrl = `/search?${paginationParams.toString()}`
+  const baseUrl = '/search'
 
   // Reconstruct default location token for search bar re-render
   const defaultLocationTokenForBar = locationToken

@@ -33,8 +33,9 @@ export default function BusinessCard({
   website,
   photo_url,
 }: BusinessCardProps) {
+  const safeDescription = description || '';
   const truncatedDescription =
-    description.length > 150 ? description.slice(0, 150) + '...' : description;
+    safeDescription.length > 150 ? safeDescription.slice(0, 150) + '...' : safeDescription;
 
   return (
     <div className="group relative rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-200 overflow-hidden">
@@ -120,7 +121,7 @@ export default function BusinessCard({
                 />
               </svg>
               <span>
-                {suburb}, {state}
+                {suburb || 'Unknown'}{suburb && state ? ', ' : ''}{state || ''}
                 {distance_m != null && (
                   <span className="ml-1 text-gray-400">
                     ({(distance_m / 1000).toFixed(1)} km away)
@@ -136,7 +137,7 @@ export default function BusinessCard({
               href={`/business/${slug}`}
               className="inline-flex items-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
             >
-              View Profile
+              View Business
             </Link>
             {phone && (
               <a

@@ -21,7 +21,7 @@ describe('BusinessCard', () => {
 
   it('links to the business profile', () => {
     render(<BusinessCard {...defaultProps} />)
-    const link = screen.getByText('View Profile')
+    const link = screen.getByText('View Business')
     expect(link.closest('a')).toHaveAttribute('href', '/business/ace-plumbing')
   })
 
@@ -110,8 +110,8 @@ describe('BusinessCard', () => {
     expect(screen.getByText('View Ace Plumbing')).toBeInTheDocument()
   })
 
-  it('renders view profile link', () => {
+  it('renders view business link', () => {
     render(<BusinessCard {...defaultProps} />)
-    expect(screen.getByText('View Profile')).toBeInTheDocument()
+    expect(screen.getByText('View Business')).toBeInTheDocument()
   })
 })

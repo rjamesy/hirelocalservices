@@ -45,31 +45,36 @@ export default function ClaimBusinessPage({ params }: ClaimPageProps) {
     setStep('loading')
     setErrorMessage('')
 
-    const result = await claimBusiness(businessId, {
-      businessName,
-      phone: phone || undefined,
-      website: website || undefined,
-      postcode: postcode || undefined,
-    })
+    try {
+      const result = await claimBusiness(businessId, {
+        businessName,
+        phone: phone || undefined,
+        website: website || undefined,
+        postcode: postcode || undefined,
+      })
 
-    if (result.error && typeof result.error === 'string') {
-      setStep('rejected')
-      setErrorMessage(result.error)
-    } else if (result.error && typeof result.error === 'object') {
-      // Validation errors
-      const messages = Object.values(result.error).flat().join(', ')
+      if (result.error && typeof result.error === 'string') {
+        setStep('rejected')
+        setErrorMessage(result.error)
+      } else if (result.error && typeof result.error === 'object') {
+        // Validation errors
+        const messages = Object.values(result.error).flat().join(', ')
+        setStep('error')
+        setErrorMessage(messages)
+      } else if (result.step === 'approved') {
+        setStep('approved')
+      } else if (result.step === 'pending_review') {
+        setStep('pending_review')
+      } else if (result.step === 'rejected') {
+        setStep('rejected')
+        setErrorMessage(result.error as string || 'Claim rejected due to insufficient match.')
+      } else {
+        setStep('error')
+        setErrorMessage('An unexpected error occurred.')
+      }
+    } catch {
       setStep('error')
-      setErrorMessage(messages)
-    } else if (result.step === 'approved') {
-      setStep('approved')
-    } else if (result.step === 'pending_review') {
-      setStep('pending_review')
-    } else if (result.step === 'rejected') {
-      setStep('rejected')
-      setErrorMessage(result.error as string || 'Claim rejected due to insufficient match.')
-    } else {
-      setStep('error')
-      setErrorMessage('An unexpected error occurred.')
+      setErrorMessage('Something went wrong. Please try again.')
     }
   }
 

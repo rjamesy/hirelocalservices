@@ -29,7 +29,7 @@ export default function AdminVerificationPage() {
   async function loadQueue() {
     setLoading(true)
     const result = await getAdminVerificationQueue(1)
-    setItems(result.data as VerificationRow[])
+    setItems((result.data ?? []) as VerificationRow[])
     setLoading(false)
   }
 

@@ -37,7 +37,7 @@ export default function AdminClaimsPage() {
   async function loadClaims() {
     setLoading(true)
     const result = await getAdminClaims(1)
-    setClaims(result.data as ClaimRow[])
+    setClaims((result.data ?? []) as ClaimRow[])
     setLoading(false)
   }
 

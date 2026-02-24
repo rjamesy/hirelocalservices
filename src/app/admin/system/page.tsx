@@ -21,6 +21,11 @@ export default function AdminSystemPage() {
   const [newMatchType, setNewMatchType] = useState<'exact' | 'contains' | 'starts_with'>('contains')
   const [newReason, setNewReason] = useState('')
 
+  // API key state
+  const [apiKeyInput, setApiKeyInput] = useState('')
+  const [apiKeyVisible, setApiKeyVisible] = useState(false)
+  const [apiKeyEditing, setApiKeyEditing] = useState(false)
+
   // Reset state
   const [resetPhrase, setResetPhrase] = useState('')
   const [resetConfirm, setResetConfirm] = useState(false)
@@ -252,22 +257,71 @@ export default function AdminSystemPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 OpenAI API Key
               </label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="password"
-                  value={settings.openai_api_key && settings.openai_api_key !== null ? '••••••••' : ''}
-                  placeholder={settings.openai_api_key && settings.openai_api_key !== null ? 'Key saved' : 'Not set'}
-                  onChange={(e) => setSettings((s) => ({ ...s, openai_api_key: e.target.value }))}
-                  className="w-64 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                />
-                <button
-                  onClick={() => saveSetting('openai_api_key', settings.openai_api_key)}
-                  disabled={saving}
-                  className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
-                >
-                  Save
-                </button>
-              </div>
+              {!apiKeyEditing ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <code className="block w-full max-w-lg rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 font-mono truncate">
+                      {settings.openai_api_key
+                        ? apiKeyVisible
+                          ? String(settings.openai_api_key)
+                          : `sk-...${String(settings.openai_api_key).slice(-4)}`
+                        : 'Not set'}
+                    </code>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {Boolean(settings.openai_api_key) && (
+                      <button
+                        onClick={() => setApiKeyVisible((v) => !v)}
+                        className="text-xs text-brand-600 hover:text-brand-700 font-medium"
+                      >
+                        {apiKeyVisible ? 'Hide Key' : 'Show Key'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setApiKeyInput(String(settings.openai_api_key ?? ''))
+                        setApiKeyEditing(true)
+                        setApiKeyVisible(false)
+                      }}
+                      className="text-xs text-brand-600 hover:text-brand-700 font-medium"
+                    >
+                      {settings.openai_api_key ? 'Change Key' : 'Set Key'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="text"
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      placeholder="sk-..."
+                      className="w-full max-w-lg rounded-md border border-gray-300 px-3 py-2 text-sm font-mono"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        saveSetting('openai_api_key', apiKeyInput)
+                        setApiKeyEditing(false)
+                        setApiKeyVisible(false)
+                      }}
+                      disabled={saving || !apiKeyInput.trim()}
+                      className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => { setApiKeyEditing(false); setApiKeyInput('') }}
+                      className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
@@ -309,6 +363,11 @@ export default function AdminSystemPage() {
                 >
                   Save
                 </button>
+              </div>
+              <div className="mt-3 rounded-md bg-gray-50 border border-gray-200 p-3 text-xs text-gray-600 space-y-1.5">
+                <p><span className="font-semibold text-gray-700">Lenient</span> — Lower threshold for auto-approval. Accepts partial matches on business name and location. Best for growing the directory quickly.</p>
+                <p><span className="font-semibold text-gray-700">Normal</span> — Balanced verification. Requires reasonable name match and at least one supporting field (phone, website, or postcode). Recommended for most use cases.</p>
+                <p><span className="font-semibold text-gray-700">Strict</span> — Higher threshold. Requires strong name match plus multiple supporting fields. More claims sent to manual review. Best for high-trust directories.</p>
               </div>
             </div>
           </div>

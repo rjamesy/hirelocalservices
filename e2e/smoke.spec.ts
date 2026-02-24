@@ -149,13 +149,103 @@ test.describe('Smoke Tests', () => {
     await expect(page.locator('body')).not.toContainText('Internal Server Error')
   })
 
+  // --- Middleware & Route Protection ---
+
+  test('dashboard redirects to login with correct redirect param', async ({ page }) => {
+    // Unauthenticated user visiting /dashboard should redirect to /login?redirect=%2Fdashboard
+    await page.goto('/dashboard')
+    await page.waitForURL(/\/login/)
+    const url = new URL(page.url())
+    expect(url.pathname).toBe('/login')
+    expect(url.searchParams.get('redirect')).toBe('/dashboard')
+  })
+
+  test('admin route redirects to login for unauthenticated users', async ({ page }) => {
+    await page.goto('/admin')
+    await page.waitForURL(/\/login/)
+    const url = new URL(page.url())
+    expect(url.pathname).toBe('/login')
+    expect(url.searchParams.get('redirect')).toBe('/admin')
+  })
+
+  test('login page renders without crash after redirect', async ({ page }) => {
+    await page.goto('/dashboard/settings')
+    await page.waitForURL(/\/login/)
+    // Login page should render properly
+    await expect(page.locator('body')).not.toContainText('Application error')
+    await expect(page.locator('body')).not.toContainText('Internal Server Error')
+    // Redirect param should be preserved for deep links
+    const url = new URL(page.url())
+    expect(url.searchParams.get('redirect')).toBe('/dashboard/settings')
+  })
+
+  // --- Search Safety ---
+
+  test('location suggest API handles long input safely', async ({ request }) => {
+    // Send a very long query string — should not crash, returns empty or truncated results
+    const longQuery = 'A'.repeat(500)
+    const response = await request.get(`/api/locations/suggest?q=${longQuery}`)
+    expect(response.status()).toBe(200)
+    const data = await response.json()
+    expect(Array.isArray(data)).toBe(true)
+  })
+
+  test('location suggest API handles short input gracefully', async ({ request }) => {
+    // Single character should return empty array (minimum 2 chars required)
+    const response = await request.get('/api/locations/suggest?q=A')
+    expect(response.status()).toBe(200)
+    const data = await response.json()
+    expect(Array.isArray(data)).toBe(true)
+    expect(data.length).toBe(0)
+  })
+
+  // --- Homepage & Assets ---
+
+  test('homepage has no missing asset errors (grid-pattern.svg)', async ({ page }) => {
+    const failedRequests: string[] = []
+    page.on('response', (response) => {
+      if (response.status() === 404) failedRequests.push(response.url())
+    })
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+    // No 404s for assets
+    const svgErrors = failedRequests.filter((u) => u.includes('.svg') || u.includes('.png'))
+    expect(svgErrors).toHaveLength(0)
+  })
+
+  // --- Search Pagination ---
+
+  test('search pagination preserves params without duplication', async ({ page }) => {
+    // Navigate to search with location params
+    await page.goto('/search?suburb=GREENBANK&state=QLD&postcode=4124&radius=25')
+    // Wait for results or empty state
+    const results = page.getByTestId('search-results')
+    const empty = page.getByTestId('search-empty')
+    await expect(results.or(empty)).toBeVisible()
+    // Check the URL has no duplicate params
+    const url = new URL(page.url())
+    const stateParams = url.searchParams.getAll('state')
+    expect(stateParams.length).toBeLessThanOrEqual(1)
+    const suburbParams = url.searchParams.getAll('suburb')
+    expect(suburbParams.length).toBeLessThanOrEqual(1)
+  })
+
+  // --- Admin System Settings ---
+
+  test('admin system page redirects unauthenticated users', async ({ page }) => {
+    await page.goto('/admin/system')
+    await page.waitForURL(/\/login/)
+    expect(new URL(page.url()).pathname).toBe('/login')
+  })
+
+  // --- Existing API test ---
+
   test('API locations suggest returns data', async ({ request }) => {
     const response = await request.get('/api/locations/suggest?q=Greenbank')
     expect(response.status()).toBe(200)
     const data = await response.json()
     expect(Array.isArray(data)).toBe(true)
     expect(data.length).toBeGreaterThan(0)
-    // First result should be Greenbank (suburb may be uppercase in DB)
     expect(data[0].suburb.toUpperCase()).toBe('GREENBANK')
     expect(data[0].state).toBe('QLD')
     expect(data[0].postcode).toBe('4124')

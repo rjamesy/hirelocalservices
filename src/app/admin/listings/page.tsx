@@ -145,7 +145,7 @@ export default function AdminListingsPage() {
     setActionLoading(businessId)
     const { error } = await supabase
       .from('businesses')
-      .update({ status: 'draft' })
+      .update({ status: 'published' })
       .eq('id', businessId)
 
     if (!error) {
@@ -266,10 +266,7 @@ export default function AdminListingsPage() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Business Name
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Owner Email
+                  Business
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   Status
@@ -288,24 +285,22 @@ export default function AdminListingsPage() {
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-500">
+                  <td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-500">
                     Loading...
                   </td>
                 </tr>
               ) : businesses.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-500">
+                  <td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-500">
                     No businesses found.
                   </td>
                 </tr>
               ) : (
                 businesses.map((business) => (
                   <tr key={business.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap">
-                      {business.name}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
-                      {business.owner_email}
+                    <td className="px-4 py-3">
+                      <div className="text-sm font-medium text-gray-900">{business.name}</div>
+                      <div className="text-xs text-gray-400">{business.owner_email}</div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {getStatusBadge(business.status)}
@@ -321,11 +316,11 @@ export default function AdminListingsPage() {
                       })}
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2 shrink-0">
                         <Link
                           href={`/business/${business.slug}`}
                           target="_blank"
-                          className="rounded-md px-2.5 py-1.5 text-xs font-medium text-brand-600 hover:bg-brand-50 transition-colors"
+                          className="shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium text-brand-600 hover:bg-brand-50 transition-colors"
                         >
                           View
                         </Link>
@@ -333,7 +328,7 @@ export default function AdminListingsPage() {
                           <button
                             onClick={() => handleUnsuspend(business.id)}
                             disabled={actionLoading === business.id}
-                            className="rounded-md px-2.5 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50 transition-colors"
+                            className="shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50 transition-colors"
                           >
                             {actionLoading === business.id ? 'Working...' : 'Unsuspend'}
                           </button>
@@ -341,7 +336,7 @@ export default function AdminListingsPage() {
                           <button
                             onClick={() => handleSuspend(business.id)}
                             disabled={actionLoading === business.id}
-                            className="rounded-md px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                            className="shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 transition-colors"
                           >
                             {actionLoading === business.id ? 'Working...' : 'Suspend'}
                           </button>

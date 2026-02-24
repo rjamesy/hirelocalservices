@@ -69,10 +69,10 @@ describe('middleware', () => {
     const response = await middleware(makeRequest('/dashboard'))
     expect(response.status).toBe(307)
     expect(response.headers.get('location')).toContain('/login')
-    expect(response.headers.get('location')).toContain('redirectTo=%2Fdashboard')
+    expect(response.headers.get('location')).toContain('redirect=%2Fdashboard')
   })
 
-  it('redirects from /dashboard/settings with redirectTo param', async () => {
+  it('redirects from /dashboard/settings with redirect param', async () => {
     const supabaseResponse = NextResponse.next()
     mockUpdateSession.mockResolvedValue({
       supabaseResponse,
@@ -82,7 +82,7 @@ describe('middleware', () => {
 
     const response = await middleware(makeRequest('/dashboard/settings'))
     expect(response.status).toBe(307)
-    expect(response.headers.get('location')).toContain('redirectTo=%2Fdashboard%2Fsettings')
+    expect(response.headers.get('location')).toContain('redirect=%2Fdashboard%2Fsettings')
   })
 
   it('allows authenticated users to access /dashboard', async () => {

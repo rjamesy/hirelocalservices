@@ -41,6 +41,11 @@ describe('Footer', () => {
     expect(container.querySelector('footer')).toBeInTheDocument()
   })
 
+  it('renders version number from package.json', () => {
+    render(<Footer />)
+    expect(screen.getByTestId('footer-version')).toHaveTextContent(/^v\d+\.\d+\.\d+$/)
+  })
+
   it('renders category links with correct href', () => {
     render(<Footer />)
     const cleaningLink = screen.getByText('Cleaning').closest('a')
