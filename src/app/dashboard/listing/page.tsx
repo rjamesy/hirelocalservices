@@ -9,14 +9,21 @@ import {
   updateBusinessCategories,
   publishChanges,
   getMyBusiness,
+  getMyBusinesses,
   getUserPlan,
 } from '@/app/actions/business'
 import { createBusinessSchema, locationSchema } from '@/lib/validations'
-import { AU_STATES, RADIUS_OPTIONS } from '@/lib/constants'
+import { AU_STATES, RADIUS_OPTIONS, MAX_PHOTOS, MAX_TESTIMONIALS } from '@/lib/constants'
 import { BUSINESS_NAME_MAX, getDescriptionLimit } from '@/lib/plan-limits'
 import type { PlanTier } from '@/lib/types'
 import { cn, formatPhone } from '@/lib/utils'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import BusinessSelector from '@/components/BusinessSelector'
+import PhotoUploader from '@/components/PhotoUploader'
+import TestimonialForm from '@/components/TestimonialForm'
+import TestimonialCard from '@/components/TestimonialCard'
+import { addPhoto, deletePhoto, reorderPhotos, getUploadUrl } from '@/app/actions/photos'
+import { addTestimonial, deleteTestimonial } from '@/app/actions/testimonials'
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -59,12 +66,13 @@ interface BusinessData {
     category_id: string
     categories?: Category
   }>
-  photos: Array<{ id: string; url: string; sort_order: number }>
+  photos: Array<{ id: string; url: string; sort_order: number; status?: string }>
   testimonials: Array<{
     id: string
     author_name: string
     text: string
     rating: number
+    status?: string
   }>
   billing_status?: string
 }
@@ -77,7 +85,9 @@ const STEPS = [
   { id: 1, label: 'Business Details' },
   { id: 2, label: 'Categories' },
   { id: 3, label: 'Location' },
-  { id: 4, label: 'Preview' },
+  { id: 4, label: 'Photos' },
+  { id: 5, label: 'Testimonials' },
+  { id: 6, label: 'Preview' },
 ] as const
 
 // ─── Toast Component ───────────────────────────────────────────────────
@@ -131,6 +141,12 @@ function ListingContent() {
   const searchParams = useSearchParams()
   const bid = searchParams.get('bid')
 
+  // Multi-business selector state
+  const [allBusinesses, setAllBusinesses] = useState<
+    { id: string; name: string; status: string; billing_status: string }[]
+  >([])
+  const [showSelector, setShowSelector] = useState(false)
+
   // Global state
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -162,9 +178,22 @@ function ListingContent() {
   const [serviceRadius, setServiceRadius] = useState(25)
   const [step3Errors, setStep3Errors] = useState<FieldErrors>({})
 
+  // Step 4: Photos
+  const [photos, setPhotos] = useState<{ id: string; url: string; sort_order: number; status?: string }[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null)
+  const [reordering, setReordering] = useState(false)
+
+  // Step 5: Testimonials
+  const [testimonials, setTestimonials] = useState<{ id: string; author_name: string; text: string; rating: number; created_at: string; status?: string }[]>([])
+  const [submittingTestimonial, setSubmittingTestimonial] = useState(false)
+  const [deletingTestimonialId, setDeletingTestimonialId] = useState<string | null>(null)
+
   // Plan-based limits
   const [userPlan, setUserPlan] = useState<PlanTier | null>(null)
   const descLimit = getDescriptionLimit(userPlan)
+  const canUploadPhotos = userPlan === 'premium' || userPlan === 'premium_annual'
+  const canAddTestimonials = userPlan === 'premium' || userPlan === 'premium_annual'
 
   const isBillingSuspended = business?.billing_status === 'billing_suspended'
 
@@ -173,6 +202,17 @@ function ListingContent() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
+
+      // If no bid specified, check if user has multiple businesses
+      if (!bid) {
+        const businesses = await getMyBusinesses()
+        if (businesses.length > 1) {
+          setAllBusinesses(businesses)
+          setShowSelector(true)
+          setLoading(false)
+          return
+        }
+      }
 
       // Fetch business, categories, and user plan in parallel
       const [businessData, categoriesRes, plan] = await Promise.all([
@@ -215,6 +255,16 @@ function ListingContent() {
           setState(biz.location.state ?? '')
           setPostcode(biz.location.postcode ?? '')
           setServiceRadius(biz.location.service_radius_km ?? 25)
+        }
+
+        // Pre-fill step 4: Photos
+        if (biz.photos) {
+          setPhotos([...biz.photos].sort((a, b) => a.sort_order - b.sort_order))
+        }
+
+        // Pre-fill step 5: Testimonials
+        if (biz.testimonials) {
+          setTestimonials(biz.testimonials as typeof testimonials)
         }
       }
     } catch {
@@ -392,6 +442,174 @@ function ListingContent() {
     }
   }
 
+  // ─── Step 4: Photo handlers ─────────────────────────────────────
+
+  async function handlePhotoUpload(file: File) {
+    if (!business) return
+
+    if (photos.length >= MAX_PHOTOS) {
+      setToast({ message: `Maximum of ${MAX_PHOTOS} photos reached.`, type: 'error' })
+      return
+    }
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
+    if (!allowedTypes.includes(file.type)) {
+      setToast({ message: 'Only JPEG, PNG, and WebP images are allowed.', type: 'error' })
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setToast({ message: 'File must be smaller than 5MB.', type: 'error' })
+      return
+    }
+
+    setUploading(true)
+    try {
+      const uploadResult = await getUploadUrl(business.id, file.name)
+      if ('error' in uploadResult) {
+        setToast({ message: typeof uploadResult.error === 'string' ? uploadResult.error : 'Failed to get upload URL.', type: 'error' })
+        return
+      }
+
+      const uploadResponse = await fetch(uploadResult.data.signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      })
+
+      if (!uploadResponse.ok) {
+        setToast({ message: 'Failed to upload file.', type: 'error' })
+        return
+      }
+
+      const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/photos/${uploadResult.data.path}`
+      const newSortOrder = photos.length > 0 ? Math.max(...photos.map((p) => p.sort_order)) + 1 : 0
+
+      const photoResult = await addPhoto(business.id, publicUrl, newSortOrder)
+      if ('error' in photoResult) {
+        setToast({ message: typeof photoResult.error === 'string' ? photoResult.error : 'Failed to save photo.', type: 'error' })
+        return
+      }
+
+      // Refresh business data to get updated photos
+      const refreshed = await getMyBusiness(business.id)
+      if (refreshed?.photos) {
+        setPhotos([...refreshed.photos].sort((a, b) => a.sort_order - b.sort_order))
+      }
+      setToast({ message: 'Photo uploaded.', type: 'success' })
+    } catch {
+      setToast({ message: 'An unexpected error occurred during upload.', type: 'error' })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handlePhotoDelete(photoId: string) {
+    if (!business) return
+    const confirmed = window.confirm('Delete this photo?')
+    if (!confirmed) return
+
+    setDeletingPhotoId(photoId)
+    try {
+      const result = await deletePhoto(photoId)
+      if ('error' in result) {
+        setToast({ message: typeof result.error === 'string' ? result.error : 'Failed to delete photo.', type: 'error' })
+        return
+      }
+      setPhotos((prev) => prev.filter((p) => p.id !== photoId))
+      setToast({ message: 'Photo deleted.', type: 'success' })
+    } catch {
+      setToast({ message: 'An unexpected error occurred.', type: 'error' })
+    } finally {
+      setDeletingPhotoId(null)
+    }
+  }
+
+  async function handlePhotoMove(index: number, direction: 'up' | 'down') {
+    if (!business) return
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= photos.length) return
+
+    setReordering(true)
+    try {
+      const newPhotos = [...photos]
+      const temp = newPhotos[index]
+      newPhotos[index] = newPhotos[targetIndex]
+      newPhotos[targetIndex] = temp
+      const reordered = newPhotos.map((p, i) => ({ ...p, sort_order: i }))
+      setPhotos(reordered)
+
+      const result = await reorderPhotos(business.id, reordered.map((p) => p.id))
+      if ('error' in result) {
+        // Revert
+        const refreshed = await getMyBusiness(business.id)
+        if (refreshed?.photos) setPhotos([...refreshed.photos].sort((a, b) => a.sort_order - b.sort_order))
+        setToast({ message: 'Failed to reorder photos.', type: 'error' })
+      }
+    } catch {
+      setToast({ message: 'An unexpected error occurred.', type: 'error' })
+    } finally {
+      setReordering(false)
+    }
+  }
+
+  // ─── Step 5: Testimonial handlers ─────────────────────────────────
+
+  async function handleAddTestimonial(data: { author_name: string; text: string; rating: number }) {
+    if (!business) return
+
+    if (testimonials.length >= MAX_TESTIMONIALS) {
+      setToast({ message: `Maximum of ${MAX_TESTIMONIALS} testimonials reached.`, type: 'error' })
+      return
+    }
+
+    setSubmittingTestimonial(true)
+    try {
+      const formData = new FormData()
+      formData.set('author_name', data.author_name)
+      formData.set('text', data.text)
+      formData.set('rating', String(data.rating))
+      const result = await addTestimonial(business.id, formData)
+
+      if ('error' in result) {
+        setToast({ message: typeof result.error === 'string' ? result.error : 'Failed to add testimonial.', type: 'error' })
+        return
+      }
+
+      // Refresh
+      const refreshed = await getMyBusiness(business.id)
+      if (refreshed?.testimonials) {
+        setTestimonials(refreshed.testimonials as typeof testimonials)
+      }
+      setToast({ message: 'Testimonial added.', type: 'success' })
+    } catch {
+      setToast({ message: 'An unexpected error occurred.', type: 'error' })
+    } finally {
+      setSubmittingTestimonial(false)
+    }
+  }
+
+  async function handleDeleteTestimonial(testimonialId: string) {
+    if (!business) return
+    const confirmed = window.confirm('Delete this testimonial?')
+    if (!confirmed) return
+
+    setDeletingTestimonialId(testimonialId)
+    try {
+      const result = await deleteTestimonial(testimonialId)
+      if ('error' in result) {
+        setToast({ message: typeof result.error === 'string' ? result.error : 'Failed to delete testimonial.', type: 'error' })
+        return
+      }
+      setTestimonials((prev) => prev.filter((t) => t.id !== testimonialId))
+      setToast({ message: 'Testimonial deleted.', type: 'success' })
+    } catch {
+      setToast({ message: 'An unexpected error occurred.', type: 'error' })
+    } finally {
+      setDeletingTestimonialId(null)
+    }
+  }
+
   // ─── Step navigation ────────────────────────────────────────────
 
   async function handleNext() {
@@ -399,9 +617,9 @@ function ListingContent() {
     if (currentStep === 1) success = await saveStep1()
     else if (currentStep === 2) success = await saveStep2()
     else if (currentStep === 3) success = await saveStep3()
-    else success = true
+    else success = true // Steps 4, 5 save immediately on upload/add/delete
 
-    if (success && currentStep < 4) {
+    if (success && currentStep < 6) {
       setCurrentStep((prev) => prev + 1)
     }
   }
@@ -505,6 +723,19 @@ function ListingContent() {
       <div className="flex items-center justify-center py-20">
         <LoadingSpinner />
       </div>
+    )
+  }
+
+  // ─── Business selector for multi-listing users ─────────────────
+
+  if (showSelector) {
+    return (
+      <BusinessSelector
+        businesses={allBusinesses}
+        onSelect={(id) => router.push(`/dashboard/listing?bid=${id}`)}
+        title="My Listings"
+        subtitle="Choose a listing to edit."
+      />
     )
   }
 
@@ -934,8 +1165,248 @@ function ListingContent() {
           </div>
         )}
 
-        {/* ── Step 4: Preview ──────────────────────────────────── */}
+        {/* ── Step 4: Photos ──────────────────────────────────── */}
         {currentStep === 4 && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Photos</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Showcase your work with photos to attract more customers.
+              </p>
+            </div>
+
+            {canUploadPhotos ? (() => {
+              // Filter out pending_delete photos from visible list
+              const visiblePhotos = photos.filter(p => p.status !== 'pending_delete')
+              const hasPendingChanges = photos.some(p => p.status === 'pending_add' || p.status === 'pending_delete')
+
+              return (
+              <>
+                <p className="text-sm text-gray-700">
+                  {visiblePhotos.length} photo{visiblePhotos.length !== 1 ? 's' : ''}, {MAX_PHOTOS - visiblePhotos.length} upload{MAX_PHOTOS - visiblePhotos.length !== 1 ? 's' : ''} remaining
+                </p>
+
+                {hasPendingChanges && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-sm text-amber-800">
+                      You have pending photo changes. Publish your listing to submit them for review.
+                    </p>
+                  </div>
+                )}
+
+                {visiblePhotos.length < MAX_PHOTOS && (
+                  <PhotoUploader
+                    onUpload={handlePhotoUpload}
+                    uploading={uploading}
+                    maxPhotos={MAX_PHOTOS}
+                    currentCount={visiblePhotos.length}
+                  />
+                )}
+
+                {visiblePhotos.length >= MAX_PHOTOS && (
+                  <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3">
+                    <p className="text-sm text-yellow-800">
+                      Maximum of {MAX_PHOTOS} photos reached. Delete a photo to upload a new one.
+                    </p>
+                  </div>
+                )}
+
+                {visiblePhotos.length === 0 ? (
+                  <div className="rounded-xl border-2 border-dashed border-gray-300 p-8 text-center">
+                    <svg className="mx-auto h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v13.5A1.5 1.5 0 003.75 21z" />
+                    </svg>
+                    <p className="mt-2 text-sm text-gray-500">No photos yet. Upload photos above.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                    {visiblePhotos.map((photo, index) => (
+                      <div key={photo.id} className={cn('group relative overflow-hidden rounded-lg border bg-gray-100', photo.status === 'pending_add' ? 'border-amber-300' : 'border-gray-200')}>
+                        <div className="aspect-[4/3]">
+                          <img src={photo.url} alt={`Photo ${index + 1}`} className="h-full w-full object-cover" />
+                        </div>
+                        {/* Overlay controls */}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100">
+                          <button
+                            type="button"
+                            onClick={() => handlePhotoMove(index, 'up')}
+                            disabled={index === 0 || reordering}
+                            className={cn('rounded bg-white p-1.5 text-gray-700 shadow-sm hover:bg-gray-100', index === 0 && 'opacity-50 cursor-not-allowed')}
+                            title="Move left"
+                          >
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePhotoMove(index, 'down')}
+                            disabled={index === visiblePhotos.length - 1 || reordering}
+                            className={cn('rounded bg-white p-1.5 text-gray-700 shadow-sm hover:bg-gray-100', index === visiblePhotos.length - 1 && 'opacity-50 cursor-not-allowed')}
+                            title="Move right"
+                          >
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePhotoDelete(photo.id)}
+                            disabled={deletingPhotoId === photo.id}
+                            className="rounded bg-red-600 p-1.5 text-white shadow-sm hover:bg-red-700"
+                            title="Delete"
+                          >
+                            {deletingPhotoId === photo.id ? (
+                              <LoadingSpinner />
+                            ) : (
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                            )}
+                          </button>
+                        </div>
+                        {/* Position badge */}
+                        <div className="absolute top-1 left-1 rounded-full bg-black/60 px-1.5 py-0.5 text-xs font-medium text-white">
+                          {index + 1}
+                        </div>
+                        {index === 0 && (
+                          <div className="absolute top-1 right-1 rounded-full bg-brand-600 px-1.5 py-0.5 text-xs font-medium text-white">
+                            Cover
+                          </div>
+                        )}
+                        {photo.status === 'pending_add' && (
+                          <div className="absolute bottom-1 left-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-xs font-medium text-white">
+                            Pending
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+              )
+            })() : (
+              <div className="rounded-xl border-2 border-dashed border-brand-300 bg-brand-50 p-10 text-center">
+                <svg className="mx-auto h-10 w-10 text-brand-400" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v13.5A1.5 1.5 0 003.75 21z" />
+                </svg>
+                <h3 className="mt-3 text-lg font-semibold text-brand-900">Premium Feature</h3>
+                <p className="mt-2 text-sm text-brand-700">
+                  Photos are a Premium feature. Upgrade to showcase your work with up to {MAX_PHOTOS} photos.
+                </p>
+                <a
+                  href="/dashboard/billing"
+                  className="mt-4 inline-flex items-center rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
+                >
+                  Upgrade to Premium
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Step 5: Testimonials ──────────────────────────────── */}
+        {currentStep === 5 && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Testimonials</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Add customer testimonials to build trust with potential clients.
+              </p>
+            </div>
+
+            {canAddTestimonials ? (() => {
+              const visibleTestimonials = testimonials.filter(t => t.status !== 'pending_delete')
+              const hasPendingTestimonialChanges = testimonials.some(t => t.status === 'pending_add' || t.status === 'pending_delete')
+
+              return (
+              <>
+                <p className="text-sm text-gray-700">
+                  {visibleTestimonials.length} testimonial{visibleTestimonials.length !== 1 ? 's' : ''}, {MAX_TESTIMONIALS - visibleTestimonials.length} remaining
+                </p>
+
+                {hasPendingTestimonialChanges && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-sm text-amber-800">
+                      You have pending testimonial changes. Publish your listing to submit them for review.
+                    </p>
+                  </div>
+                )}
+
+                {visibleTestimonials.length < MAX_TESTIMONIALS && (
+                  <div className="rounded-xl border border-gray-200 bg-white p-5">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Add Testimonial</h3>
+                    <TestimonialForm onSubmit={handleAddTestimonial} submitting={submittingTestimonial} />
+                  </div>
+                )}
+
+                {visibleTestimonials.length >= MAX_TESTIMONIALS && (
+                  <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3">
+                    <p className="text-sm text-yellow-800">
+                      Maximum of {MAX_TESTIMONIALS} testimonials reached. Delete one to add another.
+                    </p>
+                  </div>
+                )}
+
+                {visibleTestimonials.length === 0 ? (
+                  <div className="rounded-xl border-2 border-dashed border-gray-300 p-8 text-center">
+                    <svg className="mx-auto h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+                    </svg>
+                    <p className="mt-2 text-sm text-gray-500">No testimonials yet. Add one above.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {visibleTestimonials.map((testimonial) => (
+                      <div key={testimonial.id} className={cn('relative', testimonial.status === 'pending_add' && 'ring-2 ring-amber-300 rounded-xl')}>
+                        <TestimonialCard
+                          author_name={testimonial.author_name}
+                          text={testimonial.text}
+                          rating={testimonial.rating}
+                          created_at={testimonial.created_at}
+                        />
+                        {testimonial.status === 'pending_add' && (
+                          <div className="absolute top-2 left-2 rounded-full bg-amber-500 px-2 py-0.5 text-xs font-medium text-white">
+                            Pending
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTestimonial(testimonial.id)}
+                          disabled={deletingTestimonialId === testimonial.id}
+                          className="absolute top-4 right-4 rounded-lg border border-red-200 bg-white p-1.5 text-red-600 hover:bg-red-50 hover:border-red-300 disabled:opacity-50 transition-colors"
+                          title="Delete testimonial"
+                        >
+                          {deletingTestimonialId === testimonial.id ? (
+                            <LoadingSpinner />
+                          ) : (
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+              )
+            })() : (
+              <div className="rounded-xl border-2 border-dashed border-brand-300 bg-brand-50 p-10 text-center">
+                <svg className="mx-auto h-10 w-10 text-brand-400" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+                </svg>
+                <h3 className="mt-3 text-lg font-semibold text-brand-900">Premium Feature</h3>
+                <p className="mt-2 text-sm text-brand-700">
+                  Testimonials are a Premium feature. Upgrade to display up to {MAX_TESTIMONIALS} customer reviews.
+                </p>
+                <a
+                  href="/dashboard/billing"
+                  className="mt-4 inline-flex items-center rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
+                >
+                  Upgrade to Premium
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Step 6: Preview ──────────────────────────────────── */}
+        {currentStep === 6 && (
           <div className="space-y-6">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Preview Your Listing</h2>
@@ -1144,7 +1615,7 @@ function ListingContent() {
             Back
           </button>
 
-          {currentStep < 4 ? (
+          {currentStep < 6 ? (
             <button
               type="button"
               onClick={handleNext}
@@ -1155,7 +1626,7 @@ function ListingContent() {
                 <LoadingSpinner />
               ) : (
                 <>
-                  Save & Continue
+                  {currentStep <= 3 ? 'Save & Continue' : 'Continue'}
                   <svg className="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
                   </svg>

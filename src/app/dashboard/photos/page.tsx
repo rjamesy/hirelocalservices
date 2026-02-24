@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { getMyBusiness, getUserPlan } from '@/app/actions/business'
+import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { getMyBusiness, getMyBusinesses, getUserPlan } from '@/app/actions/business'
 import { addPhoto, deletePhoto, reorderPhotos, getUploadUrl } from '@/app/actions/photos'
 import { MAX_PHOTOS } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import PhotoUploader from '@/components/PhotoUploader'
+import BusinessSelector from '@/components/BusinessSelector'
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -51,7 +53,11 @@ function Toast({
 
 // ─── Main Component ────────────────────────────────────────────────────
 
-export default function PhotosPage() {
+function PhotosContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const bid = searchParams.get('bid')
+
   const [loading, setLoading] = useState(true)
   const [businessId, setBusinessId] = useState<string | null>(null)
   const [photos, setPhotos] = useState<Photo[]>([])
@@ -60,13 +66,29 @@ export default function PhotosPage() {
   const [reordering, setReordering] = useState(false)
   const [canUploadPhotos, setCanUploadPhotos] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const [allBusinesses, setAllBusinesses] = useState<
+    { id: string; name: string; status: string; billing_status: string }[]
+  >([])
+  const [showSelector, setShowSelector] = useState(false)
 
   // ─── Fetch photos on mount ──────────────────────────────────────
 
   const fetchPhotos = useCallback(async () => {
     try {
       setLoading(true)
-      const business = await getMyBusiness()
+
+      // If no bid, check for multiple businesses
+      if (!bid) {
+        const businesses = await getMyBusinesses()
+        if (businesses.length > 1) {
+          setAllBusinesses(businesses)
+          setShowSelector(true)
+          setLoading(false)
+          return
+        }
+      }
+
+      const business = await getMyBusiness(bid ?? undefined)
 
       if (!business) {
         setBusinessId(null)
@@ -89,7 +111,7 @@ export default function PhotosPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [bid])
 
   useEffect(() => {
     fetchPhotos()
@@ -246,6 +268,19 @@ export default function PhotosPage() {
       <div className="flex items-center justify-center py-20">
         <LoadingSpinner />
       </div>
+    )
+  }
+
+  // ─── Business selector for multi-listing users ─────────────────
+
+  if (showSelector) {
+    return (
+      <BusinessSelector
+        businesses={allBusinesses}
+        onSelect={(id) => router.push(`/dashboard/photos?bid=${id}`)}
+        title="Photos"
+        subtitle="Choose a listing to manage photos for."
+      />
     )
   }
 
@@ -446,5 +481,19 @@ export default function PhotosPage() {
         />
       )}
     </div>
+  )
+}
+
+export default function PhotosPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-20">
+          <LoadingSpinner />
+        </div>
+      }
+    >
+      <PhotosContent />
+    </Suspense>
   )
 }

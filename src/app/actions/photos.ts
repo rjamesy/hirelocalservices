@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { MAX_PHOTOS } from '@/lib/constants'
+import { extractStoragePath } from '@/lib/photo-utils'
 import { revalidatePath } from 'next/cache'
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -25,7 +26,7 @@ async function verifyBusinessOwnership(businessId: string) {
 
   const { data: business, error } = await supabase
     .from('businesses')
-    .select('id, owner_id, slug')
+    .select('id, owner_id, slug, status')
     .eq('id', businessId)
     .single()
 
@@ -42,8 +43,6 @@ async function verifyBusinessOwnership(businessId: string) {
 
 /**
  * Sanitise a file name for use as a storage object key.
- * Replaces spaces with hyphens and removes non-alphanumeric characters
- * (except hyphens, underscores, and dots).
  */
 function sanitiseFileName(name: string): string {
   return name
@@ -53,10 +52,30 @@ function sanitiseFileName(name: string): string {
     .toLowerCase()
 }
 
+/**
+ * Delete a photo file from Supabase Storage.
+ */
+export async function removePhotoFromStorage(url: string) {
+  const supabase = await createClient()
+  const storagePath = extractStoragePath(url)
+  if (storagePath) {
+    await supabase.storage.from('photos').remove([storagePath])
+  } else {
+    console.error('Failed to parse photo URL for storage deletion:', url)
+  }
+}
+
+/**
+ * Check if a business is published/paused (requires pending workflow).
+ */
+function isPublishedOrPaused(status: string): boolean {
+  return status === 'published' || status === 'paused'
+}
+
 // ─── Server Actions ─────────────────────────────────────────────────
 
 export async function getUploadUrl(businessId: string, fileName: string) {
-  const { supabase, business } = await verifyBusinessOwnership(businessId)
+  const { supabase } = await verifyBusinessOwnership(businessId)
 
   // Check plan tier — photos require premium
   const { data: sub } = await supabase
@@ -69,11 +88,12 @@ export async function getUploadUrl(businessId: string, fileName: string) {
     return { error: 'premium_required' }
   }
 
-  // Check current photo count
+  // Check current photo count (exclude pending_delete — they'll be removed on approval)
   const { count, error: countError } = await supabase
     .from('photos')
     .select('*', { count: 'exact', head: true })
     .eq('business_id', businessId)
+    .neq('status', 'pending_delete')
 
   if (countError) {
     return { error: 'Failed to check photo count. Please try again.' }
@@ -126,11 +146,12 @@ export async function addPhoto(
     return { error: 'premium_required' }
   }
 
-  // Check current photo count
+  // Check current photo count (exclude pending_delete)
   const { count, error: countError } = await supabase
     .from('photos')
     .select('*', { count: 'exact', head: true })
     .eq('business_id', businessId)
+    .neq('status', 'pending_delete')
 
   if (countError) {
     return { error: 'Failed to check photo count. Please try again.' }
@@ -142,12 +163,16 @@ export async function addPhoto(
     }
   }
 
+  // Determine status: pending_add for published/paused, live for drafts
+  const photoStatus = isPublishedOrPaused(business.status) ? 'pending_add' : 'live'
+
   const { data: photo, error } = await supabase
     .from('photos')
     .insert({
       business_id: businessId,
       url,
       sort_order: sortOrder,
+      status: photoStatus,
     })
     .select()
     .single()
@@ -167,7 +192,7 @@ export async function deletePhoto(photoId: string) {
   // Fetch the photo and verify ownership via the business
   const { data: photo, error: fetchError } = await supabase
     .from('photos')
-    .select('id, business_id, url')
+    .select('id, business_id, url, status')
     .eq('id', photoId)
     .single()
 
@@ -178,7 +203,7 @@ export async function deletePhoto(photoId: string) {
   // Verify ownership of the parent business
   const { data: business, error: bizError } = await supabase
     .from('businesses')
-    .select('id, owner_id, slug')
+    .select('id, owner_id, slug, status')
     .eq('id', photo.business_id)
     .single()
 
@@ -190,31 +215,40 @@ export async function deletePhoto(photoId: string) {
     return { error: 'You do not have permission to delete this photo' }
   }
 
-  // Extract the storage path from the URL.
-  // The URL pattern from Supabase Storage is:
-  // https://<project>.supabase.co/storage/v1/object/public/photos/<path>
-  // We store the path as <businessId>/<timestamp>-<filename>
-  try {
-    const urlObj = new URL(photo.url)
-    const pathSegments = urlObj.pathname.split('/storage/v1/object/public/photos/')
-    if (pathSegments.length === 2 && pathSegments[1]) {
-      const storagePath = decodeURIComponent(pathSegments[1])
-      await supabase.storage.from('photos').remove([storagePath])
+  // If business is published/paused and photo is 'live':
+  //   → Mark as pending_delete (will be cleaned up on approval)
+  // If photo is 'pending_add' (not yet approved):
+  //   → Delete immediately from DB + storage (it was never live)
+  // If business is draft:
+  //   → Delete immediately from DB + storage
+
+  if (isPublishedOrPaused(business.status) && photo.status === 'live') {
+    // Mark for pending deletion
+    const { error: updateError } = await supabase
+      .from('photos')
+      .update({ status: 'pending_delete' })
+      .eq('id', photoId)
+
+    if (updateError) {
+      return { error: 'Failed to mark photo for deletion. Please try again.' }
     }
-  } catch {
-    // If URL parsing fails, we still delete the DB record.
-    // The storage object may need manual cleanup.
-    console.error('Failed to parse photo URL for storage deletion:', photo.url)
-  }
+  } else {
+    // Delete immediately (draft listing OR pending_add photo)
+    const storagePath = extractStoragePath(photo.url)
+    if (storagePath) {
+      await supabase.storage.from('photos').remove([storagePath])
+    } else {
+      console.error('Failed to parse photo URL for storage deletion:', photo.url)
+    }
 
-  // Delete the database record
-  const { error: deleteError } = await supabase
-    .from('photos')
-    .delete()
-    .eq('id', photoId)
+    const { error: deleteError } = await supabase
+      .from('photos')
+      .delete()
+      .eq('id', photoId)
 
-  if (deleteError) {
-    return { error: 'Failed to delete photo. Please try again.' }
+    if (deleteError) {
+      return { error: 'Failed to delete photo. Please try again.' }
+    }
   }
 
   revalidatePath('/dashboard')

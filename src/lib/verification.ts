@@ -253,6 +253,116 @@ Email: ${business.email || 'N/A'}`
   }
 }
 
+// ─── Image Moderation ──────────────────────────────────────────────
+
+export interface ImageModerationResult {
+  safe: boolean
+  adult_content: number    // 0.0-1.0
+  violence: number         // 0.0-1.0
+  spam_watermark: number   // 0.0-1.0
+  reason: string | null
+}
+
+/**
+ * Moderate a batch of image URLs using OpenAI Vision API.
+ * Returns per-image results. Fails gracefully (approves) if API unavailable.
+ */
+export async function moderateImages(
+  imageUrls: string[]
+): Promise<ImageModerationResult[]> {
+  if (imageUrls.length === 0) return []
+
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) {
+    // No API key: approve all images (graceful degradation)
+    return imageUrls.map(() => ({
+      safe: true,
+      adult_content: 0,
+      violence: 0,
+      spam_watermark: 0,
+      reason: null,
+    }))
+  }
+
+  const results: ImageModerationResult[] = []
+
+  // Process images individually to get per-image results
+  for (const url of imageUrls) {
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10000)
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: `You are an image moderation system for an Australian local services directory (plumbers, electricians, cleaners, builders, etc.).
+
+Analyze this image and return a JSON object with:
+- adult_content: 0.0-1.0 (nudity, sexually explicit, pornographic content)
+- violence: 0.0-1.0 (graphic violence, gore, disturbing content)
+- spam_watermark: 0.0-1.0 (stock photo watermarks, spam text overlays, unrelated memes)
+- safe: boolean (true if appropriate for a business listing photo gallery)
+- reason: string or null (brief explanation if not safe)
+
+Business listing photos should show: the business, completed work, team, equipment, premises, or before/after results.`,
+                },
+                {
+                  type: 'image_url',
+                  image_url: { url },
+                },
+              ],
+            },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.1,
+          max_tokens: 200,
+        }),
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeout)
+
+      if (!response.ok) {
+        // API error: approve by default
+        results.push({ safe: true, adult_content: 0, violence: 0, spam_watermark: 0, reason: null })
+        continue
+      }
+
+      const data = await response.json()
+      const content = data.choices?.[0]?.message?.content
+      if (!content) {
+        results.push({ safe: true, adult_content: 0, violence: 0, spam_watermark: 0, reason: null })
+        continue
+      }
+
+      const parsed = JSON.parse(content)
+      results.push({
+        safe: Boolean(parsed.safe),
+        adult_content: Number(parsed.adult_content) || 0,
+        violence: Number(parsed.violence) || 0,
+        spam_watermark: Number(parsed.spam_watermark) || 0,
+        reason: parsed.reason ? String(parsed.reason) : null,
+      })
+    } catch {
+      // Graceful degradation: approve on error
+      results.push({ safe: true, adult_content: 0, violence: 0, spam_watermark: 0, reason: null })
+    }
+  }
+
+  return results
+}
+
 // ─── Decision Engine ────────────────────────────────────────────────
 
 export function makeVerificationDecision(

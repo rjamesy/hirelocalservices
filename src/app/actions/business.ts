@@ -563,16 +563,51 @@ export async function publishChanges(businessId: string) {
     contentToValidate.description
   )
 
+  // ─── Image moderation for pending photos ──────────────────────────
+  const { moderateImages } = await import('@/lib/verification')
+  const { removePhotoFromStorage } = await import('@/app/actions/photos')
+
+  // Check for pending_add photos that need moderation
+  const { data: pendingPhotos } = await supabase
+    .from('photos')
+    .select('id, url')
+    .eq('business_id', businessId)
+    .eq('status', 'pending_add')
+
+  let imageModDecision: 'approved' | 'rejected' | null = null
+  let imageModReason: string | null = null
+
+  if (pendingPhotos && pendingPhotos.length > 0) {
+    const photoUrls = pendingPhotos.map((p: { url: string }) => p.url)
+    const imageResults = await moderateImages(photoUrls)
+
+    // Check each image result
+    for (let i = 0; i < imageResults.length; i++) {
+      const result = imageResults[i]
+      if (!result.safe || result.adult_content >= 0.5 || result.violence >= 0.5) {
+        imageModDecision = 'rejected'
+        imageModReason = result.reason || `Photo ${i + 1} flagged: adult=${result.adult_content.toFixed(2)}, violence=${result.violence.toFixed(2)}`
+        break
+      }
+    }
+  }
+
+  // If images are rejected, override decision
+  const finalDecision = imageModDecision === 'rejected' ? 'rejected' : decision
+
   // Create verification job
   await supabase.from('verification_jobs').insert({
     business_id: businessId,
-    status: decision,
+    status: finalDecision,
     deterministic_result: deterministic as unknown as Record<string, unknown>,
-    ai_result: aiResult as unknown as Record<string, unknown> | null,
-    final_decision: decision,
+    ai_result: {
+      ...(aiResult as unknown as Record<string, unknown> | null),
+      image_moderation: imageModDecision ? { decision: imageModDecision, reason: imageModReason } : null,
+    },
+    final_decision: finalDecision,
   } as any)
 
-  if (decision === 'approved') {
+  if (finalDecision === 'approved') {
     // Apply pending_changes to main columns
     const updateData: Record<string, unknown> = {
       ...contentToValidate,
@@ -582,6 +617,44 @@ export async function publishChanges(businessId: string) {
     }
 
     await supabase.from('businesses').update(updateData).eq('id', businessId)
+
+    // ─── Promote pending photos/testimonials ──────────────────────
+    // pending_add → live
+    await supabase
+      .from('photos')
+      .update({ status: 'live' })
+      .eq('business_id', businessId)
+      .eq('status', 'pending_add')
+
+    await supabase
+      .from('testimonials')
+      .update({ status: 'live' })
+      .eq('business_id', businessId)
+      .eq('status', 'pending_add')
+
+    // pending_delete → delete from DB + storage
+    const { data: photosToDelete } = await supabase
+      .from('photos')
+      .select('id, url')
+      .eq('business_id', businessId)
+      .eq('status', 'pending_delete')
+
+    if (photosToDelete && photosToDelete.length > 0) {
+      for (const photo of photosToDelete) {
+        await removePhotoFromStorage(photo.url)
+      }
+      await supabase
+        .from('photos')
+        .delete()
+        .eq('business_id', businessId)
+        .eq('status', 'pending_delete')
+    }
+
+    await supabase
+      .from('testimonials')
+      .delete()
+      .eq('business_id', businessId)
+      .eq('status', 'pending_delete')
 
     // Sync business_contacts
     await supabase
@@ -609,10 +682,50 @@ export async function publishChanges(businessId: string) {
     return { success: true, published: true }
   }
 
+  if (finalDecision === 'rejected') {
+    // ─── Revert pending photos/testimonials on rejection ──────────
+    // pending_add → delete from DB + storage (they were never live)
+    const { data: pendingAddPhotos } = await supabase
+      .from('photos')
+      .select('id, url')
+      .eq('business_id', businessId)
+      .eq('status', 'pending_add')
+
+    if (pendingAddPhotos && pendingAddPhotos.length > 0) {
+      for (const photo of pendingAddPhotos) {
+        await removePhotoFromStorage(photo.url)
+      }
+      await supabase
+        .from('photos')
+        .delete()
+        .eq('business_id', businessId)
+        .eq('status', 'pending_add')
+    }
+
+    await supabase
+      .from('testimonials')
+      .delete()
+      .eq('business_id', businessId)
+      .eq('status', 'pending_add')
+
+    // pending_delete → revert to live (restore them)
+    await supabase
+      .from('photos')
+      .update({ status: 'live' })
+      .eq('business_id', businessId)
+      .eq('status', 'pending_delete')
+
+    await supabase
+      .from('testimonials')
+      .update({ status: 'live' })
+      .eq('business_id', businessId)
+      .eq('status', 'pending_delete')
+  }
+
   // Pending/rejected: keep pending_changes intact, set verification_status
   await supabase
     .from('businesses')
-    .update({ verification_status: 'pending' })
+    .update({ verification_status: finalDecision === 'rejected' ? 'rejected' : 'pending' })
     .eq('id', businessId)
 
   revalidatePath('/dashboard')
@@ -620,7 +733,11 @@ export async function publishChanges(businessId: string) {
   return {
     success: true,
     published: false,
-    message: 'Your listing changes are being reviewed. Your live listing is unchanged.',
+    message: finalDecision === 'rejected'
+      ? imageModReason
+        ? `Your listing was rejected: ${imageModReason}`
+        : 'Your listing changes were rejected. Please review and resubmit.'
+      : 'Your listing changes are being reviewed. Your live listing is unchanged.',
   }
 }
 
@@ -908,16 +1025,25 @@ export async function getBusinessBySlug(slug: string) {
     }
   }
 
-  // Calculate average rating
-  const testimonials = business.testimonials ?? []
+  // Filter to live-only photos and testimonials for public display
+  const allPhotos = business.photos ?? []
+  const livePhotos = allPhotos.filter(
+    (p: { status?: string }) => !p.status || p.status === 'live'
+  )
+  const allTestimonials = business.testimonials ?? []
+  const liveTestimonials = allTestimonials.filter(
+    (t: { status?: string }) => !t.status || t.status === 'live'
+  )
+
+  // Calculate average rating from live testimonials only
   const avgRating =
-    testimonials.length > 0
+    liveTestimonials.length > 0
       ? Math.round(
-          (testimonials.reduce(
+          (liveTestimonials.reduce(
             (sum: number, t: { rating: number }) => sum + t.rating,
             0
           ) /
-            testimonials.length) *
+            liveTestimonials.length) *
             10
         ) / 10
       : null
@@ -931,12 +1057,12 @@ export async function getBusinessBySlug(slug: string) {
     ...business,
     location,
     categories: business.business_categories,
-    photos: (business.photos ?? []).sort(
+    photos: livePhotos.sort(
       (a: { sort_order: number }, b: { sort_order: number }) =>
         a.sort_order - b.sort_order
     ),
-    testimonials,
+    testimonials: liveTestimonials,
     avgRating,
-    reviewCount: testimonials.length,
+    reviewCount: liveTestimonials.length,
   }
 }

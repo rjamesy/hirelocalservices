@@ -29,11 +29,6 @@ describe('addTestimonial', () => {
       data: { user: mockUser },
       error: null,
     })
-    // ownership check
-    single.mockResolvedValueOnce({
-      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz' },
-      error: null,
-    })
   })
 
   it('requires authentication', async () => {
@@ -47,6 +42,10 @@ describe('addTestimonial', () => {
   })
 
   it('requires premium plan', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
+      error: null,
+    })
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'basic' },
       error: null,
@@ -57,6 +56,10 @@ describe('addTestimonial', () => {
   })
 
   it('enforces max testimonial limit', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
+      error: null,
+    })
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium' },
       error: null,
@@ -70,6 +73,10 @@ describe('addTestimonial', () => {
   })
 
   it('validates form data', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
+      error: null,
+    })
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium' },
       error: null,
@@ -81,23 +88,74 @@ describe('addTestimonial', () => {
     expect(result).toHaveProperty('error')
   })
 
-  it('inserts testimonial on valid data', async () => {
+  it('inserts testimonial with live status for draft business', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
+      error: null,
+    })
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium' },
       error: null,
     })
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 5 })
     single.mockResolvedValueOnce({
-      data: { id: 'test-1', author_name: 'John', text: 'Great service provided!', rating: 5 },
+      data: { id: 'test-1', author_name: 'John Smith', text: 'Great service provided!', rating: 5, status: 'live' },
       error: null,
     })
 
     const fd = makeFormData({ author_name: 'John Smith', text: 'Great service provided by the team!', rating: '5' })
     const result = await addTestimonial('biz-123', fd)
     expect(result).toHaveProperty('data')
+    expect((result as any).data.status).toBe('live')
+  })
+
+  it('inserts testimonial with pending_add status for published business', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'published' },
+      error: null,
+    })
+    maybeSingle.mockResolvedValueOnce({
+      data: { plan: 'premium' },
+      error: null,
+    })
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 5 })
+    single.mockResolvedValueOnce({
+      data: { id: 'test-1', author_name: 'John Smith', text: 'Great service!', rating: 5, status: 'pending_add' },
+      error: null,
+    })
+
+    const fd = makeFormData({ author_name: 'John Smith', text: 'Great service provided by the team!', rating: '5' })
+    const result = await addTestimonial('biz-123', fd)
+    expect(result).toHaveProperty('data')
+    expect((result as any).data.status).toBe('pending_add')
+  })
+
+  it('inserts testimonial with pending_add status for paused business', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'paused' },
+      error: null,
+    })
+    maybeSingle.mockResolvedValueOnce({
+      data: { plan: 'premium' },
+      error: null,
+    })
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 })
+    single.mockResolvedValueOnce({
+      data: { id: 'test-1', author_name: 'Jane', text: 'Excellent!', rating: 4, status: 'pending_add' },
+      error: null,
+    })
+
+    const fd = makeFormData({ author_name: 'Jane Smith', text: 'Excellent service provided here!', rating: '4' })
+    const result = await addTestimonial('biz-123', fd)
+    expect(result).toHaveProperty('data')
+    expect((result as any).data.status).toBe('pending_add')
   })
 
   it('allows premium_annual plan', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
+      error: null,
+    })
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium_annual' },
       error: null,
@@ -114,6 +172,10 @@ describe('addTestimonial', () => {
   })
 
   it('handles insert failure', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
+      error: null,
+    })
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium' },
       error: null,
@@ -144,11 +206,11 @@ describe('deleteTestimonial', () => {
 
   it('verifies business ownership', async () => {
     single.mockResolvedValueOnce({
-      data: { id: 'test-1', business_id: 'biz-123' },
+      data: { id: 'test-1', business_id: 'biz-123', status: 'live' },
       error: null,
     })
     single.mockResolvedValueOnce({
-      data: { id: 'biz-123', owner_id: 'other-user', slug: 'test' },
+      data: { id: 'biz-123', owner_id: 'other-user', slug: 'test', status: 'published' },
       error: null,
     })
 
@@ -156,13 +218,55 @@ describe('deleteTestimonial', () => {
     expect(result).toEqual({ error: 'You do not have permission to delete this testimonial' })
   })
 
-  it('deletes testimonial as owner', async () => {
+  it('immediately deletes testimonial from draft business', async () => {
     single.mockResolvedValueOnce({
-      data: { id: 'test-1', business_id: 'biz-123' },
+      data: { id: 'test-1', business_id: 'biz-123', status: 'live' },
       error: null,
     })
     single.mockResolvedValueOnce({
-      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test' },
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test', status: 'draft' },
+      error: null,
+    })
+
+    const result = await deleteTestimonial('test-1')
+    expect(result).toEqual({ success: true })
+  })
+
+  it('marks live testimonial as pending_delete on published business', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'test-1', business_id: 'biz-123', status: 'live' },
+      error: null,
+    })
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test', status: 'published' },
+      error: null,
+    })
+
+    const result = await deleteTestimonial('test-1')
+    expect(result).toEqual({ success: true })
+  })
+
+  it('marks live testimonial as pending_delete on paused business', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'test-1', business_id: 'biz-123', status: 'live' },
+      error: null,
+    })
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test', status: 'paused' },
+      error: null,
+    })
+
+    const result = await deleteTestimonial('test-1')
+    expect(result).toEqual({ success: true })
+  })
+
+  it('immediately deletes pending_add testimonial on published business', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'test-1', business_id: 'biz-123', status: 'pending_add' },
+      error: null,
+    })
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test', status: 'published' },
       error: null,
     })
 
@@ -172,17 +276,31 @@ describe('deleteTestimonial', () => {
 
   it('handles delete failure', async () => {
     single.mockResolvedValueOnce({
-      data: { id: 'test-1', business_id: 'biz-123' },
+      data: { id: 'test-1', business_id: 'biz-123', status: 'live' },
       error: null,
     })
     single.mockResolvedValueOnce({
-      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test' },
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test', status: 'draft' },
       error: null,
     })
-    // The delete chain (direct-await) returns an error
     chainResult.mockReturnValueOnce({ data: null, error: { message: 'DB error' } })
 
     const result = await deleteTestimonial('test-1')
     expect(result).toBeDefined()
+  })
+
+  it('handles update failure for pending_delete', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'test-1', business_id: 'biz-123', status: 'live' },
+      error: null,
+    })
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test', status: 'published' },
+      error: null,
+    })
+    chainResult.mockReturnValueOnce({ data: null, error: { message: 'DB error' } })
+
+    const result = await deleteTestimonial('test-1')
+    expect(result).toEqual({ error: 'Failed to mark testimonial for deletion. Please try again.' })
   })
 })

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createMockSupabaseClient } from '@/__tests__/helpers/supabase-mock'
 import { mockUser } from '@/__tests__/helpers/test-data'
 
-const { client: mockSupabase, single, maybeSingle, chainResult } = createMockSupabaseClient()
+const { client: mockSupabase, single, maybeSingle, chainResult, storageBucket } = createMockSupabaseClient()
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(() => Promise.resolve(mockSupabase)),
@@ -23,7 +23,7 @@ describe('getUploadUrl', () => {
     })
     // ownership check
     single.mockResolvedValueOnce({
-      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz' },
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
       error: null,
     })
   })
@@ -89,6 +89,18 @@ describe('getUploadUrl', () => {
     })
     await expect(getUploadUrl('biz-123', 'test.jpg')).rejects.toThrow('logged in')
   })
+
+  it('excludes pending_delete photos from count', async () => {
+    maybeSingle.mockResolvedValueOnce({
+      data: { plan: 'premium' },
+      error: null,
+    })
+    // Count returns 9 (one pending_delete excluded by .neq query)
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 9 })
+
+    const result = await getUploadUrl('biz-123', 'test.jpg')
+    expect(result).toHaveProperty('data')
+  })
 })
 
 describe('addPhoto', () => {
@@ -98,13 +110,13 @@ describe('addPhoto', () => {
       data: { user: mockUser },
       error: null,
     })
-    single.mockResolvedValueOnce({
-      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz' },
-      error: null,
-    })
   })
 
   it('requires premium plan', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
+      error: null,
+    })
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'basic' },
       error: null,
@@ -114,6 +126,10 @@ describe('addPhoto', () => {
   })
 
   it('enforces max photo limit', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
+      error: null,
+    })
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium' },
       error: null,
@@ -124,19 +140,64 @@ describe('addPhoto', () => {
     expect(result).toHaveProperty('error')
   })
 
-  it('inserts photo on success', async () => {
+  it('inserts photo with live status for draft business', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
+      error: null,
+    })
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium' },
       error: null,
     })
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 3 })
     single.mockResolvedValueOnce({
-      data: { id: 'photo-1', url: 'https://url.com/photo.jpg', sort_order: 0 },
+      data: { id: 'photo-1', url: 'https://url.com/photo.jpg', sort_order: 0, status: 'live' },
       error: null,
     })
 
     const result = await addPhoto('biz-123', 'https://url.com/photo.jpg', 0)
     expect(result).toHaveProperty('data')
+    expect((result as any).data.status).toBe('live')
+  })
+
+  it('inserts photo with pending_add status for published business', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'published' },
+      error: null,
+    })
+    maybeSingle.mockResolvedValueOnce({
+      data: { plan: 'premium' },
+      error: null,
+    })
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 3 })
+    single.mockResolvedValueOnce({
+      data: { id: 'photo-1', url: 'https://url.com/photo.jpg', sort_order: 0, status: 'pending_add' },
+      error: null,
+    })
+
+    const result = await addPhoto('biz-123', 'https://url.com/photo.jpg', 0)
+    expect(result).toHaveProperty('data')
+    expect((result as any).data.status).toBe('pending_add')
+  })
+
+  it('inserts photo with pending_add status for paused business', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'paused' },
+      error: null,
+    })
+    maybeSingle.mockResolvedValueOnce({
+      data: { plan: 'premium' },
+      error: null,
+    })
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 })
+    single.mockResolvedValueOnce({
+      data: { id: 'photo-1', url: 'https://url.com/photo.jpg', sort_order: 0, status: 'pending_add' },
+      error: null,
+    })
+
+    const result = await addPhoto('biz-123', 'https://url.com/photo.jpg', 0)
+    expect(result).toHaveProperty('data')
+    expect((result as any).data.status).toBe('pending_add')
   })
 })
 
@@ -158,12 +219,12 @@ describe('deletePhoto', () => {
   it('verifies business ownership before deleting', async () => {
     // photo fetch
     single.mockResolvedValueOnce({
-      data: { id: 'photo-1', business_id: 'biz-123', url: 'https://example.supabase.co/storage/v1/object/public/photos/biz-123/1234-test.jpg' },
+      data: { id: 'photo-1', business_id: 'biz-123', url: 'https://example.supabase.co/storage/v1/object/public/photos/biz-123/1234-test.jpg', status: 'live' },
       error: null,
     })
     // business fetch
     single.mockResolvedValueOnce({
-      data: { id: 'biz-123', owner_id: 'other-user', slug: 'test' },
+      data: { id: 'biz-123', owner_id: 'other-user', slug: 'test', status: 'published' },
       error: null,
     })
 
@@ -171,13 +232,13 @@ describe('deletePhoto', () => {
     expect(result).toEqual({ error: 'You do not have permission to delete this photo' })
   })
 
-  it('deletes from storage and DB', async () => {
+  it('immediately deletes photo from draft business', async () => {
     single.mockResolvedValueOnce({
-      data: { id: 'photo-1', business_id: 'biz-123', url: 'https://example.supabase.co/storage/v1/object/public/photos/biz-123/1234-test.jpg' },
+      data: { id: 'photo-1', business_id: 'biz-123', url: 'https://example.supabase.co/storage/v1/object/public/photos/biz-123/1234-test.jpg', status: 'live' },
       error: null,
     })
     single.mockResolvedValueOnce({
-      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test' },
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test', status: 'draft' },
       error: null,
     })
 
@@ -186,13 +247,60 @@ describe('deletePhoto', () => {
     expect(mockSupabase.storage.from).toHaveBeenCalledWith('photos')
   })
 
-  it('still deletes DB record if URL parsing fails', async () => {
+  it('marks live photo as pending_delete on published business', async () => {
     single.mockResolvedValueOnce({
-      data: { id: 'photo-1', business_id: 'biz-123', url: 'invalid-url' },
+      data: { id: 'photo-1', business_id: 'biz-123', url: 'https://example.supabase.co/storage/v1/object/public/photos/biz-123/1234-test.jpg', status: 'live' },
       error: null,
     })
     single.mockResolvedValueOnce({
-      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test' },
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test', status: 'published' },
+      error: null,
+    })
+
+    const result = await deletePhoto('photo-1')
+    expect(result).toEqual({ success: true })
+    // Should NOT have deleted from storage (pending_delete, not immediate)
+    expect(mockSupabase.storage.from).not.toHaveBeenCalled()
+  })
+
+  it('marks live photo as pending_delete on paused business', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'photo-1', business_id: 'biz-123', url: 'https://example.supabase.co/storage/v1/object/public/photos/biz-123/1234-test.jpg', status: 'live' },
+      error: null,
+    })
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test', status: 'paused' },
+      error: null,
+    })
+
+    const result = await deletePhoto('photo-1')
+    expect(result).toEqual({ success: true })
+    expect(mockSupabase.storage.from).not.toHaveBeenCalled()
+  })
+
+  it('immediately deletes pending_add photo on published business', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'photo-1', business_id: 'biz-123', url: 'https://example.supabase.co/storage/v1/object/public/photos/biz-123/1234-test.jpg', status: 'pending_add' },
+      error: null,
+    })
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test', status: 'published' },
+      error: null,
+    })
+
+    const result = await deletePhoto('photo-1')
+    expect(result).toEqual({ success: true })
+    // pending_add photos are immediately deleted from storage
+    expect(mockSupabase.storage.from).toHaveBeenCalledWith('photos')
+  })
+
+  it('still deletes DB record if URL parsing fails', async () => {
+    single.mockResolvedValueOnce({
+      data: { id: 'photo-1', business_id: 'biz-123', url: 'invalid-url', status: 'live' },
+      error: null,
+    })
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test', status: 'draft' },
       error: null,
     })
 
@@ -209,7 +317,7 @@ describe('reorderPhotos', () => {
       error: null,
     })
     single.mockResolvedValueOnce({
-      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz' },
+      data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'published' },
       error: null,
     })
   })

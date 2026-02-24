@@ -108,6 +108,7 @@ export const mockPhoto: Photo = {
   business_id: 'biz-123',
   url: 'https://example.supabase.co/storage/v1/object/public/photos/biz-123/1234-test.jpg',
   sort_order: 0,
+  status: 'live',
   created_at: '2024-01-01T00:00:00Z',
 }
 
@@ -117,6 +118,7 @@ export const mockTestimonial: Testimonial = {
   author_name: 'Jane Doe',
   text: 'Excellent service, would recommend to everyone!',
   rating: 5,
+  status: 'live',
   created_at: '2024-01-15T00:00:00Z',
 }
 

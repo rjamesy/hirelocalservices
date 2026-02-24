@@ -132,7 +132,9 @@ export async function getAdminVerificationQueue(page = 1) {
       listing_source, verification_status, created_at, pending_changes,
       verification_jobs (
         id, deterministic_result, ai_result, final_decision, created_at
-      )
+      ),
+      photos (id, url, sort_order, status),
+      testimonials (id, author_name, text, rating, status)
     `,
       { count: 'exact' }
     )
@@ -209,6 +211,7 @@ export async function adminApproveVerification(
   notes?: string
 ) {
   const { supabase, user } = await requireAdmin()
+  const { removePhotoFromStorage } = await import('@/app/actions/photos')
 
   // Fetch business with pending_changes
   const { data: biz } = await supabase
@@ -252,9 +255,47 @@ export async function adminApproveVerification(
     // No pending changes — just approve
     await supabase
       .from('businesses')
-      .update({ verification_status: 'approved' })
+      .update({ verification_status: 'approved', status: 'published' })
       .eq('id', businessId)
   }
+
+  // ─── Promote pending photos/testimonials on approval ──────────
+  // pending_add → live
+  await supabase
+    .from('photos')
+    .update({ status: 'live' })
+    .eq('business_id', businessId)
+    .eq('status', 'pending_add')
+
+  await supabase
+    .from('testimonials')
+    .update({ status: 'live' })
+    .eq('business_id', businessId)
+    .eq('status', 'pending_add')
+
+  // pending_delete → delete from DB + storage
+  const { data: photosToDelete } = await supabase
+    .from('photos')
+    .select('id, url')
+    .eq('business_id', businessId)
+    .eq('status', 'pending_delete')
+
+  if (photosToDelete && photosToDelete.length > 0) {
+    for (const photo of photosToDelete) {
+      await removePhotoFromStorage(photo.url)
+    }
+    await supabase
+      .from('photos')
+      .delete()
+      .eq('business_id', businessId)
+      .eq('status', 'pending_delete')
+  }
+
+  await supabase
+    .from('testimonials')
+    .delete()
+    .eq('business_id', businessId)
+    .eq('status', 'pending_delete')
 
   // Create admin review if there's a verification job
   const { data: latestJob } = await supabase
@@ -299,12 +340,51 @@ export async function adminRejectVerification(
   notes?: string
 ) {
   const { supabase, user } = await requireAdmin()
+  const { removePhotoFromStorage } = await import('@/app/actions/photos')
 
   // Set rejected — keep pending_changes intact so user can edit and re-submit
   await supabase
     .from('businesses')
     .update({ verification_status: 'rejected' })
     .eq('id', businessId)
+
+  // ─── Revert pending photos/testimonials on rejection ──────────
+  // pending_add → delete from DB + storage (they were never live)
+  const { data: pendingAddPhotos } = await supabase
+    .from('photos')
+    .select('id, url')
+    .eq('business_id', businessId)
+    .eq('status', 'pending_add')
+
+  if (pendingAddPhotos && pendingAddPhotos.length > 0) {
+    for (const photo of pendingAddPhotos) {
+      await removePhotoFromStorage(photo.url)
+    }
+    await supabase
+      .from('photos')
+      .delete()
+      .eq('business_id', businessId)
+      .eq('status', 'pending_add')
+  }
+
+  await supabase
+    .from('testimonials')
+    .delete()
+    .eq('business_id', businessId)
+    .eq('status', 'pending_add')
+
+  // pending_delete → revert to live
+  await supabase
+    .from('photos')
+    .update({ status: 'live' })
+    .eq('business_id', businessId)
+    .eq('status', 'pending_delete')
+
+  await supabase
+    .from('testimonials')
+    .update({ status: 'live' })
+    .eq('business_id', businessId)
+    .eq('status', 'pending_delete')
 
   const { data: latestJob } = await supabase
     .from('verification_jobs')

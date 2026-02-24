@@ -150,13 +150,18 @@ export type BusinessCategory = {
   category_id: string
 }
 
+export type PhotoStatus = 'live' | 'pending_add' | 'pending_delete'
+
 export type Photo = {
   id: string
   business_id: string
   url: string
   sort_order: number
+  status: PhotoStatus
   created_at: string
 }
+
+export type TestimonialStatus = 'live' | 'pending_add' | 'pending_delete'
 
 export type Testimonial = {
   id: string
@@ -164,6 +169,7 @@ export type Testimonial = {
   author_name: string
   text: string
   rating: number
+  status: TestimonialStatus
   created_at: string
 }
 

@@ -26,7 +26,7 @@ async function verifyBusinessOwnership(businessId: string) {
 
   const { data: business, error } = await supabase
     .from('businesses')
-    .select('id, owner_id, slug')
+    .select('id, owner_id, slug, status')
     .eq('id', businessId)
     .single()
 
@@ -39,6 +39,13 @@ async function verifyBusinessOwnership(businessId: string) {
   }
 
   return { supabase, user, business }
+}
+
+/**
+ * Check if a business is published/paused (requires pending workflow).
+ */
+function isPublishedOrPaused(status: string): boolean {
+  return status === 'published' || status === 'paused'
 }
 
 // ─── Server Actions ─────────────────────────────────────────────────
@@ -60,11 +67,12 @@ export async function addTestimonial(
     return { error: 'premium_required' }
   }
 
-  // Check max testimonials limit
+  // Check max testimonials limit (exclude pending_delete)
   const { count, error: countError } = await supabase
     .from('testimonials')
     .select('*', { count: 'exact', head: true })
     .eq('business_id', businessId)
+    .neq('status', 'pending_delete')
 
   if (countError) {
     return { error: 'Failed to check testimonial count. Please try again.' }
@@ -88,6 +96,9 @@ export async function addTestimonial(
     return { error: parsed.error.flatten().fieldErrors }
   }
 
+  // Determine status: pending_add for published/paused, live for drafts
+  const testimonialStatus = isPublishedOrPaused(business.status) ? 'pending_add' : 'live'
+
   const { data: testimonial, error } = await supabase
     .from('testimonials')
     .insert({
@@ -95,6 +106,7 @@ export async function addTestimonial(
       author_name: parsed.data.author_name,
       text: parsed.data.text,
       rating: parsed.data.rating,
+      status: testimonialStatus,
     })
     .select()
     .single()
@@ -114,7 +126,7 @@ export async function deleteTestimonial(testimonialId: string) {
   // Fetch the testimonial and verify ownership via the business
   const { data: testimonial, error: fetchError } = await supabase
     .from('testimonials')
-    .select('id, business_id')
+    .select('id, business_id, status')
     .eq('id', testimonialId)
     .single()
 
@@ -125,7 +137,7 @@ export async function deleteTestimonial(testimonialId: string) {
   // Verify ownership of the parent business
   const { data: business, error: bizError } = await supabase
     .from('businesses')
-    .select('id, owner_id, slug')
+    .select('id, owner_id, slug, status')
     .eq('id', testimonial.business_id)
     .single()
 
@@ -137,13 +149,31 @@ export async function deleteTestimonial(testimonialId: string) {
     return { error: 'You do not have permission to delete this testimonial' }
   }
 
-  const { error: deleteError } = await supabase
-    .from('testimonials')
-    .delete()
-    .eq('id', testimonialId)
+  // If business is published/paused and testimonial is 'live':
+  //   → Mark as pending_delete
+  // If testimonial is 'pending_add' (not yet approved):
+  //   → Delete immediately
+  // If business is draft:
+  //   → Delete immediately
 
-  if (deleteError) {
-    return { error: 'Failed to delete testimonial. Please try again.' }
+  if (isPublishedOrPaused(business.status) && testimonial.status === 'live') {
+    const { error: updateError } = await supabase
+      .from('testimonials')
+      .update({ status: 'pending_delete' })
+      .eq('id', testimonialId)
+
+    if (updateError) {
+      return { error: 'Failed to mark testimonial for deletion. Please try again.' }
+    }
+  } else {
+    const { error: deleteError } = await supabase
+      .from('testimonials')
+      .delete()
+      .eq('id', testimonialId)
+
+    if (deleteError) {
+      return { error: 'Failed to delete testimonial. Please try again.' }
+    }
   }
 
   revalidatePath('/dashboard')

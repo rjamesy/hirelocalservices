@@ -33,6 +33,19 @@ type VerificationRow = {
     final_decision: string
     created_at: string
   }[] | null
+  photos: {
+    id: string
+    url: string
+    sort_order: number
+    status: string
+  }[] | null
+  testimonials: {
+    id: string
+    author_name: string
+    text: string
+    rating: number
+    status: string
+  }[] | null
 }
 
 export default function AdminVerificationPage() {
@@ -182,6 +195,85 @@ export default function AdminVerificationPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Pending photo changes */}
+                {(() => {
+                  const pendingAddPhotos = (item.photos ?? []).filter(p => p.status === 'pending_add')
+                  const pendingDeletePhotos = (item.photos ?? []).filter(p => p.status === 'pending_delete')
+                  if (pendingAddPhotos.length === 0 && pendingDeletePhotos.length === 0) return null
+                  return (
+                    <div className="mt-4 rounded-md border border-purple-200 bg-purple-50 p-4">
+                      <h4 className="text-sm font-medium text-purple-800 mb-2">Pending Photo Changes</h4>
+                      {pendingAddPhotos.length > 0 && (
+                        <div className="mb-2">
+                          <p className="text-xs text-green-700 font-medium mb-1">+ {pendingAddPhotos.length} new photo{pendingAddPhotos.length !== 1 ? 's' : ''}</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {pendingAddPhotos.map(p => (
+                              <img key={p.id} src={p.url} alt="Pending" className="h-16 w-20 object-cover rounded border border-green-300" />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {pendingDeletePhotos.length > 0 && (
+                        <div>
+                          <p className="text-xs text-red-700 font-medium mb-1">- {pendingDeletePhotos.length} photo{pendingDeletePhotos.length !== 1 ? 's' : ''} to remove</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {pendingDeletePhotos.map(p => (
+                              <img key={p.id} src={p.url} alt="To delete" className="h-16 w-20 object-cover rounded border border-red-300 opacity-60" />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* Pending testimonial changes */}
+                {(() => {
+                  const pendingAddT = (item.testimonials ?? []).filter(t => t.status === 'pending_add')
+                  const pendingDeleteT = (item.testimonials ?? []).filter(t => t.status === 'pending_delete')
+                  if (pendingAddT.length === 0 && pendingDeleteT.length === 0) return null
+                  return (
+                    <div className="mt-4 rounded-md border border-purple-200 bg-purple-50 p-4">
+                      <h4 className="text-sm font-medium text-purple-800 mb-2">Pending Testimonial Changes</h4>
+                      {pendingAddT.length > 0 && (
+                        <div className="mb-2 space-y-1">
+                          <p className="text-xs text-green-700 font-medium">+ {pendingAddT.length} new testimonial{pendingAddT.length !== 1 ? 's' : ''}</p>
+                          {pendingAddT.map(t => (
+                            <div key={t.id} className="text-xs text-gray-700 border-l-2 border-green-400 pl-2">
+                              <span className="font-medium">{t.author_name}</span> ({t.rating}/5): {t.text.slice(0, 100)}{t.text.length > 100 ? '...' : ''}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {pendingDeleteT.length > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-xs text-red-700 font-medium">- {pendingDeleteT.length} testimonial{pendingDeleteT.length !== 1 ? 's' : ''} to remove</p>
+                          {pendingDeleteT.map(t => (
+                            <div key={t.id} className="text-xs text-gray-500 border-l-2 border-red-400 pl-2 line-through">
+                              <span className="font-medium">{t.author_name}</span> ({t.rating}/5): {t.text.slice(0, 100)}{t.text.length > 100 ? '...' : ''}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* Image moderation results */}
+                {(() => {
+                  const aiResult = (Array.isArray(item.verification_jobs) ? item.verification_jobs[0] : null)?.ai_result
+                  const imageMod = aiResult?.image_moderation
+                  if (!imageMod) return null
+                  return (
+                    <div className={`mt-4 rounded-md border p-4 ${imageMod.decision === 'rejected' ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'}`}>
+                      <h4 className={`text-sm font-medium mb-1 ${imageMod.decision === 'rejected' ? 'text-red-800' : 'text-green-800'}`}>
+                        Image Moderation: {imageMod.decision}
+                      </h4>
+                      {imageMod.reason && <p className="text-xs text-gray-700">{imageMod.reason}</p>}
+                    </div>
+                  )
+                })()}
 
                 {/* Notes + Actions */}
                 <div className="mt-4 flex items-end gap-3">
