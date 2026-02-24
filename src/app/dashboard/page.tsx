@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { PlanTier } from '@/lib/types'
 import PauseUnpauseButton from './PauseUnpauseButton'
 
-function StatusCard({ status, billingStatus, hasSubscription }: { status: string; billingStatus: string; hasSubscription: boolean }) {
+function StatusCard({ status, billingStatus, hasSubscription, hasContact }: { status: string; billingStatus: string; hasSubscription: boolean; hasContact: boolean }) {
   const configs: Record<string, { bg: string; border: string; text: string; heading: string; message: string }> = {
     billing_suspended: {
       bg: 'bg-orange-50',
@@ -31,7 +31,9 @@ function StatusCard({ status, billingStatus, hasSubscription }: { status: string
       border: 'border-green-200',
       text: 'text-green-800',
       heading: 'Your listing is live',
-      message: 'Customers can find and contact you through your public profile.',
+      message: hasContact
+        ? 'Customers can find and contact you through your public profile.'
+        : 'Your listing is live but customers have no way to contact you. Add a phone number, email, or website from My Listing.',
     },
     paused: {
       bg: 'bg-gray-50',
@@ -158,8 +160,12 @@ export default async function DashboardPage() {
   const trialExpired = isTrial && isTrialExpired(planTier, userSub?.current_period_end ?? null)
   const trialDaysLeft = isTrial && !trialExpired ? daysUntilRenewal : null
 
+  // Check if business has any contact method
+  const biz = business as Record<string, unknown>
+  const hasContact = !!(biz.phone || biz.email_contact || biz.website)
+
   // Fetch real metrics
-  const businessId = (business as Record<string, unknown>).id as string
+  const businessId = biz.id as string
   const [metrics7d, metrics30d] = await Promise.all([
     getBusinessMetrics(businessId, 7),
     getBusinessMetrics(businessId, 30),
@@ -174,7 +180,7 @@ export default async function DashboardPage() {
 
       {/* Status card */}
       <div className="mt-6">
-        <StatusCard status={status} billingStatus={billingStatus} hasSubscription={!!hasActiveSubscription} />
+        <StatusCard status={status} billingStatus={billingStatus} hasSubscription={!!hasActiveSubscription} hasContact={hasContact} />
       </div>
 
       {/* Pause/Unpause button for published/paused listings (not if billing suspended) */}
