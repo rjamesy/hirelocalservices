@@ -30,6 +30,8 @@ import {
   publishChanges,
   unpublishBusiness,
   getMyBusiness,
+  getMyBusinesses,
+  getUserPlan,
   getBusinessBySlug,
 } from '../business'
 
@@ -530,5 +532,95 @@ describe('getBusinessBySlug', () => {
     const result = await getBusinessBySlug('test-business')
     expect(result).not.toBeNull()
     expect(result!.location).toEqual({ id: 'loc-1', suburb: 'Sydney' })
+  })
+})
+
+describe('getUserPlan', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('returns null when not authenticated', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: null },
+      error: null,
+    })
+    const result = await getUserPlan()
+    expect(result).toBeNull()
+  })
+
+  it('returns null when no subscription exists', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    })
+    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    const result = await getUserPlan()
+    expect(result).toBeNull()
+  })
+
+  it('returns null for canceled subscription', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    })
+    maybeSingle.mockResolvedValueOnce({
+      data: { plan: 'premium', status: 'canceled' },
+      error: null,
+    })
+    const result = await getUserPlan()
+    expect(result).toBeNull()
+  })
+
+  it('returns plan for active subscription', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    })
+    maybeSingle.mockResolvedValueOnce({
+      data: { plan: 'premium', status: 'active' },
+      error: null,
+    })
+    const result = await getUserPlan()
+    expect(result).toBe('premium')
+  })
+
+  it('returns plan for past_due subscription', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    })
+    maybeSingle.mockResolvedValueOnce({
+      data: { plan: 'premium_annual', status: 'past_due' },
+      error: null,
+    })
+    const result = await getUserPlan()
+    expect(result).toBe('premium_annual')
+  })
+
+  it('returns correct plan for basic tier', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    })
+    maybeSingle.mockResolvedValueOnce({
+      data: { plan: 'basic', status: 'active' },
+      error: null,
+    })
+    const result = await getUserPlan()
+    expect(result).toBe('basic')
+  })
+
+  it('returns correct plan for free_trial tier', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    })
+    maybeSingle.mockResolvedValueOnce({
+      data: { plan: 'free_trial', status: 'active' },
+      error: null,
+    })
+    const result = await getUserPlan()
+    expect(result).toBe('free_trial')
   })
 })

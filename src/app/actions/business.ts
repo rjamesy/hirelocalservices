@@ -1,7 +1,9 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { businessSchema, locationSchema } from '@/lib/validations'
+import { createBusinessSchema, locationSchema } from '@/lib/validations'
+import { getDescriptionLimit } from '@/lib/plan-limits'
+import type { PlanTier } from '@/lib/types'
 import { slugify } from '@/lib/utils'
 import { quickBlacklistCheck } from '@/lib/blacklist'
 import { revalidatePath } from 'next/cache'
@@ -69,6 +71,15 @@ export async function createBusinessDraft(formData: FormData) {
     }
   }
 
+  // Fetch user plan for tier-specific validation
+  const { data: userSubForPlan } = await supabase
+    .from('user_subscriptions')
+    .select('plan, status')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  const userPlanTier = (userSubForPlan && ['active', 'past_due'].includes(userSubForPlan.status))
+    ? (userSubForPlan.plan as PlanTier) : null
+
   // Validate form data
   const rawData = {
     name: formData.get('name') as string,
@@ -79,7 +90,7 @@ export async function createBusinessDraft(formData: FormData) {
     abn: formData.get('abn') as string,
   }
 
-  const parsed = businessSchema.safeParse(rawData)
+  const parsed = createBusinessSchema(getDescriptionLimit(userPlanTier)).safeParse(rawData)
   if (!parsed.success) {
     return { error: parsed.error.flatten().fieldErrors }
   }
@@ -163,6 +174,15 @@ export async function createBusinessDraft(formData: FormData) {
 export async function updateBusiness(businessId: string, formData: FormData) {
   const { supabase, user } = await verifyBusinessOwnership(businessId)
 
+  // Fetch user plan for tier-specific validation
+  const { data: userSubForPlan } = await supabase
+    .from('user_subscriptions')
+    .select('plan, status')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  const userPlanTier = (userSubForPlan && ['active', 'past_due'].includes(userSubForPlan.status))
+    ? (userSubForPlan.plan as PlanTier) : null
+
   const rawData = {
     name: formData.get('name') as string,
     description: formData.get('description') as string,
@@ -172,7 +192,7 @@ export async function updateBusiness(businessId: string, formData: FormData) {
     abn: formData.get('abn') as string,
   }
 
-  const parsed = businessSchema.safeParse(rawData)
+  const parsed = createBusinessSchema(getDescriptionLimit(userPlanTier)).safeParse(rawData)
   if (!parsed.success) {
     return { error: parsed.error.flatten().fieldErrors }
   }
@@ -747,6 +767,19 @@ export async function getMyBusinesses() {
     .order('created_at', { ascending: false })
 
   return data ?? []
+}
+
+export async function getUserPlan(): Promise<PlanTier | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data } = await supabase
+    .from('user_subscriptions')
+    .select('plan, status')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  if (!data || !['active', 'past_due'].includes(data.status)) return null
+  return data.plan as PlanTier
 }
 
 export async function getMyBusiness(selectedId?: string) {

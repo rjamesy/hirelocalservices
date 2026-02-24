@@ -25,8 +25,8 @@ describe('businessSchema', () => {
     expect(result.success).toBe(false)
   })
 
-  it('rejects name longer than 100 characters', () => {
-    const result = businessSchema.safeParse({ ...validBusiness, name: 'A'.repeat(101) })
+  it('rejects name longer than 80 characters', () => {
+    const result = businessSchema.safeParse({ ...validBusiness, name: 'A'.repeat(81) })
     expect(result.success).toBe(false)
   })
 
@@ -85,8 +85,8 @@ describe('businessSchema', () => {
     expect(result.success).toBe(false)
   })
 
-  it('rejects description longer than 2000 characters', () => {
-    const result = businessSchema.safeParse({ ...validBusiness, description: 'A'.repeat(2001) })
+  it('rejects description longer than 2500 characters', () => {
+    const result = businessSchema.safeParse({ ...validBusiness, description: 'A'.repeat(2501) })
     expect(result.success).toBe(false)
   })
 

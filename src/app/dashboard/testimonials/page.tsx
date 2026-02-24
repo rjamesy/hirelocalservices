@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { getMyBusiness } from '@/app/actions/business'
+import { getMyBusiness, getUserPlan } from '@/app/actions/business'
 import { addTestimonial, deleteTestimonial } from '@/app/actions/testimonials'
 import { testimonialSchema } from '@/lib/validations'
 import { MAX_TESTIMONIALS } from '@/lib/constants'
@@ -80,8 +80,7 @@ export default function TestimonialsPage() {
       setBusinessId(business.id)
 
       // Check plan tier for testimonial access
-      const sub = business.subscription as { plan?: string } | null
-      const plan = sub?.plan ?? 'basic'
+      const plan = await getUserPlan()
       setCanAddTestimonials(plan === 'premium' || plan === 'premium_annual')
 
       const sorted = [...(business.testimonials ?? [])].sort(

@@ -9,9 +9,12 @@ import {
   updateBusinessCategories,
   publishChanges,
   getMyBusiness,
+  getUserPlan,
 } from '@/app/actions/business'
-import { businessSchema, locationSchema } from '@/lib/validations'
+import { createBusinessSchema, locationSchema } from '@/lib/validations'
 import { AU_STATES, RADIUS_OPTIONS } from '@/lib/constants'
+import { BUSINESS_NAME_MAX, getDescriptionLimit } from '@/lib/plan-limits'
+import type { PlanTier } from '@/lib/types'
 import { cn, formatPhone } from '@/lib/utils'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
@@ -159,6 +162,10 @@ function ListingContent() {
   const [serviceRadius, setServiceRadius] = useState(25)
   const [step3Errors, setStep3Errors] = useState<FieldErrors>({})
 
+  // Plan-based limits
+  const [userPlan, setUserPlan] = useState<PlanTier | null>(null)
+  const descLimit = getDescriptionLimit(userPlan)
+
   const isBillingSuspended = business?.billing_status === 'billing_suspended'
 
   // ─── Fetch data on mount ─────────────────────────────────────────
@@ -167,13 +174,16 @@ function ListingContent() {
     try {
       setLoading(true)
 
-      // Fetch business and categories in parallel
-      const [businessData, categoriesRes] = await Promise.all([
+      // Fetch business, categories, and user plan in parallel
+      const [businessData, categoriesRes, plan] = await Promise.all([
         getMyBusiness(bid ?? undefined),
         fetch('/api/categories').then((res) =>
           res.ok ? res.json() : []
         ),
+        getUserPlan(),
       ])
+
+      setUserPlan(plan)
 
       if (categoriesRes && Array.isArray(categoriesRes)) {
         setCategories(categoriesRes)
@@ -223,7 +233,7 @@ function ListingContent() {
   async function saveStep1() {
     setStep1Errors({})
 
-    const parsed = businessSchema.safeParse({
+    const parsed = createBusinessSchema(descLimit).safeParse({
       name,
       phone,
       website,
@@ -611,12 +621,16 @@ function ListingContent() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                maxLength={BUSINESS_NAME_MAX}
                 className={cn(
                   'mt-1 block w-full rounded-lg border px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none transition-colors',
                   step1Errors.name ? 'border-red-300' : 'border-gray-300'
                 )}
                 placeholder="e.g. Smith's Plumbing"
               />
+              <p className="mt-1 text-xs text-gray-400">
+                {name.length}/{BUSINESS_NAME_MAX} characters
+              </p>
               {renderFieldError(step1Errors, 'name')}
             </div>
 
@@ -629,15 +643,24 @@ function ListingContent() {
                 rows={4}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                maxLength={descLimit}
                 className={cn(
                   'mt-1 block w-full rounded-lg border px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none transition-colors',
                   step1Errors.description ? 'border-red-300' : 'border-gray-300'
                 )}
                 placeholder="Describe your business, services, experience..."
               />
-              <p className="mt-1 text-xs text-gray-400">
-                {description.length}/2000 characters
+              <p className={cn(
+                'mt-1 text-xs',
+                description.length >= descLimit ? 'text-red-500' : 'text-gray-400'
+              )}>
+                {description.length}/{descLimit} characters
               </p>
+              {userPlan !== 'premium_annual' && description.length >= descLimit * 0.9 && (
+                <p className="mt-1 text-xs text-brand-600">
+                  Need more space? <a href="/dashboard/billing" className="underline">Upgrade your plan</a> for a higher description limit.
+                </p>
+              )}
               {renderFieldError(step1Errors, 'description')}
             </div>
 

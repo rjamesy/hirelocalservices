@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { getMyBusiness } from '@/app/actions/business'
+import { getMyBusiness, getUserPlan } from '@/app/actions/business'
 import { addPhoto, deletePhoto, reorderPhotos, getUploadUrl } from '@/app/actions/photos'
 import { MAX_PHOTOS } from '@/lib/constants'
 import { cn } from '@/lib/utils'
@@ -77,8 +77,7 @@ export default function PhotosPage() {
       setBusinessId(business.id)
 
       // Check plan tier for photo access
-      const sub = business.subscription as { plan?: string } | null
-      const plan = sub?.plan ?? 'basic'
+      const plan = await getUserPlan()
       setCanUploadPhotos(plan === 'premium' || plan === 'premium_annual')
 
       const sortedPhotos = [...(business.photos ?? [])].sort(

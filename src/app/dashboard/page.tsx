@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { getMyBusiness } from '@/app/actions/business'
+import { getMyBusiness, getMyBusinesses } from '@/app/actions/business'
 import { getBusinessMetrics } from '@/app/actions/metrics'
 import { cn } from '@/lib/utils'
 import { getPlanById } from '@/lib/constants'
@@ -178,12 +178,14 @@ export default async function DashboardPage() {
   const biz = business as Record<string, unknown>
   const hasContact = !!(biz.phone || biz.email_contact || biz.website)
 
-  // Fetch real metrics
+  // Fetch real metrics and all businesses in parallel
   const businessId = biz.id as string
-  const [metrics7d, metrics30d] = await Promise.all([
+  const [metrics7d, metrics30d, allBusinesses] = await Promise.all([
     getBusinessMetrics(businessId, 7),
     getBusinessMetrics(businessId, 30),
+    isPremiumTier ? getMyBusinesses() : Promise.resolve([]),
   ])
+  const showBusinessSelector = isPremiumTier && allBusinesses.length > 1
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -481,6 +483,49 @@ export default async function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Business selector for premium users with multiple listings */}
+      {showBusinessSelector && (
+        <div className="mt-8">
+          <h2 className="text-lg font-semibold text-gray-900">Your Businesses</h2>
+          <div className="mt-4 space-y-3">
+            {allBusinesses.map((b) => {
+              const statusColors: Record<string, string> = {
+                published: 'bg-green-100 text-green-800',
+                draft: 'bg-yellow-100 text-yellow-800',
+                paused: 'bg-gray-100 text-gray-800',
+                suspended: 'bg-red-100 text-red-800',
+              }
+              const billingColor = b.billing_status === 'billing_suspended' ? 'bg-orange-100 text-orange-800' : ''
+              const badgeClass = billingColor || statusColors[b.status] || 'bg-gray-100 text-gray-800'
+              const badgeLabel = b.billing_status === 'billing_suspended' ? 'billing suspended' : b.status
+
+              return (
+                <div
+                  key={b.id}
+                  className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium text-gray-900">{b.name}</span>
+                    <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', badgeClass)}>
+                      {badgeLabel}
+                    </span>
+                  </div>
+                  <Link
+                    href={`/dashboard/listing?bid=${b.id}`}
+                    className="inline-flex items-center rounded-lg bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-100 transition-colors"
+                  >
+                    Edit
+                    <svg className="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12h15m0 0l-6.75-6.75M19.5 12l-6.75 6.75" />
+                    </svg>
+                  </Link>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Quick links — hide edit/photos/testimonials when billing suspended */}
       <div className="mt-8">

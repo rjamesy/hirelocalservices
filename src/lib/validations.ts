@@ -58,33 +58,37 @@ const AU_STATES = ['QLD', 'NSW', 'VIC', 'SA', 'WA', 'TAS', 'NT', 'ACT'] as const
 
 // ─── Schemas ────────────────────────────────────────────────────────
 
-export const businessSchema = z.object({
-  name: z
-    .string()
-    .min(2, 'Business name must be at least 2 characters')
-    .max(100, 'Business name must be at most 100 characters'),
-  phone: z
-    .string()
-    .regex(AU_PHONE_REGEX, 'Must be a valid Australian phone number')
-    .optional()
-    .or(z.literal('')),
-  website: z
-    .string()
-    .url('Must be a valid URL')
-    .optional()
-    .or(z.literal('')),
-  email_contact: z
-    .string()
-    .email('Must be a valid email address')
-    .optional()
-    .or(z.literal('')),
-  description: moderatedText(10, 2000),
-  abn: z
-    .string()
-    .regex(/^\d{11}$/, 'ABN must be exactly 11 digits')
-    .optional()
-    .or(z.literal('')),
-})
+export function createBusinessSchema(maxDescriptionLength: number = 2500) {
+  return z.object({
+    name: z
+      .string()
+      .min(2, 'Business name must be at least 2 characters')
+      .max(80, 'Business name must be at most 80 characters'),
+    phone: z
+      .string()
+      .regex(AU_PHONE_REGEX, 'Must be a valid Australian phone number')
+      .optional()
+      .or(z.literal('')),
+    website: z
+      .string()
+      .url('Must be a valid URL')
+      .optional()
+      .or(z.literal('')),
+    email_contact: z
+      .string()
+      .email('Must be a valid email address')
+      .optional()
+      .or(z.literal('')),
+    description: moderatedText(10, maxDescriptionLength),
+    abn: z
+      .string()
+      .regex(/^\d{11}$/, 'ABN must be exactly 11 digits')
+      .optional()
+      .or(z.literal('')),
+  })
+}
+
+export const businessSchema = createBusinessSchema(2500)
 
 export const locationSchema = z.object({
   address_text: z
