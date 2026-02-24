@@ -203,6 +203,7 @@ function ListingContent() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
+      setShowSelector(false)
 
       // If no bid specified, check if user has multiple businesses
       if (!bid) {
