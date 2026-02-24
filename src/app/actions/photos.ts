@@ -75,16 +75,16 @@ function isPublishedOrPaused(status: string): boolean {
 // ─── Server Actions ─────────────────────────────────────────────────
 
 export async function getUploadUrl(businessId: string, fileName: string) {
-  const { supabase } = await verifyBusinessOwnership(businessId)
+  const { supabase, user } = await verifyBusinessOwnership(businessId)
 
-  // Check plan tier — photos require premium
+  // Check plan tier — photos require premium (user-level subscription)
   const { data: sub } = await supabase
-    .from('subscriptions')
-    .select('plan')
-    .eq('business_id', businessId)
+    .from('user_subscriptions')
+    .select('plan, status')
+    .eq('user_id', user.id)
     .maybeSingle()
 
-  if (!sub || (sub.plan !== 'premium' && sub.plan !== 'premium_annual')) {
+  if (!sub || !['active', 'past_due'].includes(sub.status) || (sub.plan !== 'premium' && sub.plan !== 'premium_annual')) {
     return { error: 'premium_required' }
   }
 
@@ -133,16 +133,16 @@ export async function addPhoto(
   url: string,
   sortOrder: number
 ) {
-  const { supabase, business } = await verifyBusinessOwnership(businessId)
+  const { supabase, user, business } = await verifyBusinessOwnership(businessId)
 
-  // Check plan tier — photos require premium
+  // Check plan tier — photos require premium (user-level subscription)
   const { data: sub } = await supabase
-    .from('subscriptions')
-    .select('plan')
-    .eq('business_id', businessId)
+    .from('user_subscriptions')
+    .select('plan, status')
+    .eq('user_id', user.id)
     .maybeSingle()
 
-  if (!sub || (sub.plan !== 'premium' && sub.plan !== 'premium_annual')) {
+  if (!sub || !['active', 'past_due'].includes(sub.status) || (sub.plan !== 'premium' && sub.plan !== 'premium_annual')) {
     return { error: 'premium_required' }
   }
 

@@ -30,7 +30,7 @@ describe('getUploadUrl', () => {
 
   it('requires premium plan', async () => {
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'basic' },
+      data: { plan: 'basic', status: 'active' },
       error: null,
     })
     const result = await getUploadUrl('biz-123', 'test.jpg')
@@ -45,7 +45,7 @@ describe('getUploadUrl', () => {
 
   it('enforces max photo limit', async () => {
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium' },
+      data: { plan: 'premium', status: 'active' },
       error: null,
     })
     // photo count at max
@@ -58,7 +58,7 @@ describe('getUploadUrl', () => {
 
   it('returns signed URL for premium user', async () => {
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium' },
+      data: { plan: 'premium', status: 'active' },
       error: null,
     })
     // photo count OK
@@ -72,7 +72,7 @@ describe('getUploadUrl', () => {
 
   it('allows premium_annual plan', async () => {
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium_annual' },
+      data: { plan: 'premium_annual', status: 'active' },
       error: null,
     })
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 })
@@ -92,7 +92,7 @@ describe('getUploadUrl', () => {
 
   it('excludes pending_delete photos from count', async () => {
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium' },
+      data: { plan: 'premium', status: 'active' },
       error: null,
     })
     // Count returns 9 (one pending_delete excluded by .neq query)
@@ -118,7 +118,7 @@ describe('addPhoto', () => {
       error: null,
     })
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'basic' },
+      data: { plan: 'basic', status: 'active' },
       error: null,
     })
     const result = await addPhoto('biz-123', 'https://url.com/photo.jpg', 0)
@@ -131,7 +131,7 @@ describe('addPhoto', () => {
       error: null,
     })
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium' },
+      data: { plan: 'premium', status: 'active' },
       error: null,
     })
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 10 })
@@ -146,7 +146,7 @@ describe('addPhoto', () => {
       error: null,
     })
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium' },
+      data: { plan: 'premium', status: 'active' },
       error: null,
     })
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 3 })
@@ -166,7 +166,7 @@ describe('addPhoto', () => {
       error: null,
     })
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium' },
+      data: { plan: 'premium', status: 'active' },
       error: null,
     })
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 3 })
@@ -186,7 +186,7 @@ describe('addPhoto', () => {
       error: null,
     })
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium' },
+      data: { plan: 'premium', status: 'active' },
       error: null,
     })
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 })

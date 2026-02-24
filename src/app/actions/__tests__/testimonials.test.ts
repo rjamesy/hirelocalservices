@@ -47,7 +47,7 @@ describe('addTestimonial', () => {
       error: null,
     })
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'basic' },
+      data: { plan: 'basic', status: 'active' },
       error: null,
     })
     const fd = makeFormData({ author_name: 'John', text: 'Great service provided!', rating: '5' })
@@ -61,7 +61,7 @@ describe('addTestimonial', () => {
       error: null,
     })
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium' },
+      data: { plan: 'premium', status: 'active' },
       error: null,
     })
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 20 })
@@ -78,7 +78,7 @@ describe('addTestimonial', () => {
       error: null,
     })
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium' },
+      data: { plan: 'premium', status: 'active' },
       error: null,
     })
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 })
@@ -94,7 +94,7 @@ describe('addTestimonial', () => {
       error: null,
     })
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium' },
+      data: { plan: 'premium', status: 'active' },
       error: null,
     })
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 5 })
@@ -115,7 +115,7 @@ describe('addTestimonial', () => {
       error: null,
     })
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium' },
+      data: { plan: 'premium', status: 'active' },
       error: null,
     })
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 5 })
@@ -136,7 +136,7 @@ describe('addTestimonial', () => {
       error: null,
     })
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium' },
+      data: { plan: 'premium', status: 'active' },
       error: null,
     })
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 })
@@ -157,7 +157,7 @@ describe('addTestimonial', () => {
       error: null,
     })
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium_annual' },
+      data: { plan: 'premium_annual', status: 'active' },
       error: null,
     })
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 })
@@ -177,7 +177,7 @@ describe('addTestimonial', () => {
       error: null,
     })
     maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium' },
+      data: { plan: 'premium', status: 'active' },
       error: null,
     })
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 })
