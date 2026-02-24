@@ -48,9 +48,16 @@ describe('PhotoUploader', () => {
     expect(input).toHaveAttribute('accept', 'image/jpeg,image/png,image/webp')
   })
 
-  it('shows uploading text when uploading', () => {
-    render(<PhotoUploader {...defaultProps} uploading={true} />)
-    expect(screen.getByText('Uploading...')).toBeInTheDocument()
+  it('shows upload progress when uploading with progress', () => {
+    render(<PhotoUploader {...defaultProps} uploading={true} uploadProgress={45} />)
+    expect(screen.getByText(/Uploading... 45%/)).toBeInTheDocument()
+  })
+
+  it('shows progress bar at correct width', () => {
+    const { container } = render(<PhotoUploader {...defaultProps} uploading={true} uploadProgress={60} />)
+    const progressBar = container.querySelector('[style*="width"]') as HTMLElement
+    expect(progressBar).toBeInTheDocument()
+    expect(progressBar.style.width).toBe('60%')
   })
 
   it('applies opacity class when uploading', () => {

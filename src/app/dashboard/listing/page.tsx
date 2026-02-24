@@ -181,6 +181,7 @@ function ListingContent() {
   // Step 4: Photos
   const [photos, setPhotos] = useState<{ id: string; url: string; sort_order: number; status?: string }[]>([])
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null)
   const [reordering, setReordering] = useState(false)
 
@@ -464,6 +465,7 @@ function ListingContent() {
     }
 
     setUploading(true)
+    setUploadProgress(0)
     try {
       const uploadResult = await getUploadUrl(business.id, file.name)
       if ('error' in uploadResult) {
@@ -471,13 +473,23 @@ function ListingContent() {
         return
       }
 
-      const uploadResponse = await fetch(uploadResult.data.signedUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': file.type },
-        body: file,
+      // Use XMLHttpRequest for upload progress tracking
+      const uploadOk = await new Promise<boolean>((resolve) => {
+        const xhr = new XMLHttpRequest()
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            setUploadProgress(Math.round((e.loaded / e.total) * 100))
+          }
+        })
+        xhr.addEventListener('load', () => resolve(xhr.status >= 200 && xhr.status < 300))
+        xhr.addEventListener('error', () => resolve(false))
+        xhr.addEventListener('abort', () => resolve(false))
+        xhr.open('PUT', uploadResult.data.signedUrl)
+        xhr.setRequestHeader('Content-Type', file.type)
+        xhr.send(file)
       })
 
-      if (!uploadResponse.ok) {
+      if (!uploadOk) {
         setToast({ message: 'Failed to upload file.', type: 'error' })
         return
       }
@@ -1198,6 +1210,7 @@ function ListingContent() {
                   <PhotoUploader
                     onUpload={handlePhotoUpload}
                     uploading={uploading}
+                    uploadProgress={uploadProgress}
                     maxPhotos={MAX_PHOTOS}
                     currentCount={visiblePhotos.length}
                   />

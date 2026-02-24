@@ -62,6 +62,7 @@ function PhotosContent() {
   const [businessId, setBusinessId] = useState<string | null>(null)
   const [photos, setPhotos] = useState<Photo[]>([])
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [reordering, setReordering] = useState(false)
   const [canUploadPhotos, setCanUploadPhotos] = useState(false)
@@ -142,6 +143,7 @@ function PhotosContent() {
     }
 
     setUploading(true)
+    setUploadProgress(0)
     try {
       // Get a signed upload URL from the server
       const uploadResult = await getUploadUrl(businessId, file.name)
@@ -151,14 +153,23 @@ function PhotosContent() {
         return
       }
 
-      // Upload the file to the signed URL
-      const uploadResponse = await fetch(uploadResult.data.signedUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': file.type },
-        body: file,
+      // Upload the file with progress tracking
+      const uploadOk = await new Promise<boolean>((resolve) => {
+        const xhr = new XMLHttpRequest()
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            setUploadProgress(Math.round((e.loaded / e.total) * 100))
+          }
+        })
+        xhr.addEventListener('load', () => resolve(xhr.status >= 200 && xhr.status < 300))
+        xhr.addEventListener('error', () => resolve(false))
+        xhr.addEventListener('abort', () => resolve(false))
+        xhr.open('PUT', uploadResult.data.signedUrl)
+        xhr.setRequestHeader('Content-Type', file.type)
+        xhr.send(file)
       })
 
-      if (!uploadResponse.ok) {
+      if (!uploadOk) {
         setToast({ message: 'Failed to upload file. Please try again.', type: 'error' })
         return
       }
@@ -363,6 +374,7 @@ function PhotosContent() {
           <PhotoUploader
             onUpload={handleUpload}
             uploading={uploading}
+            uploadProgress={uploadProgress}
             maxPhotos={MAX_PHOTOS}
             currentCount={photos.length}
           />
