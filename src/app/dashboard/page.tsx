@@ -26,15 +26,21 @@ function StatusCard({ status, billingStatus, hasSubscription, hasContact }: { st
         ? 'Your listing is ready to go. Publish it so customers can find you.'
         : 'Complete your listing details and subscribe to go live.',
     },
-    published: {
-      bg: 'bg-green-50',
-      border: 'border-green-200',
-      text: 'text-green-800',
-      heading: 'Your listing is live',
-      message: hasContact
-        ? 'Customers can find and contact you through your public profile.'
-        : 'Your listing is live but customers have no way to contact you. Add a phone number, email, or website from My Listing.',
-    },
+    published: hasContact
+      ? {
+          bg: 'bg-green-50',
+          border: 'border-green-200',
+          text: 'text-green-800',
+          heading: 'Your listing is live',
+          message: 'Customers can find and contact you through your public profile.',
+        }
+      : {
+          bg: 'bg-yellow-50',
+          border: 'border-yellow-200',
+          text: 'text-yellow-800',
+          heading: 'Your listing is live but missing contact details',
+          message: 'Customers can find your listing but have no way to reach you. Add a phone number, email, or website to start getting enquiries.',
+        },
     paused: {
       bg: 'bg-gray-50',
       border: 'border-gray-200',
@@ -59,7 +65,7 @@ function StatusCard({ status, billingStatus, hasSubscription, hasContact }: { st
     <div className={cn('rounded-lg border p-4', config.bg, config.border)}>
       <div className="flex items-start gap-3">
         <div className="flex-shrink-0 mt-0.5">
-          {effectiveStatus === 'published' ? (
+          {effectiveStatus === 'published' && hasContact ? (
             <svg className={cn('h-5 w-5', config.text)} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -82,6 +88,14 @@ function StatusCard({ status, billingStatus, hasSubscription, hasContact }: { st
               className="mt-3 inline-flex items-center rounded-md bg-orange-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-orange-700 transition-colors"
             >
               Upgrade Now
+            </Link>
+          )}
+          {effectiveStatus === 'published' && !hasContact && (
+            <Link
+              href="/dashboard/listing"
+              className="mt-3 inline-flex items-center rounded-md bg-yellow-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-yellow-700 transition-colors"
+            >
+              Add Contact Details
             </Link>
           )}
         </div>
