@@ -26,6 +26,9 @@ export default function AdminSystemPage() {
   const [apiKeyVisible, setApiKeyVisible] = useState(false)
   const [apiKeyEditing, setApiKeyEditing] = useState(false)
 
+  // Email sub-tab state
+  const [emailSubTab, setEmailSubTab] = useState<'seed' | 'claim_approved' | 'claim_rejected'>('seed')
+
   // Reset state
   const [resetPhrase, setResetPhrase] = useState('')
   const [resetConfirm, setResetConfirm] = useState(false)
@@ -247,6 +250,49 @@ export default function AdminSystemPage() {
                 <span className="text-sm font-medium text-gray-700">Manual source enabled</span>
               </label>
             </div>
+
+            <hr className="border-gray-200" />
+
+            <h3 className="text-sm font-semibold text-gray-800">Seed Expiry</h3>
+
+            <div>
+              <label className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={Boolean(settings.seed_expiry_enabled ?? false)}
+                  onChange={(e) => {
+                    setSettings((s) => ({ ...s, seed_expiry_enabled: e.target.checked }))
+                    saveSetting('seed_expiry_enabled', e.target.checked)
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 text-brand-600"
+                />
+                <span className="text-sm font-medium text-gray-700">Enable seed expiry (auto-unpublish after N days)</span>
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Seed Expiry Days
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={1}
+                  value={Number(settings.seed_expiry_days ?? 90)}
+                  onChange={(e) => setSettings((s) => ({ ...s, seed_expiry_days: Number(e.target.value) }))}
+                  className="w-24 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  disabled={!Boolean(settings.seed_expiry_enabled)}
+                />
+                <button
+                  onClick={() => saveSetting('seed_expiry_days', Number(settings.seed_expiry_days ?? 90))}
+                  disabled={saving || !Boolean(settings.seed_expiry_enabled)}
+                  className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  Save
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">Seed listings older than this many days will be auto-unpublished.</p>
+            </div>
           </div>
         )}
 
@@ -376,54 +422,143 @@ export default function AdminSystemPage() {
 
         {tab === 'email' && (
           <div className="space-y-6">
-            <h2 className="text-lg font-semibold text-gray-900">Email Template</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Email Templates</h2>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Subject
-              </label>
-              <input
-                type="text"
-                value={String(settings.email_template_subject ?? '')}
-                onChange={(e) => setSettings((s) => ({ ...s, email_template_subject: e.target.value }))}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              />
+            {/* Email sub-tabs */}
+            <div className="flex gap-1 rounded-lg bg-gray-100 p-1 w-fit">
+              {([
+                { key: 'seed' as const, label: 'Seed Notification' },
+                { key: 'claim_approved' as const, label: 'Claim Approved' },
+                { key: 'claim_rejected' as const, label: 'Claim Rejected' },
+              ]).map((st) => (
+                <button
+                  key={st.key}
+                  onClick={() => setEmailSubTab(st.key)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    emailSubTab === st.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {st.label}
+                </button>
+              ))}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Body
-              </label>
-              <textarea
-                value={String(settings.email_template_body ?? '')}
-                onChange={(e) => setSettings((s) => ({ ...s, email_template_body: e.target.value }))}
-                rows={10}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono"
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                Use <code>{'{view_url}'}</code> and <code>{'{unlist_url}'}</code> as placeholders.
-              </p>
-            </div>
+            {emailSubTab === 'seed' && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+                  <input
+                    type="text"
+                    value={String(settings.email_template_subject ?? '')}
+                    onChange={(e) => setSettings((s) => ({ ...s, email_template_subject: e.target.value }))}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Body</label>
+                  <textarea
+                    value={String(settings.email_template_body ?? '')}
+                    onChange={(e) => setSettings((s) => ({ ...s, email_template_body: e.target.value }))}
+                    rows={10}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Use <code>{'{view_url}'}</code> and <code>{'{unlist_url}'}</code> as placeholders.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    const body = String(settings.email_template_body ?? '')
+                    if (!body.includes('{view_url}')) {
+                      setMessage({ type: 'error', text: 'Email body must contain {view_url} placeholder.' })
+                      return
+                    }
+                    if (!body.includes('{unlist_url}')) {
+                      setMessage({ type: 'error', text: 'Email body must contain {unlist_url} placeholder.' })
+                      return
+                    }
+                    saveSetting('email_template_subject', settings.email_template_subject ?? '')
+                    saveSetting('email_template_body', settings.email_template_body ?? '')
+                  }}
+                  disabled={saving}
+                  className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  Save Template
+                </button>
+              </>
+            )}
 
-            <button
-              onClick={() => {
-                const body = String(settings.email_template_body ?? '')
-                if (!body.includes('{view_url}')) {
-                  setMessage({ type: 'error', text: 'Email body must contain {view_url} placeholder.' })
-                  return
-                }
-                if (!body.includes('{unlist_url}')) {
-                  setMessage({ type: 'error', text: 'Email body must contain {unlist_url} placeholder.' })
-                  return
-                }
-                saveSetting('email_template_subject', settings.email_template_subject ?? '')
-                saveSetting('email_template_body', settings.email_template_body ?? '')
-              }}
-              disabled={saving}
-              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
-            >
-              Save Template
-            </button>
+            {emailSubTab === 'claim_approved' && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+                  <input
+                    type="text"
+                    value={String(settings.email_template_claim_approved_subject ?? 'Your claim has been approved')}
+                    onChange={(e) => setSettings((s) => ({ ...s, email_template_claim_approved_subject: e.target.value }))}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Body</label>
+                  <textarea
+                    value={String(settings.email_template_claim_approved_body ?? '')}
+                    onChange={(e) => setSettings((s) => ({ ...s, email_template_claim_approved_body: e.target.value }))}
+                    rows={10}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Placeholders: <code>{'{business_name}'}</code>, <code>{'{dashboard_url}'}</code>
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    saveSetting('email_template_claim_approved_subject', settings.email_template_claim_approved_subject ?? 'Your claim has been approved')
+                    saveSetting('email_template_claim_approved_body', settings.email_template_claim_approved_body ?? '')
+                  }}
+                  disabled={saving}
+                  className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  Save Template
+                </button>
+              </>
+            )}
+
+            {emailSubTab === 'claim_rejected' && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+                  <input
+                    type="text"
+                    value={String(settings.email_template_claim_rejected_subject ?? 'Your claim was not approved')}
+                    onChange={(e) => setSettings((s) => ({ ...s, email_template_claim_rejected_subject: e.target.value }))}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Body</label>
+                  <textarea
+                    value={String(settings.email_template_claim_rejected_body ?? '')}
+                    onChange={(e) => setSettings((s) => ({ ...s, email_template_claim_rejected_body: e.target.value }))}
+                    rows={10}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Placeholders: <code>{'{business_name}'}</code>, <code>{'{reason}'}</code>
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    saveSetting('email_template_claim_rejected_subject', settings.email_template_claim_rejected_subject ?? 'Your claim was not approved')
+                    saveSetting('email_template_claim_rejected_body', settings.email_template_claim_rejected_body ?? '')
+                  }}
+                  disabled={saving}
+                  className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  Save Template
+                </button>
+              </>
+            )}
           </div>
         )}
 

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { getMyBusiness } from '@/app/actions/business'
 import { cn } from '@/lib/utils'
 import { DashboardSidebarClient } from './DashboardSidebarClient'
+import NotificationBell from '@/components/NotificationBell'
 
 export const metadata = {
   title: 'Dashboard | HireLocalServices',
@@ -109,7 +110,7 @@ export default async function DashboardLayout({
         <aside className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
           <div className="flex min-h-0 flex-1 flex-col border-r border-gray-200 bg-white">
             {/* Sidebar header */}
-            <div className="flex h-16 items-center border-b border-gray-200 px-4">
+            <div className="flex h-16 items-center justify-between border-b border-gray-200 px-4">
               <Link href="/dashboard" className="flex items-center gap-2">
                 <svg
                   className="h-7 w-7 text-brand-600"
@@ -127,6 +128,7 @@ export default async function DashboardLayout({
                 </svg>
                 <span className="text-sm font-semibold text-gray-900">HireLocalServices</span>
               </Link>
+              <NotificationBell />
             </div>
 
             {/* Business info */}

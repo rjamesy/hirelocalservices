@@ -12,6 +12,7 @@ import { quickBlacklistCheck } from '@/lib/blacklist'
 import { TRIAL_DURATION_DAYS } from '@/lib/ranking'
 import { logAudit } from '@/lib/audit'
 import { getUserListingCapacity } from '@/lib/listing-limits'
+import { createNotification } from '@/app/actions/notifications'
 
 async function requireAuth() {
   const supabase = await createClient()
@@ -464,6 +465,15 @@ export async function approveClaim(claimId: string, notes?: string) {
     },
   })
 
+  // Notify claimer
+  await createNotification(supabase, {
+    userId: claim.claimer_id,
+    type: 'claim_approved',
+    title: 'Claim Approved',
+    message: `Your claim has been approved! You now own this business listing.`,
+    metadata: { claimId, businessId: claim.business_id },
+  })
+
   revalidatePath('/admin/claims')
   revalidatePath('/admin')
   revalidatePath('/dashboard')
@@ -523,6 +533,23 @@ export async function rejectClaim(claimId: string, notes?: string) {
       admin_notes: notes || null,
     },
   })
+
+  // Notify claimer
+  const { data: claimForNotify } = await supabase
+    .from('business_claims')
+    .select('claimer_id')
+    .eq('id', claimId)
+    .single()
+
+  if (claimForNotify) {
+    await createNotification(supabase, {
+      userId: claimForNotify.claimer_id,
+      type: 'claim_rejected',
+      title: 'Claim Rejected',
+      message: `Your claim has been rejected.${notes ? ` Reason: ${notes}` : ''}`,
+      metadata: { claimId, businessId: claim.business_id, notes },
+    })
+  }
 
   revalidatePath('/admin/claims')
   return { success: true }

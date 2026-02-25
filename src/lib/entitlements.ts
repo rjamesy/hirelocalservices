@@ -191,6 +191,76 @@ function getDescriptionLimitForPlan(planDef: PlanDefinition): number {
   return DEFAULT_DESCRIPTION_LIMIT
 }
 
+// ─── Batch Entitlements ──────────────────────────────────────────────
+
+/**
+ * getBatchUserEntitlements fetches entitlements for multiple users in 2 queries
+ * instead of N*3 queries (N users x 3 queries each).
+ * Used by admin list pages to prevent N+1.
+ */
+export async function getBatchUserEntitlements(
+  supabase: SupabaseClient,
+  userIds: string[]
+): Promise<Map<string, Entitlements>> {
+  const result = new Map<string, Entitlements>()
+  if (userIds.length === 0) return result
+
+  // 1. Batch fetch all user_subscriptions for these users
+  const { data: allSubs } = await supabase
+    .from('user_subscriptions')
+    .select('*')
+    .in('user_id', userIds)
+
+  // Build map: userId → subscription row(s)
+  const subsByUser = new Map<string, Record<string, any>[]>()
+  for (const sub of allSubs ?? []) {
+    const list = subsByUser.get(sub.user_id) ?? []
+    list.push(sub)
+    subsByUser.set(sub.user_id, list)
+  }
+
+  // 2. Batch count businesses per owner
+  // We need counts per user, so do a grouped query
+  const { data: bizCounts } = await supabase
+    .from('businesses')
+    .select('owner_id', { count: 'exact', head: false })
+    .in('owner_id', userIds)
+    .eq('is_seed', false)
+
+  // Count per owner from the returned rows
+  const countByUser = new Map<string, number>()
+  for (const row of bizCounts ?? []) {
+    const ownerId = (row as Record<string, unknown>).owner_id as string
+    countByUser.set(ownerId, (countByUser.get(ownerId) ?? 0) + 1)
+  }
+
+  // 3. Build entitlements for each user
+  for (const userId of userIds) {
+    const subs = subsByUser.get(userId) ?? []
+    const currentListingCount = countByUser.get(userId) ?? 0
+
+    // Find non-canceled sub
+    const activeSub = subs.find(s => s.status !== 'canceled')
+
+    if (activeSub) {
+      result.set(userId, await buildEntitlements(activeSub, currentListingCount, userId))
+    } else {
+      // Check for canceled sub still within period
+      const canceledSub = subs
+        .filter(s => s.status === 'canceled')
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0]
+
+      if (canceledSub?.current_period_end && new Date(canceledSub.current_period_end) > new Date()) {
+        result.set(userId, await buildEntitlements(canceledSub, currentListingCount, userId))
+      } else {
+        result.set(userId, nullEntitlements(userId, currentListingCount))
+      }
+    }
+  }
+
+  return result
+}
+
 // ─── SYNC HELPER — ONLY writer of billing_status ────────────────────
 
 /**

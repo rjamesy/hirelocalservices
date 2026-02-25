@@ -33,12 +33,17 @@ export function createMockSupabaseClient() {
   const limitSpy = vi.fn()
   const orderSpy = vi.fn()
   const rangeSpy = vi.fn()
+  const inSpy = vi.fn()
+  const notSpy = vi.fn()
+  const isSpy = vi.fn()
+  const orSpy = vi.fn()
 
   const chainingSpies: Record<string, ReturnType<typeof vi.fn>> = {
     select: selectSpy, insert: insertSpy, update: updateSpy,
     delete: deleteSpy, upsert: upsertSpy, eq: eqSpy, neq: neqSpy,
     gt: gtSpy, gte: gteSpy, lt: ltSpy, lte: lteSpy,
     ilike: ilikeSpy, limit: limitSpy, order: orderSpy, range: rangeSpy,
+    in: inSpy, not: notSpy, is: isSpy, or: orSpy,
   }
 
   // Spy for direct-await chain results (count queries, deletes, updates without .single())
@@ -122,5 +127,9 @@ export function createMockSupabaseClient() {
     limit: limitSpy,
     order: orderSpy,
     range: rangeSpy,
+    in: inSpy,
+    not: notSpy,
+    is: isSpy,
+    or: orSpy,
   }
 }

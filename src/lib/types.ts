@@ -6,6 +6,9 @@ export type Profile = {
   id: string
   email: string
   role: 'business' | 'admin'
+  admin_notes: string | null
+  suspended_at: string | null
+  suspended_reason: string | null
   created_at: string
 }
 
@@ -34,7 +37,7 @@ export type Business = {
   email_contact: string | null
   website: string | null
   abn: string | null
-  status: 'draft' | 'published' | 'suspended' | 'paused'
+  status: 'draft' | 'published' | 'suspended' | 'paused' | 'deleted'
   is_seed: boolean
   claim_status: ClaimStatus
   seed_source: string | null
@@ -46,6 +49,7 @@ export type Business = {
   pending_changes: PendingChanges | null
   suspended_reason: string | null
   suspended_at: string | null
+  deleted_at: string | null
   created_at: string
   updated_at: string
 }
@@ -214,6 +218,9 @@ export type Report = {
   reason: ReportReason
   details: string | null
   status: 'open' | 'resolved'
+  resolution_outcome: string | null
+  resolved_by: string | null
+  resolved_at: string | null
   created_at: string
 }
 
@@ -263,6 +270,12 @@ export type SystemSettingKey =
   | 'ai_verification_enabled'
   | 'ai_verification_strictness'
   | 'max_premium_listings'
+  | 'seed_expiry_days'
+  | 'seed_expiry_enabled'
+  | 'email_template_claim_approved_subject'
+  | 'email_template_claim_approved_body'
+  | 'email_template_claim_rejected_subject'
+  | 'email_template_claim_rejected_body'
 
 export type SystemSetting = {
   key: SystemSettingKey
@@ -281,11 +294,23 @@ export type AuditAction =
   | 'listing_claim_submitted'
   | 'listing_claim_approved'
   | 'listing_claim_rejected'
+  | 'listing_deleted'
+  | 'listing_restored'
+  | 'listing_transferred'
+  | 'listing_paused'
+  | 'listing_pending_approved'
+  | 'listing_pending_rejected'
   | 'seed_ingested'
   | 'reset_executed'
   | 'settings_changed'
   | 'verification_completed'
   | 'report_resolved'
+  | 'report_revalidated'
+  | 'account_plan_changed'
+  | 'account_suspended'
+  | 'account_unsuspended'
+  | 'account_deleted'
+  | 'account_notes_updated'
 
 export type AuditLogEntry = {
   id: string
@@ -294,6 +319,24 @@ export type AuditLogEntry = {
   entity_id: string | null
   actor_id: string | null
   details: Record<string, unknown>
+  created_at: string
+}
+
+export type NotificationType =
+  | 'claim_approved'
+  | 'claim_rejected'
+  | 'verification_approved'
+  | 'verification_rejected'
+  | 'listing_suspended'
+
+export type UserNotification = {
+  id: string
+  user_id: string
+  type: NotificationType
+  title: string
+  message: string
+  metadata: Record<string, unknown>
+  read: boolean
   created_at: string
 }
 
@@ -311,6 +354,7 @@ export type AustralianState =
 
 export type SubscriptionStatus =
   | 'active'
+  | 'trialing'
   | 'past_due'
   | 'canceled'
   | 'unpaid'
@@ -368,14 +412,14 @@ export type Database = {
     Tables: {
       profiles: {
         Row: Profile
-        Insert: Omit<Profile, 'created_at'>
+        Insert: Omit<Profile, 'created_at' | 'admin_notes' | 'suspended_at' | 'suspended_reason'> & Partial<Pick<Profile, 'admin_notes' | 'suspended_at' | 'suspended_reason'>>
         Update: Partial<Omit<Profile, 'id' | 'created_at'>>
         Relationships: []
       }
       businesses: {
         Row: Business
-        Insert: Omit<Business, 'id' | 'created_at' | 'updated_at' | 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at' | 'suspended_reason' | 'suspended_at'> & Partial<Pick<Business, 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at' | 'suspended_reason' | 'suspended_at'>>
-        Update: Partial<Omit<Business, 'id' | 'created_at' | 'owner_id'>>
+        Insert: Omit<Business, 'id' | 'created_at' | 'updated_at' | 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at' | 'suspended_reason' | 'suspended_at' | 'deleted_at'> & Partial<Pick<Business, 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at' | 'suspended_reason' | 'suspended_at' | 'deleted_at'>>
+        Update: Partial<Omit<Business, 'id' | 'created_at'>>
         Relationships: [
           {
             foreignKeyName: 'businesses_owner_id_fkey'
@@ -507,7 +551,7 @@ export type Database = {
       }
       reports: {
         Row: Report
-        Insert: Omit<Report, 'id' | 'created_at' | 'status'>
+        Insert: Omit<Report, 'id' | 'created_at' | 'status' | 'resolution_outcome' | 'resolved_by' | 'resolved_at'> & Partial<Pick<Report, 'resolution_outcome' | 'resolved_by' | 'resolved_at'>>
         Update: Partial<Omit<Report, 'id' | 'created_at'>>
         Relationships: [
           {
@@ -602,6 +646,20 @@ export type Database = {
           {
             foreignKeyName: 'audit_log_actor_id_fkey'
             columns: ['actor_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      user_notifications: {
+        Row: UserNotification
+        Insert: Omit<UserNotification, 'id' | 'created_at' | 'read'> & Partial<Pick<UserNotification, 'read'>>
+        Update: Partial<Pick<UserNotification, 'read'>>
+        Relationships: [
+          {
+            foreignKeyName: 'user_notifications_user_id_fkey'
+            columns: ['user_id']
             isOneToOne: false
             referencedRelation: 'profiles'
             referencedColumns: ['id']
@@ -748,11 +806,29 @@ export type Database = {
           daily_views: unknown
         }[]
       }
+      get_subscription_metrics: {
+        Args: {
+          p_days?: number
+        }
+        Returns: unknown
+      }
+      get_listing_metrics: {
+        Args: {
+          p_days?: number
+        }
+        Returns: unknown
+      }
+      get_moderation_metrics: {
+        Args: {
+          p_days?: number
+        }
+        Returns: unknown
+      }
     }
     Enums: {
       subscription_status: SubscriptionStatus
       report_reason: ReportReason
-      business_status: 'draft' | 'published' | 'suspended' | 'paused'
+      business_status: 'draft' | 'published' | 'suspended' | 'paused' | 'deleted'
       user_role: 'business' | 'admin'
       verification_status: VerificationStatus
       listing_source: ListingSource

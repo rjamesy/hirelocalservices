@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { adminResolveReport, adminSuspendBusiness } from '@/app/actions/admin'
+import { adminResolveReport, adminSuspendBusiness, adminRevalidateReport } from '@/app/actions/admin'
 
 interface AdminReport {
   id: string
@@ -16,6 +16,8 @@ interface AdminReport {
   business_name: string
   business_slug: string
   reporter_ip_hash: string
+  resolution_outcome: string | null
+  resolved_at: string | null
 }
 
 type ReportStatusFilter = 'open' | 'resolved'
@@ -55,6 +57,8 @@ export default function AdminReportsPage() {
         created_at,
         business_id,
         reporter_ip_hash,
+        resolution_outcome,
+        resolved_at,
         businesses!reports_business_id_fkey ( name, slug )
       `,
         { count: 'exact' }
@@ -78,6 +82,8 @@ export default function AdminReportsPage() {
           reporter_ip_hash: r.reporter_ip_hash as string,
           business_name: biz?.name ?? 'Unknown',
           business_slug: biz?.slug ?? '',
+          resolution_outcome: r.resolution_outcome as string | null,
+          resolved_at: r.resolved_at as string | null,
         }
       })
       setReports(mapped)
@@ -105,6 +111,16 @@ export default function AdminReportsPage() {
     setActionLoading(reportId)
     const result = await adminResolveReport(reportId)
     if (!result.error) {
+      await fetchReports()
+    }
+    setActionLoading(null)
+  }
+
+  async function handleRevalidate(reportId: string) {
+    if (!confirm('Run AI re-validation on the reported listing? This may suspend the listing if it fails.')) return
+    setActionLoading(reportId)
+    const result = await adminRevalidateReport(reportId)
+    if (!('error' in result)) {
       await fetchReports()
     }
     setActionLoading(null)
@@ -212,6 +228,11 @@ export default function AdminReportsPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   Date
                 </th>
+                {statusFilter === 'resolved' && (
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Outcome
+                  </th>
+                )}
                 <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
                   Actions
                 </th>
@@ -258,6 +279,21 @@ export default function AdminReportsPage() {
                         year: 'numeric',
                       })}
                     </td>
+                    {statusFilter === 'resolved' && (
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {report.resolution_outcome ? (
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                            report.resolution_outcome === 'reported_passed' ? 'bg-green-100 text-green-800' :
+                            report.resolution_outcome === 'reported_failed' ? 'bg-red-100 text-red-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {report.resolution_outcome}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">dismissed</span>
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-2">
                         <Link
@@ -269,6 +305,13 @@ export default function AdminReportsPage() {
                         </Link>
                         {report.status === 'open' && (
                           <>
+                            <button
+                              onClick={() => handleRevalidate(report.id)}
+                              disabled={actionLoading === report.id}
+                              className="rounded-md px-2.5 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-50 transition-colors"
+                            >
+                              {actionLoading === report.id ? 'Working...' : 'AI Re-validate'}
+                            </button>
                             <button
                               onClick={() => handleResolve(report.id)}
                               disabled={actionLoading === report.id}

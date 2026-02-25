@@ -28,6 +28,9 @@ export const mockProfile: Profile = {
   id: 'user-123',
   email: 'test@example.com',
   role: 'business',
+  admin_notes: null,
+  suspended_at: null,
+  suspended_reason: null,
   created_at: '2024-01-01T00:00:00Z',
 }
 
@@ -35,6 +38,9 @@ export const mockAdminProfile: Profile = {
   id: 'admin-123',
   email: 'admin@example.com',
   role: 'admin',
+  admin_notes: null,
+  suspended_at: null,
+  suspended_reason: null,
   created_at: '2024-01-01T00:00:00Z',
 }
 
@@ -60,6 +66,7 @@ export const mockBusiness: Business = {
   trial_ends_at: null,
   suspended_reason: null,
   suspended_at: null,
+  deleted_at: null,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-06-01T00:00:00Z',
 }

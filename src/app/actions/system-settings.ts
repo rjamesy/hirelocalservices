@@ -40,6 +40,19 @@ export async function getSettings(): Promise<Record<string, unknown>> {
 export async function updateSetting(key: SystemSettingKey, value: unknown) {
   const { supabase, user } = await requireAdmin()
 
+  // Fetch previous value before upsert
+  let previousValue: unknown = null
+  try {
+    const { data: existing } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', key)
+      .maybeSingle()
+    if (existing) previousValue = existing.value
+  } catch {
+    // Non-blocking
+  }
+
   const { error } = await supabase
     .from('system_settings')
     .upsert(
@@ -52,13 +65,13 @@ export async function updateSetting(key: SystemSettingKey, value: unknown) {
     return { error: `Failed to update setting "${key}": ${error.message}` }
   }
 
-  // Log audit event
+  // Log audit event with previous_value and new_value
   try {
     await supabase.rpc('insert_audit_log', {
       p_action: 'settings_changed',
       p_entity_type: 'system_settings',
       p_actor_id: user.id,
-      p_details: { key, value },
+      p_details: { key, previous_value: previousValue, new_value: value },
     })
   } catch {
     // Non-blocking

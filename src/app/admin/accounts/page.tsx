@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { getAdminAccounts, type AdminAccountItem } from '@/app/actions/admin'
+import { getAdminAccounts, type AdminAccountItem } from '@/app/actions/admin-accounts'
 
 const PAGE_SIZE = 20
 
@@ -73,7 +73,6 @@ export default function AdminAccountsPage() {
       premium: 'bg-purple-50 text-purple-700',
       premium_annual: 'bg-indigo-50 text-indigo-700',
     }
-    const colorClass = colors[account.plan] ?? 'bg-gray-50 text-gray-500'
     const labels: Record<string, string> = {
       basic: 'Basic',
       premium: 'Premium',
@@ -81,7 +80,7 @@ export default function AdminAccountsPage() {
       free_trial: 'Free Trial',
     }
     return (
-      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colorClass}`}>
+      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[account.plan] ?? 'bg-gray-50 text-gray-500'}`}>
         {labels[account.plan] ?? account.plan}
       </span>
     )
@@ -89,11 +88,7 @@ export default function AdminAccountsPage() {
 
   function getStatusBadge(account: AdminAccountItem) {
     if (!account.subscriptionStatus) {
-      return (
-        <span className="inline-flex items-center rounded-full bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-500">
-          None
-        </span>
-      )
+      return <span className="inline-flex items-center rounded-full bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-500">None</span>
     }
     if (account.isActive) {
       return (
@@ -120,10 +115,10 @@ export default function AdminAccountsPage() {
       <div className="mb-6">
         <input
           type="text"
-          placeholder="Search by email..."
+          placeholder="Search by email, user ID, or business name..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="block w-full max-w-md rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          className="block w-full max-w-lg rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
         />
       </div>
 
@@ -133,69 +128,54 @@ export default function AdminAccountsPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Email
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Plan
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Status
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Period End
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Businesses
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Actions
-                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Email</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">User ID</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Plan + Status</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Billing</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Listings</th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-500">
-                    Loading...
-                  </td>
+                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-500">Loading...</td>
                 </tr>
               ) : accounts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-500">
-                    No accounts found.
-                  </td>
+                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-500">No accounts found.</td>
                 </tr>
               ) : (
                 accounts.map((account) => (
                   <tr key={account.userId} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                      {account.email}
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{account.email}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500 font-mono">{account.userId.slice(0, 8)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        {getPlanBadge(account)}
+                        {getStatusBadge(account)}
+                      </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      {getPlanBadge(account)}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {getStatusBadge(account)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
-                      {account.currentPeriodEnd
-                        ? new Date(account.currentPeriodEnd).toLocaleDateString('en-AU', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          })
-                        : '-'}
+                      {account.billingStatus === 'billing_suspended' || account.billingStatus === 'none' ? (
+                        <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+                          {account.billingStatus === 'none' ? 'No Sub' : 'Suspended'}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                          OK
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
-                      {account.businessCount}
+                      {account.activeListingCount}/{account.businessCount}
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <Link
-                        href={`/admin/listings?q=${encodeURIComponent(account.email)}`}
+                        href={`/admin/accounts/${account.userId}`}
                         className="rounded-md px-2.5 py-1.5 text-xs font-medium text-brand-600 hover:bg-brand-50 transition-colors"
                       >
-                        View Listings
+                        View
                       </Link>
                     </td>
                   </tr>
@@ -209,8 +189,7 @@ export default function AdminAccountsPage() {
         {totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3">
             <p className="text-sm text-gray-500">
-              Showing {(page - 1) * PAGE_SIZE + 1} to{' '}
-              {Math.min(page * PAGE_SIZE, totalCount)} of {totalCount} results
+              Showing {(page - 1) * PAGE_SIZE + 1} to {Math.min(page * PAGE_SIZE, totalCount)} of {totalCount}
             </p>
             <div className="flex gap-2">
               <button
@@ -220,9 +199,7 @@ export default function AdminAccountsPage() {
               >
                 Previous
               </button>
-              <span className="flex items-center px-3 text-sm text-gray-700">
-                Page {page} of {totalPages}
-              </span>
+              <span className="flex items-center px-3 text-sm text-gray-700">Page {page} of {totalPages}</span>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}

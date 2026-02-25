@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getAdminVerificationQueue, adminApproveVerification, adminRejectVerification } from '@/app/actions/verification'
+import { adminSuspendBusiness } from '@/app/actions/admin'
 
 type PendingChanges = {
   name?: string
@@ -78,6 +79,17 @@ export default function AdminVerificationPage() {
   async function handleReject(businessId: string) {
     setActionLoading(businessId)
     const result = await adminRejectVerification(businessId, notes[businessId])
+    if ('error' in result) {
+      alert(result.error)
+    }
+    setActionLoading(null)
+    loadQueue()
+  }
+
+  async function handleSuspend(businessId: string) {
+    if (!confirm('Suspend this business? It will be hidden from search results.')) return
+    setActionLoading(businessId)
+    const result = await adminSuspendBusiness(businessId, notes[businessId] || 'Suspended during verification review')
     if ('error' in result) {
       alert(result.error)
     }
@@ -301,6 +313,13 @@ export default function AdminVerificationPage() {
                       className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
                     >
                       Reject
+                    </button>
+                    <button
+                      onClick={() => handleSuspend(item.id)}
+                      disabled={actionLoading === item.id}
+                      className="rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-50 transition-colors"
+                    >
+                      Suspend
                     </button>
                   </div>
                 </div>

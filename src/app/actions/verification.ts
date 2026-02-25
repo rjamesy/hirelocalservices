@@ -8,6 +8,7 @@ import {
   runAIContentReview,
   makeVerificationDecision,
 } from '@/lib/verification'
+import { createNotification } from '@/app/actions/notifications'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -331,6 +332,23 @@ export async function adminApproveVerification(
     details: { decision: 'approved', admin_notes: notes || null },
   })
 
+  // Notify owner
+  const { data: bizOwner } = await supabase
+    .from('businesses')
+    .select('owner_id, name')
+    .eq('id', businessId)
+    .single()
+
+  if (bizOwner?.owner_id) {
+    await createNotification(supabase, {
+      userId: bizOwner.owner_id,
+      type: 'verification_approved',
+      title: 'Listing Approved',
+      message: `Your listing "${bizOwner.name}" has been approved and is now live.`,
+      metadata: { businessId },
+    })
+  }
+
   revalidatePath('/admin/verification')
   revalidatePath('/admin')
   revalidatePath('/dashboard')
@@ -418,6 +436,23 @@ export async function adminRejectVerification(
     actorId: user.id,
     details: { decision: 'rejected', admin_notes: notes || null },
   })
+
+  // Notify owner
+  const { data: rejBizOwner } = await supabase
+    .from('businesses')
+    .select('owner_id, name')
+    .eq('id', businessId)
+    .single()
+
+  if (rejBizOwner?.owner_id) {
+    await createNotification(supabase, {
+      userId: rejBizOwner.owner_id,
+      type: 'verification_rejected',
+      title: 'Listing Rejected',
+      message: `Your listing "${rejBizOwner.name}" has been rejected.${notes ? ` Notes: ${notes}` : ' Please review and resubmit.'}`,
+      metadata: { businessId, notes },
+    })
+  }
 
   revalidatePath('/admin/verification')
   revalidatePath('/admin')
