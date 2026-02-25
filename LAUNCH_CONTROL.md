@@ -63,7 +63,7 @@ Data protection and safety
 Deployment readiness
 [x] Production environment variables configured
 [x] Supabase production instance ready
-[ ] Backups configured
+[x] Backups configured (daily pg_dump to EC2, 30-day retention)
 [ ] Staging environment operational
 [x] Production build completes without errors
 [x] Production server starts successfully
@@ -155,7 +155,7 @@ Supabase production readiness
 [ ] Supabase Pro plan activated (when required)
 [x] Row-level security policies verified
 [x] Indexes verified for performance
-[ ] Backups configured
+[x] Backups configured (daily pg_dump, 30-day retention, restore tested)
 
 Performance readiness
 [x] Search queries indexed
@@ -201,8 +201,8 @@ Security readiness
 
 Operational readiness
 [x] Admin account secured
-[ ] Backup procedures documented
-[ ] Recovery procedures documented
+[x] Backup procedures documented (daily cron at 2am UTC, /home/ubuntu/backups/)
+[x] Recovery procedures documented (restore_test.sh, zcat backup.sql.gz | psql)
 
 ------------------------------------------------------------
 ## Test Coverage
