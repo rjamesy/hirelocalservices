@@ -58,6 +58,8 @@ export const mockBusiness: Business = {
   pending_changes: null,
   billing_status: 'active',
   trial_ends_at: null,
+  suspended_reason: null,
+  suspended_at: null,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-06-01T00:00:00Z',
 }

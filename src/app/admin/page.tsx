@@ -56,9 +56,9 @@ export default async function AdminDashboardPage() {
       .select('*', { count: 'exact', head: true })
       .eq('is_seed', true),
     supabase
-      .from('subscriptions')
+      .from('user_subscriptions')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'active'),
+      .in('status', ['active', 'past_due']),
   ])
 
   const stats = [
@@ -126,7 +126,7 @@ export default async function AdminDashboardPage() {
       label: 'Active Subscriptions',
       value: activeSubsCount ?? 0,
       color: 'bg-emerald-500',
-      href: '/admin/listings?subscription=active',
+      href: '/admin/accounts',
     },
   ]
 

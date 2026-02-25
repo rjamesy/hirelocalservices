@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { adminResolveReport, adminSuspendBusiness } from '@/app/actions/admin'
 
 interface AdminReport {
   id: string
@@ -102,12 +103,8 @@ export default function AdminReportsPage() {
 
   async function handleResolve(reportId: string) {
     setActionLoading(reportId)
-    const { error } = await supabase
-      .from('reports')
-      .update({ status: 'resolved' })
-      .eq('id', reportId)
-
-    if (!error) {
+    const result = await adminResolveReport(reportId)
+    if (!result.error) {
       await fetchReports()
     }
     setActionLoading(null)
@@ -116,23 +113,13 @@ export default function AdminReportsPage() {
   async function handleSuspendBusiness(businessId: string, reportId: string) {
     setActionLoading(reportId)
 
-    // Suspend the business
-    const { error: suspendError } = await supabase
-      .from('businesses')
-      .update({ status: 'suspended' })
-      .eq('id', businessId)
-
-    if (suspendError) {
+    const suspendResult = await adminSuspendBusiness(businessId, 'Suspended via report')
+    if (suspendResult.error) {
       setActionLoading(null)
       return
     }
 
-    // Also resolve the report
-    await supabase
-      .from('reports')
-      .update({ status: 'resolved' })
-      .eq('id', reportId)
-
+    await adminResolveReport(reportId)
     await fetchReports()
     setActionLoading(null)
   }

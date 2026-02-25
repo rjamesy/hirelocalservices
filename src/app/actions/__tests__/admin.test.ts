@@ -17,11 +17,17 @@ vi.mock('@/lib/audit', () => ({
   logAudit: (...args: unknown[]) => mockLogAudit(...args),
 }))
 
+const mockGetUserEntitlements = vi.fn()
+vi.mock('@/lib/entitlements', () => ({
+  getUserEntitlements: (...args: unknown[]) => mockGetUserEntitlements(...args),
+}))
+
 import {
   getAdminListings,
   adminSuspendBusiness,
   adminUnsuspendBusiness,
   adminResolveReport,
+  getAdminAccounts,
 } from '../admin'
 
 function setupAdmin() {
@@ -68,7 +74,7 @@ describe('getAdminListings', () => {
     setupAdmin()
   })
 
-  it('returns paginated listings', async () => {
+  it('returns paginated listings with billing_status', async () => {
     chainResult.mockReturnValueOnce({
       data: [
         {
@@ -77,8 +83,8 @@ describe('getAdminListings', () => {
           slug: 'test',
           status: 'published',
           created_at: '2024-01-01',
+          billing_status: 'active',
           profiles: { email: 'owner@test.com' },
-          subscriptions: [{ status: 'active' }],
         },
       ],
       count: 1,
@@ -216,19 +222,92 @@ describe('adminResolveReport', () => {
 
   it('returns error if already resolved', async () => {
     single.mockResolvedValueOnce({
-      data: { id: 'rep-1', status: 'resolved' },
+      data: { id: 'rep-1', status: 'resolved', business_id: 'biz-1' },
       error: null,
     })
     const result = await adminResolveReport('rep-1')
     expect(result).toEqual({ error: 'Report is already resolved' })
   })
 
-  it('resolves an open report', async () => {
+  it('resolves an open report and logs audit', async () => {
     single.mockResolvedValueOnce({
-      data: { id: 'rep-1', status: 'open' },
+      data: { id: 'rep-1', status: 'open', business_id: 'biz-1' },
       error: null,
     })
     const result = await adminResolveReport('rep-1')
     expect(result).toEqual({ success: true })
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        action: 'report_resolved',
+        entityType: 'report',
+        entityId: 'rep-1',
+      })
+    )
+  })
+})
+
+describe('getAdminAccounts', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    setupAdmin()
+  })
+
+  it('returns accounts with entitlements from getUserEntitlements', async () => {
+    chainResult.mockReturnValueOnce({
+      data: [{ id: 'user-1', email: 'test@example.com' }],
+      count: 1,
+      error: null,
+    })
+
+    mockGetUserEntitlements.mockResolvedValue({
+      userId: 'user-1',
+      plan: 'premium',
+      subscriptionStatus: 'active',
+      currentPeriodEnd: '2026-01-01T00:00:00Z',
+      isActive: true,
+      isTrial: false,
+      currentListingCount: 2,
+      cancelAtPeriodEnd: false,
+    })
+
+    const result = await getAdminAccounts(1)
+    expect(result.data).toHaveLength(1)
+    expect(result.data[0].plan).toBe('premium')
+    expect(result.data[0].subscriptionStatus).toBe('active')
+    expect(result.data[0].isActive).toBe(true)
+    expect(result.data[0].businessCount).toBe(2)
+    expect(mockGetUserEntitlements).toHaveBeenCalledWith(expect.anything(), 'user-1')
+  })
+
+  it('returns empty on error', async () => {
+    chainResult.mockReturnValueOnce({ data: null, count: 0, error: { message: 'Error' } })
+
+    const result = await getAdminAccounts(1)
+    expect(result.data).toEqual([])
+  })
+
+  it('returns exactly 1 subscription entry per user (after repair)', async () => {
+    // User who had duplicate rows — now repaired — should show one entry
+    chainResult.mockReturnValueOnce({
+      data: [{ id: 'user-dup', email: 'dup@example.com' }],
+      count: 1,
+      error: null,
+    })
+
+    mockGetUserEntitlements.mockResolvedValue({
+      userId: 'user-dup',
+      plan: 'basic',
+      subscriptionStatus: 'active',
+      currentPeriodEnd: '2026-06-01T00:00:00Z',
+      isActive: true,
+      isTrial: false,
+      currentListingCount: 1,
+      cancelAtPeriodEnd: false,
+    })
+
+    const result = await getAdminAccounts(1)
+    expect(result.data).toHaveLength(1) // exactly 1 entry per user
+    expect(result.data[0].plan).toBe('basic')
   })
 })

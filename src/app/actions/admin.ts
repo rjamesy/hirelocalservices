@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ITEMS_PER_PAGE } from '@/lib/constants'
 import { revalidatePath } from 'next/cache'
 import { logAudit } from '@/lib/audit'
+import { getUserEntitlements, type Entitlements } from '@/lib/entitlements'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -71,7 +72,7 @@ export async function getAdminListings(
 
   const offset = (page - 1) * ITEMS_PER_PAGE
 
-  // Build the query for businesses with owner email and subscription status
+  // Build the query for businesses with owner email and billing_status
   let query = supabase
     .from('businesses')
     .select(
@@ -81,8 +82,8 @@ export async function getAdminListings(
       slug,
       status,
       created_at,
-      profiles!businesses_owner_id_fkey (email),
-      subscriptions (status)
+      billing_status,
+      profiles!businesses_owner_id_fkey (email)
     `,
       { count: 'exact' }
     )
@@ -106,10 +107,6 @@ export async function getAdminListings(
   const listings: AdminListingItem[] = (data ?? []).map((row: any) => {
     // profiles comes back as an object (single FK relationship)
     const profile = row.profiles
-    // subscriptions comes back as an array (one-to-many, but unique constraint means 0 or 1)
-    const subscription = Array.isArray(row.subscriptions)
-      ? row.subscriptions[0]
-      : row.subscriptions
 
     return {
       id: row.id,
@@ -118,7 +115,7 @@ export async function getAdminListings(
       status: row.status,
       created_at: row.created_at,
       owner_email: profile?.email ?? null,
-      subscription_status: subscription?.status ?? null,
+      subscription_status: row.billing_status ?? null,
     }
   })
 
@@ -182,7 +179,7 @@ export async function getAdminReports(
   return { data: reports, totalCount, page, totalPages }
 }
 
-export async function adminSuspendBusiness(businessId: string) {
+export async function adminSuspendBusiness(businessId: string, reason?: string) {
   const { supabase, user } = await verifyAdmin()
 
   const { data: business, error: fetchError } = await supabase
@@ -201,7 +198,11 @@ export async function adminSuspendBusiness(businessId: string) {
 
   const { error } = await supabase
     .from('businesses')
-    .update({ status: 'suspended' })
+    .update({
+      status: 'suspended',
+      suspended_reason: reason || 'Admin suspended',
+      suspended_at: new Date().toISOString(),
+    })
     .eq('id', businessId)
 
   if (error) {
@@ -247,7 +248,11 @@ export async function adminUnsuspendBusiness(businessId: string) {
   // function), so this is safe.
   const { error } = await supabase
     .from('businesses')
-    .update({ status: 'published' })
+    .update({
+      status: 'published',
+      suspended_reason: null,
+      suspended_at: null,
+    })
     .eq('id', businessId)
 
   if (error) {
@@ -272,11 +277,11 @@ export async function adminUnsuspendBusiness(businessId: string) {
 }
 
 export async function adminResolveReport(reportId: string) {
-  const { supabase } = await verifyAdmin()
+  const { supabase, user } = await verifyAdmin()
 
   const { data: report, error: fetchError } = await supabase
     .from('reports')
-    .select('id, status')
+    .select('id, status, business_id')
     .eq('id', reportId)
     .single()
 
@@ -296,6 +301,14 @@ export async function adminResolveReport(reportId: string) {
   if (error) {
     return { error: 'Failed to resolve report. Please try again.' }
   }
+
+  await logAudit(supabase, {
+    action: 'report_resolved',
+    entityType: 'report',
+    entityId: reportId,
+    actorId: user.id,
+    details: { business_id: report.business_id },
+  })
 
   revalidatePath('/admin')
   return { success: true }
@@ -430,6 +443,73 @@ export async function getVerificationQueue(
   const totalCount = count ?? 0
   return {
     data: data ?? [],
+    totalCount,
+    page,
+    totalPages: Math.ceil(totalCount / ITEMS_PER_PAGE),
+  }
+}
+
+// ─── Admin: Accounts ─────────────────────────────────────────────────
+
+export interface AdminAccountItem {
+  userId: string
+  email: string
+  plan: string | null
+  subscriptionStatus: string | null
+  currentPeriodEnd: string | null
+  isActive: boolean
+  isTrial: boolean
+  businessCount: number
+  cancelAtPeriodEnd: boolean
+}
+
+export async function getAdminAccounts(
+  page: number = 1,
+  search?: string
+): Promise<PaginatedResponse<AdminAccountItem>> {
+  const { supabase } = await verifyAdmin()
+
+  const offset = (page - 1) * ITEMS_PER_PAGE
+
+  // Query profiles (all users with 'business' role, or all if no search)
+  let query = supabase
+    .from('profiles')
+    .select('id, email', { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(offset, offset + ITEMS_PER_PAGE - 1)
+
+  if (search) {
+    query = query.ilike('email', `%${search}%`)
+  }
+
+  const { data: profiles, count, error } = await query
+
+  if (error || !profiles) {
+    return { data: [], totalCount: 0, page, totalPages: 0 }
+  }
+
+  // For each user, get entitlements and business count
+  const accounts: AdminAccountItem[] = await Promise.all(
+    profiles.map(async (profile: { id: string; email: string }) => {
+      const entitlements = await getUserEntitlements(supabase, profile.id)
+
+      return {
+        userId: profile.id,
+        email: profile.email,
+        plan: entitlements.plan,
+        subscriptionStatus: entitlements.subscriptionStatus,
+        currentPeriodEnd: entitlements.currentPeriodEnd,
+        isActive: entitlements.isActive,
+        isTrial: entitlements.isTrial,
+        businessCount: entitlements.currentListingCount,
+        cancelAtPeriodEnd: entitlements.cancelAtPeriodEnd,
+      }
+    })
+  )
+
+  const totalCount = count ?? 0
+  return {
+    data: accounts,
     totalCount,
     page,
     totalPages: Math.ceil(totalCount / ITEMS_PER_PAGE),

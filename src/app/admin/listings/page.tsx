@@ -67,17 +67,9 @@ export default function AdminListingsPage() {
     const from = (page - 1) * PAGE_SIZE
     const to = from + PAGE_SIZE - 1
 
-    // Use inner join on subscriptions when filtering by subscription status
-    const selectFields = subscriptionParam
-      ? `
-        id, name, slug, status, created_at, owner_id,
-        profiles!businesses_owner_id_fkey ( email ),
-        subscriptions!inner ( status )
-      `
-      : `
-        id, name, slug, status, created_at, owner_id,
-        profiles!businesses_owner_id_fkey ( email ),
-        subscriptions ( status )
+    const selectFields = `
+        id, name, slug, status, created_at, owner_id, billing_status,
+        profiles!businesses_owner_id_fkey ( email )
       `
 
     let query = supabase
@@ -101,8 +93,8 @@ export default function AdminListingsPage() {
     if (isSeedParam === 'true') {
       query = query.eq('is_seed', true)
     }
-    if (subscriptionParam) {
-      query = query.eq('subscriptions.status', subscriptionParam as 'active' | 'past_due' | 'canceled' | 'unpaid')
+    if (subscriptionParam === 'active') {
+      query = query.neq('billing_status', 'billing_suspended')
     }
 
     const { data, count, error } = await query
@@ -110,15 +102,10 @@ export default function AdminListingsPage() {
     if (!error && data) {
       const mapped: AdminBusiness[] = data.map((b: Record<string, unknown>) => {
         const profiles = b.profiles as { email: string } | { email: string }[] | null
-        const subscriptions = b.subscriptions as { status: string } | { status: string }[] | null
 
         const ownerEmail = Array.isArray(profiles)
           ? profiles[0]?.email
           : (profiles as { email: string } | null)?.email
-
-        const subStatus = Array.isArray(subscriptions)
-          ? subscriptions[0]?.status
-          : (subscriptions as { status: string } | null)?.status
 
         return {
           id: b.id as string,
@@ -128,7 +115,7 @@ export default function AdminListingsPage() {
           created_at: b.created_at as string,
           owner_id: b.owner_id as string,
           owner_email: ownerEmail ?? 'N/A',
-          subscription_status: subStatus ?? 'none',
+          subscription_status: (b.billing_status as string) ?? 'none',
         }
       })
       setBusinesses(mapped)
@@ -220,30 +207,30 @@ export default function AdminListingsPage() {
     }
   }
 
-  function getSubscriptionBadge(status: string) {
-    switch (status) {
+  function getSubscriptionBadge(billingStatus: string) {
+    switch (billingStatus) {
       case 'active':
         return (
           <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
             Active
           </span>
         )
-      case 'past_due':
+      case 'trial':
         return (
-          <span className="inline-flex items-center rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">
-            Past Due
+          <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+            Trial
           </span>
         )
-      case 'canceled':
+      case 'billing_suspended':
         return (
-          <span className="inline-flex items-center rounded-full bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-600">
-            Cancelled
+          <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+            Billing Suspended
           </span>
         )
       default:
         return (
           <span className="inline-flex items-center rounded-full bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-500">
-            {status === 'none' ? 'No Sub' : status}
+            {billingStatus === 'none' ? 'No Sub' : billingStatus}
           </span>
         )
     }
@@ -343,7 +330,18 @@ export default function AdminListingsPage() {
                   <tr key={business.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
                       <div className="text-sm font-medium text-gray-900">{business.name}</div>
-                      <div className="text-xs text-gray-400">{business.owner_email}</div>
+                      <div className="text-xs text-gray-400">
+                        {business.owner_id ? (
+                          <Link
+                            href={`/admin/accounts?q=${encodeURIComponent(business.owner_email || '')}`}
+                            className="hover:text-brand-600 hover:underline"
+                          >
+                            {business.owner_email}
+                          </Link>
+                        ) : (
+                          business.owner_email
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {getStatusBadge(business.status)}

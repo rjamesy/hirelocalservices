@@ -44,6 +44,8 @@ export type Business = {
   billing_status: BillingStatus
   trial_ends_at: string | null
   pending_changes: PendingChanges | null
+  suspended_reason: string | null
+  suspended_at: string | null
   created_at: string
   updated_at: string
 }
@@ -283,6 +285,7 @@ export type AuditAction =
   | 'reset_executed'
   | 'settings_changed'
   | 'verification_completed'
+  | 'report_resolved'
 
 export type AuditLogEntry = {
   id: string
@@ -371,7 +374,7 @@ export type Database = {
       }
       businesses: {
         Row: Business
-        Insert: Omit<Business, 'id' | 'created_at' | 'updated_at' | 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at'> & Partial<Pick<Business, 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at'>>
+        Insert: Omit<Business, 'id' | 'created_at' | 'updated_at' | 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at' | 'suspended_reason' | 'suspended_at'> & Partial<Pick<Business, 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at' | 'suspended_reason' | 'suspended_at'>>
         Update: Partial<Omit<Business, 'id' | 'created_at' | 'owner_id'>>
         Relationships: [
           {
@@ -680,6 +683,16 @@ export type Database = {
           p_business_id: string
         }
         Returns: boolean
+      }
+      explain_search_eligibility: {
+        Args: {
+          p_business_id: string
+        }
+        Returns: {
+          check_name: string
+          passed: boolean
+          detail: string
+        }[]
       }
       refresh_search_index: {
         Args: {

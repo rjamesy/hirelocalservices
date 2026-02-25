@@ -287,6 +287,9 @@ export async function claimBusiness(
     // Ensure user has a subscription (trial if none exists)
     await ensureUserSubscription(supabase, user.id, businessId)
 
+    // Refresh search index so the claimed business appears in results
+    await supabase.rpc('refresh_search_index', { p_business_id: businessId })
+
     // Reject other pending claims
     await supabase
       .from('business_claims')
@@ -433,6 +436,9 @@ export async function approveClaim(claimId: string, notes?: string) {
 
   // Ensure claimer has a subscription (trial if none exists)
   await ensureUserSubscription(supabase, claim.claimer_id, claim.business_id)
+
+  // Refresh search index so the claimed business appears in results
+  await supabase.rpc('refresh_search_index', { p_business_id: claim.business_id })
 
   // Reject any other pending claims for this business
   await supabase

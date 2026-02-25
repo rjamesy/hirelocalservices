@@ -8,18 +8,12 @@ export async function GET() {
   const supabase = createAdminClient()
   const baseUrl = getBaseUrl()
 
-  // Fetch all published businesses with active subscriptions
+  // Fetch all published businesses with active billing
   const { data: businesses } = await supabase
     .from('businesses')
-    .select(
-      `
-      slug,
-      updated_at,
-      subscriptions!inner (status)
-    `
-    )
+    .select('slug, updated_at')
     .eq('status', 'published')
-    .in('subscriptions.status', ['active', 'past_due'])
+    .neq('billing_status', 'billing_suspended')
 
   // Fetch all categories for category pages
   const { data: categories } = await supabase

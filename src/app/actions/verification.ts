@@ -257,6 +257,9 @@ export async function adminApproveVerification(
       .from('businesses')
       .update({ verification_status: 'approved', status: 'published' })
       .eq('id', businessId)
+
+    // Refresh search index
+    await supabase.rpc('refresh_search_index', { p_business_id: businessId })
   }
 
   // ─── Promote pending photos/testimonials on approval ──────────
@@ -424,7 +427,7 @@ export async function adminRejectVerification(
 // ─── Admin: Bulk Verify Seeds ───────────────────────────────────────
 
 export async function bulkVerifySeeds() {
-  const { supabase } = await requireAdmin()
+  const { supabase, user } = await requireAdmin()
 
   // Approve all OSM seeds that aren't already approved
   const { data: seeds } = await supabase
@@ -443,6 +446,14 @@ export async function bulkVerifySeeds() {
     .from('businesses')
     .update({ verification_status: 'approved' })
     .in('id', ids)
+
+  await logAudit(supabase, {
+    action: 'verification_completed',
+    entityType: 'listing',
+    entityId: 'bulk',
+    actorId: user.id,
+    details: { bulk_verify_seeds: true, count: ids.length },
+  })
 
   revalidatePath('/admin')
   return { count: ids.length }

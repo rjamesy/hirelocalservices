@@ -46,6 +46,12 @@ export default async function AdminLayout({
                   Listings
                 </Link>
                 <Link
+                  href="/admin/accounts"
+                  className="rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+                >
+                  Accounts
+                </Link>
+                <Link
                   href="/admin/reports"
                   className="rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
                 >
@@ -108,6 +114,15 @@ export default async function AdminLayout({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
                 </svg>
                 Listings
+              </Link>
+              <Link
+                href="/admin/accounts"
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-white hover:text-gray-900 transition-colors"
+              >
+                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128H5.228A2 2 0 013 17.208V5.828A2 2 0 015.172 3.75h5.656A2 2 0 0113 5.828v.397M15 19.128l3.94-3.94M6.75 15a.75.75 0 110-1.5.75.75 0 010 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443" />
+                </svg>
+                Accounts
               </Link>
               <Link
                 href="/admin/reports"
