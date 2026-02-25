@@ -612,9 +612,9 @@ export async function getAdminListingsEnhanced(
   if (filters.type === 'seed') {
     query = query.eq('is_seed', true).neq('claim_status', 'claimed')
   } else if (filters.type === 'claimed') {
-    query = query.eq('is_seed', true).eq('claim_status', 'claimed')
+    query = query.eq('claim_status', 'claimed')
   } else if (filters.type === 'user') {
-    query = query.eq('is_seed', false)
+    query = query.eq('is_seed', false).neq('claim_status', 'claimed')
   }
 
   if (filters.state) {
