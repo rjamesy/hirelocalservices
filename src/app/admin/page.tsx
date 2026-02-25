@@ -114,13 +114,13 @@ export default async function AdminDashboardPage() {
       label: 'Claimed Businesses',
       value: claimedCount ?? 0,
       color: 'bg-teal-500',
-      href: '/admin/listings?claim_status=claimed',
+      href: '/admin/listings?type=claimed',
     },
     {
       label: 'Seed Listings',
       value: seedCount ?? 0,
       color: 'bg-sky-500',
-      href: '/admin/listings?is_seed=true',
+      href: '/admin/listings?type=seed',
     },
     {
       label: 'Active Subscriptions',
