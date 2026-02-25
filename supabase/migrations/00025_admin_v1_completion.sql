@@ -73,6 +73,7 @@ CREATE OR REPLACE FUNCTION is_search_eligible(p_business_id uuid)
 RETURNS boolean
 LANGUAGE plpgsql
 STABLE
+SECURITY DEFINER
 AS $$
 DECLARE
   v_eligible boolean := false;
@@ -102,6 +103,7 @@ CREATE OR REPLACE FUNCTION is_business_visible(p_business_id uuid)
 RETURNS boolean
 LANGUAGE plpgsql
 STABLE
+SECURITY DEFINER
 AS $$
 DECLARE
   v_visible boolean := false;
@@ -124,6 +126,7 @@ CREATE OR REPLACE FUNCTION explain_search_eligibility(p_business_id uuid)
 RETURNS TABLE(check_name text, passed boolean, detail text)
 LANGUAGE plpgsql
 STABLE
+SECURITY DEFINER
 AS $$
 DECLARE
   v_biz record;
