@@ -75,6 +75,9 @@ export async function generateMetadata({
   return {
     title: `${title} | HireLocalServices`,
     description,
+    alternates: {
+      canonical: `/business/${slug}`,
+    },
     openGraph: {
       title,
       description,

@@ -10,7 +10,10 @@ const inter = Inter({
   variable: '--font-inter',
 });
 
+const BASE_URL = 'https://hirelocalservices.com.au'
+
 export const metadata: Metadata = {
+  metadataBase: new URL(BASE_URL),
   title: 'HireLocalServices - Find Local Services Across Australia',
   description:
     'Find and hire trusted local service professionals across Australia. Browse cleaning, plumbing, electrical, gardening, handyman, and more services in your area.',
@@ -28,6 +31,9 @@ export const metadata: Metadata = {
     'service directory',
   ],
   authors: [{ name: 'HireLocalServices' }],
+  alternates: {
+    canonical: '/',
+  },
   openGraph: {
     title: 'HireLocalServices - Find Local Services Across Australia',
     description:

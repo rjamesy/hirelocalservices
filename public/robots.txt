@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /admin/*
+Disallow: /auth/*
+Disallow: /api/*
+Disallow: /dashboard
+Disallow: /dashboard/*
+Disallow: /login
+Disallow: /signup
+
+Sitemap: https://hirelocalservices.com.au/api/sitemap.xml

@@ -46,27 +46,27 @@ User experience polish
 [x] Footer visible on all pages (public, dashboard, admin)
 
 Admin safety and operational control
-[ ] Audit logging enabled for all listing actions
-[ ] Claim attempts logged
-[ ] Admin suspend functionality operational
-[ ] Blacklist enforcement active on listing creation/edit/seed ingestion
+[x] Audit logging enabled for all listing actions
+[x] Claim attempts logged
+[x] Admin suspend functionality operational
+[x] Blacklist enforcement active on listing creation/edit/seed ingestion
 [x] Admin routes protected (admin-only access enforced)
 [x] Admin login redirects correctly back to admin pages
 
 Data protection and safety
-[ ] Data Reset protected by password confirmation
-[ ] Data Reset requires explicit typed confirmation phrase ("danger reset data")
-[ ] Data Reset logged in audit log
-[ ] Postcode, categories, and system tables protected from deletion
-[ ] Seed listings protected from accidental deletion
+[x] Data Reset protected by password confirmation
+[x] Data Reset requires explicit typed confirmation phrase ("danger reset data")
+[x] Data Reset logged in audit log
+[x] Postcode, categories, and system tables protected from deletion
+[x] Seed listings protected from accidental deletion (soft delete only)
 
 Deployment readiness
-[ ] Production environment variables configured
-[ ] Supabase production instance ready
+[x] Production environment variables configured
+[x] Supabase production instance ready
 [ ] Backups configured
 [ ] Staging environment operational
 [x] Production build completes without errors
-[ ] Production server starts successfully
+[x] Production server starts successfully
 
 ------------------------------------------------------------
 ## Launch Blockers (must be resolved before launch)
@@ -82,9 +82,9 @@ Critical functional blockers
 [x] Location selection validation working correctly
 
 Critical safety blockers
-[ ] Data Reset requires password re-authentication
-[ ] Audit log recording operational
-[ ] Admin suspend listing functionality working
+[x] Data Reset requires password re-authentication
+[x] Audit log recording operational
+[x] Admin suspend listing functionality working
 [x] Admin access protection working correctly
 
 Trust and professionalism blockers
@@ -118,7 +118,7 @@ Footer improvements
 [x] Ensure footer appears globally
 
 Admin usability improvements
-[ ] Add listing type indicator (Seed / Claimed / Premium)
+[x] Add listing type indicator (Seed / Claimed / User-Created)
 [ ] Add listing confidence score visibility
 [ ] Add listing contact completeness indicator
 [x] Admin redirect logic working correctly
@@ -142,9 +142,9 @@ Seed quality requirements
 [ ] Seed listings must display real useful information
 
 Seed management requirements
-[ ] Seed listings marked as "Seed"
-[ ] Seed listings claimable
-[ ] Seed listings remain visible indefinitely
+[x] Seed listings marked as "Seed"
+[x] Seed listings claimable
+[x] Seed listings remain visible indefinitely (seed_expiry_enabled defaults to false)
 [ ] Seed listings never expire automatically
 
 ------------------------------------------------------------
@@ -153,54 +153,54 @@ Seed management requirements
 
 Supabase production readiness
 [ ] Supabase Pro plan activated (when required)
-[ ] Row-level security policies verified
-[ ] Indexes verified for performance
+[x] Row-level security policies verified
+[x] Indexes verified for performance
 [ ] Backups configured
 
 Performance readiness
-[ ] Search queries indexed
-[ ] Location lookup indexed
-[ ] Listing lookup indexed
+[x] Search queries indexed
+[x] Location lookup indexed
+[x] Listing lookup indexed
 
 Data integrity
-[ ] Duplicate listing prevention rules active
-[ ] Claim ownership correctly assigns ownership
-[ ] Listing status properly tracked
+[x] Duplicate listing prevention rules active (unique seed_source index + slug collision handling)
+[x] Claim ownership correctly assigns ownership
+[x] Listing status properly tracked
 
 ------------------------------------------------------------
 ## SEO Tasks
 ------------------------------------------------------------
 
 Technical SEO
-[ ] sitemap.xml operational
-[ ] robots.txt operational
-[ ] canonical URLs implemented
+[x] sitemap.xml operational
+[x] robots.txt operational
+[x] canonical URLs implemented (metadataBase + alternates.canonical)
 
 Page SEO
-[ ] Each business has unique URL
-[ ] Each business has unique title tag
-[ ] Each business has meta description
+[x] Each business has unique URL (/business/[slug])
+[x] Each business has unique title tag
+[x] Each business has meta description
 
 Indexability
-[ ] Search pages crawlable
-[ ] Business pages crawlable
+[x] Search pages crawlable
+[x] Business pages crawlable
 
 ------------------------------------------------------------
 ## Deployment Tasks
 ------------------------------------------------------------
 
 Infrastructure readiness
-[ ] Production server provisioned
+[x] Production server provisioned (AWS EC2)
 [ ] Staging server provisioned
 [ ] Blue/Green deployment ready
 
 Security readiness
-[ ] HTTPS enabled
-[ ] Secure environment variables configured
-[ ] Supabase keys secured
+[x] HTTPS enabled (Let's Encrypt SSL)
+[x] Secure environment variables configured
+[x] Supabase keys secured
 
 Operational readiness
-[ ] Admin account secured
+[x] Admin account secured
 [ ] Backup procedures documented
 [ ] Recovery procedures documented
 
@@ -208,8 +208,8 @@ Operational readiness
 ## Test Coverage
 ------------------------------------------------------------
 
-[x] 1018 unit tests passing (49 test files) — Vitest
-[x] 10 E2E smoke tests passing — Playwright
+[x] 1189 unit tests passing (64 test files) — Vitest
+[x] 92 E2E tests covering all admin pages — Playwright
 [x] Middleware auth/redirect tests verified
 [x] Admin route protection tests verified
 [x] Search safety input validation tested
