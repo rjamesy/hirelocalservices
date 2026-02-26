@@ -18,6 +18,7 @@ function makeListing(overrides: Partial<ListingForQuality> = {}): ListingForQual
     verification_status: 'approved',
     pending_changes: null,
     deleted_at: null,
+    suspended_reason: null,
     hasCategories: true,
     hasLocation: true,
     ...overrides,
@@ -103,14 +104,14 @@ describe('getListingQuality', () => {
       expected: { flag: 'under_review', hint: /admin review/i },
     },
     {
-      desc: 'verification_status=rejected → under_review with Rejected hint',
+      desc: 'verification_status=rejected → rejected',
       listing: { verification_status: 'rejected' },
-      expected: { flag: 'under_review', hint: /rejected/i },
+      expected: { flag: 'rejected', hint: /rejected/i },
     },
     {
-      desc: 'pending_changes + published → under_review',
+      desc: 'pending_changes + published → edited',
       listing: { pending_changes: { name: 'New Name' }, status: 'published' },
-      expected: { flag: 'under_review', hint: /changes pending/i },
+      expected: { flag: 'edited', hint: /pending changes/i },
     },
 
     // ── NEEDS_ACTION ──
@@ -170,6 +171,23 @@ describe('getListingQuality', () => {
       makeFlags()
     )
     expect(result.flag).toBe('blocked')
+  })
+
+  it('suspended with reason shows reason in hint', () => {
+    const result = getListingQuality(
+      makeListing({ status: 'suspended', suspended_reason: 'Terms of service violation' }),
+      makeFlags()
+    )
+    expect(result.flag).toBe('blocked')
+    expect(result.hint).toMatch(/Terms of service violation/)
+  })
+
+  it('rejected overrides needs_action', () => {
+    const result = getListingQuality(
+      makeListing({ verification_status: 'rejected', description: null }),
+      makeFlags()
+    )
+    expect(result.flag).toBe('rejected')
   })
 
   it('no flags provided → defaults permissive → complete', () => {

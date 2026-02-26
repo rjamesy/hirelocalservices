@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { pauseBusiness, unpauseBusiness, softDeleteBusiness } from '@/app/actions/business'
 import { cn } from '@/lib/utils'
@@ -12,6 +12,9 @@ interface BusinessItem {
   slug: string
   status: string
   quality?: QualityResult
+  verification_status?: string
+  pending_changes?: unknown | null
+  suspended_reason?: string | null
 }
 
 type FilterTab = 'all' | 'action_needed' | 'under_review' | 'complete' | 'blocked'
@@ -27,6 +30,8 @@ function getFilterForBusiness(b: BusinessItem): FilterTab {
   if (!q) return 'all'
   if (q.flag === 'blocked') return 'blocked'
   if (q.flag === 'under_review') return 'under_review'
+  if (q.flag === 'rejected') return 'action_needed'
+  if (q.flag === 'edited') return 'complete'
   if (q.flag === 'complete') return 'complete'
   return 'action_needed'
 }
@@ -46,19 +51,24 @@ export default function ListingsCommandCenter({
   const router = useRouter()
   const [activeFilter, setActiveFilter] = useState<FilterTab>(initialFilter ?? 'all')
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
+  const [localBusinesses, setLocalBusinesses] = useState<BusinessItem[]>(businesses)
+
+  useEffect(() => {
+    setLocalBusinesses(businesses)
+  }, [businesses])
 
   const counts: Record<FilterTab, number> = {
-    all: businesses.length,
-    action_needed: businesses.filter((b) => getFilterForBusiness(b) === 'action_needed').length,
-    under_review: businesses.filter((b) => getFilterForBusiness(b) === 'under_review').length,
-    complete: businesses.filter((b) => getFilterForBusiness(b) === 'complete').length,
-    blocked: businesses.filter((b) => getFilterForBusiness(b) === 'blocked').length,
+    all: localBusinesses.length,
+    action_needed: localBusinesses.filter((b) => getFilterForBusiness(b) === 'action_needed').length,
+    under_review: localBusinesses.filter((b) => getFilterForBusiness(b) === 'under_review').length,
+    complete: localBusinesses.filter((b) => getFilterForBusiness(b) === 'complete').length,
+    blocked: localBusinesses.filter((b) => getFilterForBusiness(b) === 'blocked').length,
   }
 
   const filtered =
     activeFilter === 'all'
-      ? businesses
-      : businesses.filter((b) => getFilterForBusiness(b) === activeFilter)
+      ? localBusinesses
+      : localBusinesses.filter((b) => getFilterForBusiness(b) === activeFilter)
 
   const tabs: { key: FilterTab; label: string }[] = [
     { key: 'all', label: 'All' },
@@ -76,7 +86,12 @@ export default function ListingsCommandCenter({
         alert(typeof result.error === 'string' ? result.error : 'Failed to pause listing')
         return
       }
+      setLocalBusinesses((prev) =>
+        prev.map((b) => b.id === id ? { ...b, status: 'paused' } : b)
+      )
       router.refresh()
+    } catch {
+      alert('An unexpected error occurred')
     } finally {
       setLoadingAction(null)
     }
@@ -94,16 +109,22 @@ export default function ListingsCommandCenter({
         alert(typeof result.error === 'string' ? result.error : 'Failed to unpause listing')
         return
       }
+      setLocalBusinesses((prev) =>
+        prev.map((b) => b.id === id ? { ...b, status: 'published' } : b)
+      )
       router.refresh()
+    } catch {
+      alert('An unexpected error occurred')
     } finally {
       setLoadingAction(null)
     }
   }
 
-  async function handleDelete(id: string) {
-    const confirmed = window.confirm(
-      'Are you sure you want to delete this listing? This action can be reversed by contacting support.'
-    )
+  async function handleDelete(id: string, b: BusinessItem) {
+    const msg = b.verification_status === 'pending'
+      ? 'This listing is under review. Deleting it will cancel the review. Are you sure?'
+      : 'Are you sure you want to delete this listing? This action can be reversed by contacting support.'
+    const confirmed = window.confirm(msg)
     if (!confirmed) return
 
     setLoadingAction(`delete-${id}`)
@@ -113,7 +134,10 @@ export default function ListingsCommandCenter({
         alert(typeof result.error === 'string' ? result.error : 'Failed to delete listing')
         return
       }
+      setLocalBusinesses((prev) => prev.filter((b) => b.id !== id))
       router.refresh()
+    } catch {
+      alert('An unexpected error occurred')
     } finally {
       setLoadingAction(null)
     }
@@ -182,7 +206,7 @@ export default function ListingsCommandCenter({
 
       {/* Listing rows */}
       <div className="mt-6 space-y-3">
-        {businesses.length === 0 ? (
+        {localBusinesses.length === 0 ? (
           <div className="rounded-xl border-2 border-dashed border-gray-300 p-8 text-center">
             <svg
               className="mx-auto h-10 w-10 text-gray-400"
@@ -218,8 +242,17 @@ export default function ListingsCommandCenter({
         ) : (
           filtered.map((b) => {
             const q = b.quality
+            const isSuspended = b.status === 'suspended'
             const isPublished = b.status === 'published'
             const isPaused = b.status === 'paused'
+            const isDraft = b.status === 'draft'
+            const isRejected = q?.flag === 'rejected'
+
+            // Action rules
+            const showEdit = !isSuspended
+            const showPause = isPublished && !isRejected
+            const showResume = isPaused && !isRejected
+            const showDelete = true
 
             return (
               <div
@@ -227,18 +260,20 @@ export default function ListingsCommandCenter({
                 data-testid={`listings-row-${b.id}`}
                 className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4"
               >
-                {/* Left: Name, status, quality */}
+                {/* Left: Name, lifecycle badge, quality badge, hint */}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-gray-900 truncate">{b.name}</span>
+                    {/* Lifecycle badge (always) */}
                     <span
                       className={cn(
-                        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+                        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize',
                         statusColors[b.status] || 'bg-gray-100 text-gray-800'
                       )}
                     >
                       {b.status}
                     </span>
+                    {/* Quality badge (if not complete) */}
                     {q && q.flag !== 'complete' && (
                       <span
                         className={cn(
@@ -250,25 +285,37 @@ export default function ListingsCommandCenter({
                       </span>
                     )}
                   </div>
+                  {/* Hint line */}
                   {q && q.flag !== 'complete' && (
                     <p className="mt-1 text-xs text-gray-500">{q.hint}</p>
+                  )}
+                  {/* Support link for suspended */}
+                  {isSuspended && (
+                    <a
+                      href="mailto:support@hirelocalservices.com.au"
+                      className="mt-1 inline-block text-xs text-brand-600 hover:underline"
+                    >
+                      Contact support for assistance
+                    </a>
                   )}
                 </div>
 
                 {/* Right: Actions */}
                 <div className="ml-3 flex items-center gap-2 flex-shrink-0">
                   {/* Edit */}
-                  <button
-                    type="button"
-                    data-testid={`listings-edit-${b.id}`}
-                    onClick={() => router.push(`/dashboard/listing?bid=${b.id}`)}
-                    className="inline-flex items-center rounded-lg bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-100 transition-colors"
-                  >
-                    Edit
-                  </button>
+                  {showEdit && (
+                    <button
+                      type="button"
+                      data-testid={`listings-edit-${b.id}`}
+                      onClick={() => router.push(`/dashboard/listing?bid=${b.id}`)}
+                      className="inline-flex items-center rounded-lg bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-100 transition-colors"
+                    >
+                      Edit
+                    </button>
+                  )}
 
-                  {/* Pause/Resume */}
-                  {isPublished && (
+                  {/* Pause */}
+                  {showPause && (
                     <button
                       type="button"
                       data-testid={`listings-pause-${b.id}`}
@@ -279,10 +326,12 @@ export default function ListingsCommandCenter({
                       {loadingAction === `pause-${b.id}` ? 'Pausing...' : 'Pause'}
                     </button>
                   )}
-                  {isPaused && (
+
+                  {/* Resume */}
+                  {showResume && (
                     <button
                       type="button"
-                      data-testid={`listings-pause-${b.id}`}
+                      data-testid={`listings-resume-${b.id}`}
                       onClick={() => handleResume(b.id)}
                       disabled={loadingAction === `resume-${b.id}`}
                       className="inline-flex items-center rounded-lg bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-100 disabled:opacity-50 transition-colors"
@@ -292,28 +341,30 @@ export default function ListingsCommandCenter({
                   )}
 
                   {/* Delete */}
-                  <button
-                    type="button"
-                    data-testid={`listings-delete-${b.id}`}
-                    onClick={() => handleDelete(b.id)}
-                    disabled={loadingAction === `delete-${b.id}`}
-                    className="inline-flex items-center justify-center rounded-lg p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
-                    title="Delete listing"
-                  >
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={1.5}
-                      stroke="currentColor"
+                  {showDelete && (
+                    <button
+                      type="button"
+                      data-testid={`listings-delete-${b.id}`}
+                      onClick={() => handleDelete(b.id, b)}
+                      disabled={loadingAction === `delete-${b.id}`}
+                      className="inline-flex items-center justify-center rounded-lg p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                      title="Delete listing"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
-                      />
-                    </svg>
-                  </button>
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={1.5}
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
+                        />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               </div>
             )

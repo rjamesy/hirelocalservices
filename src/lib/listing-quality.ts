@@ -19,6 +19,7 @@ export interface ListingForQuality {
   verification_status: string
   pending_changes: unknown | null
   deleted_at: string | null
+  suspended_reason: string | null
   hasCategories: boolean
   hasLocation: boolean
 }
@@ -32,7 +33,7 @@ export interface QualityFlags {
 }
 
 export interface QualityResult {
-  flag: 'complete' | 'needs_action' | 'under_review' | 'blocked'
+  flag: 'complete' | 'needs_action' | 'under_review' | 'blocked' | 'rejected' | 'edited'
   label: string
   hint: string
   fixStep: number | null
@@ -63,6 +64,14 @@ function underReview(hint: string): QualityResult {
 
 function needsAction(hint: string, fixStep: number): QualityResult {
   return { flag: 'needs_action', label: 'Action Needed', hint, fixStep, colorClass: 'bg-amber-100 text-amber-800' }
+}
+
+function rejected(hint: string): QualityResult {
+  return { flag: 'rejected', label: 'Rejected', hint, fixStep: null, colorClass: 'bg-red-100 text-red-800' }
+}
+
+function edited(hint: string): QualityResult {
+  return { flag: 'edited', label: 'Edited', hint, fixStep: null, colorClass: 'bg-purple-100 text-purple-800' }
 }
 
 function getBlockedHint(reasonCodes: string[]): string {
@@ -101,18 +110,23 @@ export function getListingQuality(
   const f = flags ?? DEFAULT_FLAGS
 
   // 1. BLOCKED — checked first
-  if (listing.status === 'suspended') return blocked('Listing suspended')
+  if (listing.status === 'suspended') {
+    const reason = listing.suspended_reason
+      ? `Suspended: ${listing.suspended_reason}`
+      : 'Listing suspended'
+    return blocked(reason)
+  }
   if (listing.deleted_at !== null) return blocked('Listing deleted')
   if (!f.listingsEnabled) return blocked('Listings temporarily disabled')
   if (f.effectiveState === 'blocked') return blocked(getBlockedHint(f.reasonCodes))
   if (!f.canPublish && !f.isActive) return blocked('Not visible: subscription required')
 
-  // 2. UNDER_REVIEW
+  // 2. UNDER_REVIEW / REJECTED / EDITED
   if (listing.verification_status === 'pending') return underReview('Awaiting approval')
   if (listing.verification_status === 'review') return underReview('Under admin review')
-  if (listing.verification_status === 'rejected') return underReview('Rejected: edit and resubmit')
+  if (listing.verification_status === 'rejected') return rejected('Rejected: edit and resubmit')
   if (listing.pending_changes !== null && listing.status === 'published') {
-    return underReview('Changes pending approval')
+    return edited('Has pending changes')
   }
 
   // 3. NEEDS_ACTION — first missing field determines the hint

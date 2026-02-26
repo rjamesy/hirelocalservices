@@ -772,7 +772,14 @@ export async function publishChanges(businessId: string) {
 }
 
 export async function pauseBusiness(businessId: string) {
-  const { supabase, user } = await verifyBusinessOwnership(businessId)
+  let supabase, user
+  try {
+    const ownership = await verifyBusinessOwnership(businessId)
+    supabase = ownership.supabase
+    user = ownership.user
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Permission denied' }
+  }
 
   const { data: biz } = await supabase
     .from('businesses')
@@ -809,7 +816,14 @@ export async function pauseBusiness(businessId: string) {
 }
 
 export async function unpauseBusiness(businessId: string) {
-  const { supabase, user } = await verifyBusinessOwnership(businessId)
+  let supabase, user
+  try {
+    const ownership = await verifyBusinessOwnership(businessId)
+    supabase = ownership.supabase
+    user = ownership.user
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Permission denied' }
+  }
 
   const { data: biz } = await supabase
     .from('businesses')
@@ -918,7 +932,7 @@ export async function getMyBusinesses() {
     .select(`
       id, name, slug, status,
       description, phone, email_contact, website,
-      verification_status, pending_changes, deleted_at,
+      verification_status, pending_changes, deleted_at, suspended_reason,
       business_locations(id, postcode, suburb, state),
       business_categories(category_id)
     `)
@@ -947,6 +961,9 @@ export async function getMyBusinesses() {
     name: b.name,
     slug: b.slug,
     status: b.status,
+    verification_status: b.verification_status,
+    pending_changes: b.pending_changes,
+    suspended_reason: (b as any).suspended_reason ?? null,
     quality: getListingQuality({
       name: b.name,
       description: b.description,
@@ -957,6 +974,7 @@ export async function getMyBusinesses() {
       verification_status: b.verification_status,
       pending_changes: b.pending_changes,
       deleted_at: b.deleted_at,
+      suspended_reason: (b as any).suspended_reason ?? null,
       hasCategories: (b.business_categories ?? []).length > 0,
       hasLocation: hasValidLocation(b.business_locations),
     }, qualityFlags),
@@ -964,7 +982,14 @@ export async function getMyBusinesses() {
 }
 
 export async function softDeleteBusiness(businessId: string) {
-  const { supabase, user } = await verifyBusinessOwnership(businessId)
+  let supabase, user
+  try {
+    const ownership = await verifyBusinessOwnership(businessId)
+    supabase = ownership.supabase
+    user = ownership.user
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Permission denied' }
+  }
 
   const { data: business, error: fetchError } = await supabase
     .from('businesses')

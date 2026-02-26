@@ -145,7 +145,7 @@ function ListingContent() {
 
   // Multi-business command center state
   const [allBusinesses, setAllBusinesses] = useState<
-    { id: string; name: string; slug: string; status: string; quality?: QualityResult }[]
+    { id: string; name: string; slug: string; status: string; quality?: QualityResult; verification_status?: string; pending_changes?: unknown | null; suspended_reason?: string | null }[]
   >([])
   const [canCreateMore, setCanCreateMore] = useState(false)
   const [showCommandCenter, setShowCommandCenter] = useState(false)
