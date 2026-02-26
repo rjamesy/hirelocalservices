@@ -721,7 +721,40 @@ test.describe('Authenticated admin', () => {
     })
   })
 
-  // ── Cross-page Navigation (tests 96-100) ────────────────────
+  // ── Protection Tab (tests 96-100) ──────────────────────────
+
+  test.describe('Protection tab', () => {
+    test('Protection tab visible on system page', async ({ page }) => {
+      await page.goto('/admin/system')
+      await expect(page.locator('button:has-text("Protection")')).toBeVisible()
+    })
+
+    test('Protection tab loads with system flags toggles', async ({ page }) => {
+      await page.goto('/admin/system')
+      await page.locator('button:has-text("Protection")').click()
+      await expect(page.locator('text=System Flags')).toBeVisible()
+    })
+
+    test('Protection tab shows kill switch section', async ({ page }) => {
+      await page.goto('/admin/system')
+      await page.locator('button:has-text("Protection")').click()
+      await expect(page.locator('text=Emergency Kill Switch')).toBeVisible()
+    })
+
+    test('Protection tab shows circuit breaker status', async ({ page }) => {
+      await page.goto('/admin/system')
+      await page.locator('button:has-text("Protection")').click()
+      await expect(page.locator('text=Circuit Breaker Status')).toBeVisible()
+    })
+
+    test('Protection tab shows recent abuse events section', async ({ page }) => {
+      await page.goto('/admin/system')
+      await page.locator('button:has-text("Protection")').click()
+      await expect(page.locator('text=Recent Abuse Events')).toBeVisible()
+    })
+  })
+
+  // ── Cross-page Navigation (tests 101-105) ────────────────────
 
   test.describe('Cross-page navigation', () => {
     test('dashboard Published card → listings page with published filter', async ({ page }) => {

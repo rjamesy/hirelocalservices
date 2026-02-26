@@ -157,11 +157,11 @@ export default async function BusinessPage({ params }: BusinessPageProps) {
           {/* Header */}
           <div>
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">
+              <h1 data-testid="business-name" className="text-3xl font-bold text-gray-900 sm:text-4xl">
                 {business.name}
               </h1>
               {business.verification_status === 'approved' && (
-                <VerificationBadge status="approved" />
+                <span data-testid="business-verification-badge"><VerificationBadge status="approved" /></span>
               )}
             </div>
 
@@ -217,7 +217,7 @@ export default async function BusinessPage({ params }: BusinessPageProps) {
             <section>
               <h2 className="text-xl font-semibold text-gray-900">About</h2>
               <div className="mt-3 prose prose-gray max-w-none">
-                <p className="text-gray-700 leading-relaxed whitespace-pre-line">
+                <p data-testid="business-description" className="text-gray-700 leading-relaxed whitespace-pre-line">
                   {business.description}
                 </p>
               </div>
@@ -313,7 +313,7 @@ export default async function BusinessPage({ params }: BusinessPageProps) {
         <aside className="lg:col-span-1">
           <div className="sticky top-24 space-y-6">
             {business.phone || business.email_contact || business.website ? (
-              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <div data-testid="business-contact" className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-900">
                   Contact {business.name}
                 </h3>
@@ -322,6 +322,7 @@ export default async function BusinessPage({ params }: BusinessPageProps) {
                   {/* Phone */}
                   {business.phone && (
                     <a
+                      data-testid="business-phone"
                       href={`tel:${business.phone}`}
                       className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-3 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
                     >
@@ -335,6 +336,7 @@ export default async function BusinessPage({ params }: BusinessPageProps) {
                   {/* Email */}
                   {business.email_contact && (
                     <a
+                      data-testid="business-email-link"
                       href={`mailto:${business.email_contact}`}
                       className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                     >
@@ -348,6 +350,7 @@ export default async function BusinessPage({ params }: BusinessPageProps) {
                   {/* Website */}
                   {business.website && (
                     <a
+                      data-testid="business-website-link"
                       href={
                         business.website.startsWith('http')
                           ? business.website
@@ -414,6 +417,7 @@ export default async function BusinessPage({ params }: BusinessPageProps) {
                   appear in search results.
                 </p>
                 <Link
+                  data-testid="business-claim-btn"
                   href={`/dashboard/claim/${business.id}`}
                   className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-3 text-sm font-medium text-white hover:bg-amber-700 transition-colors"
                 >

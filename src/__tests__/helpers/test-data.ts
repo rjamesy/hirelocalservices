@@ -7,6 +7,7 @@ import type {
   Category,
   BusinessLocation,
   Profile,
+  SystemFlags,
 } from '@/lib/types'
 
 export const mockUser = {
@@ -143,3 +144,19 @@ export const mockCategories: Category[] = [
   { id: 'cat-2', name: 'Electrical', slug: 'electrical', parent_id: null },
   { id: 'cat-3', name: 'Plumbing', slug: 'plumbing', parent_id: null },
 ]
+
+export const mockSystemFlags: SystemFlags = {
+  id: 1,
+  registrations_enabled: true,
+  listings_enabled: true,
+  payments_enabled: true,
+  claims_enabled: true,
+  maintenance_mode: false,
+  maintenance_message: 'System temporarily unavailable.',
+  captcha_required: false,
+  listings_require_approval: false,
+  circuit_breaker_triggered_at: null,
+  circuit_breaker_cooldown_minutes: 15,
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+}

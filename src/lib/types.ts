@@ -311,6 +311,10 @@ export type AuditAction =
   | 'account_unsuspended'
   | 'account_deleted'
   | 'account_notes_updated'
+  | 'protection_flag_changed'
+  | 'kill_switch_activated'
+  | 'circuit_breaker_triggered'
+  | 'maintenance_mode_changed'
 
 export type AuditLogEntry = {
   id: string
@@ -337,6 +341,52 @@ export type UserNotification = {
   message: string
   metadata: Record<string, unknown>
   read: boolean
+  created_at: string
+}
+
+// ─── Protection Pack Types ──────────────────────────────────────────
+
+export type SystemFlags = {
+  id: number
+  registrations_enabled: boolean
+  listings_enabled: boolean
+  payments_enabled: boolean
+  claims_enabled: boolean
+  maintenance_mode: boolean
+  maintenance_message: string
+  captcha_required: boolean
+  listings_require_approval: boolean
+  circuit_breaker_triggered_at: string | null
+  circuit_breaker_cooldown_minutes: number
+  created_at: string
+  updated_at: string
+}
+
+export type AbuseEvent = {
+  id: string
+  event_type: AbuseEventType
+  ip_address: string | null
+  user_id: string | null
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export type AbuseEventType =
+  | 'failed_registration'
+  | 'rate_limit_violation'
+  | 'rejected_listing'
+  | 'captcha_failure'
+  | 'email_unverified_attempt'
+  | 'circuit_breaker_triggered'
+  | 'kill_switch_activated'
+
+export type PaymentEvent = {
+  id: string
+  user_id: string | null
+  stripe_customer_id: string | null
+  stripe_subscription_id: string | null
+  event_type: string
+  metadata: Record<string, unknown>
   created_at: string
 }
 
@@ -680,6 +730,24 @@ export type Database = {
           },
         ]
       }
+      system_flags: {
+        Row: SystemFlags
+        Insert: Partial<SystemFlags>
+        Update: Partial<Omit<SystemFlags, 'id' | 'created_at'>>
+        Relationships: []
+      }
+      abuse_events: {
+        Row: AbuseEvent
+        Insert: Omit<AbuseEvent, 'id' | 'created_at'>
+        Update: never
+        Relationships: []
+      }
+      payment_events: {
+        Row: PaymentEvent
+        Insert: Omit<PaymentEvent, 'id' | 'created_at'>
+        Update: never
+        Relationships: []
+      }
       business_search_index: {
         Row: {
           business_id: string
@@ -805,6 +873,17 @@ export type Database = {
           daily_impressions: unknown
           daily_views: unknown
         }[]
+      }
+      get_abuse_event_count: {
+        Args: {
+          p_event_type: string
+          p_minutes: number
+        }
+        Returns: number
+      }
+      get_system_flags: {
+        Args: Record<string, never>
+        Returns: SystemFlags[]
       }
       get_subscription_metrics: {
         Args: {

@@ -21,6 +21,21 @@ vi.mock('@/app/actions/system-settings', () => ({
   getSettingValue: vi.fn(() => Promise.resolve(10)),
 }))
 
+vi.mock('@/lib/protection', () => ({
+  getSystemFlagsSafe: vi.fn(() =>
+    Promise.resolve({
+      listings_enabled: true,
+      listings_require_approval: false,
+    })
+  ),
+  requireEmailVerified: vi.fn(),
+}))
+
+vi.mock('@/lib/rate-limiter', () => ({
+  checkRateLimit: vi.fn(),
+  listingCreateLimiter: {},
+}))
+
 // Import actions after mocks
 import {
   createBusinessDraft,

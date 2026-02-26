@@ -2,7 +2,10 @@
 
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { checkRegistrationAllowed } from '@/app/actions/auth'
+import { getPublicProtectionFlags } from '@/app/actions/protection'
+import TurnstileWidget from '@/components/TurnstileWidget'
 
 export default function SignUpPage() {
   const [email, setEmail] = useState('')
@@ -10,8 +13,16 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaRequired, setCaptchaRequired] = useState(false)
 
   const supabase = createClient()
+
+  useEffect(() => {
+    getPublicProtectionFlags().then((flags) => {
+      setCaptchaRequired(flags.captcha_required)
+    })
+  }, [])
 
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault()
@@ -20,6 +31,17 @@ export default function SignUpPage() {
 
     if (password.length < 8) {
       setError('Password must be at least 8 characters long.')
+      setLoading(false)
+      return
+    }
+
+    // Pre-signup protection check
+    const check = await checkRegistrationAllowed(
+      'client', // IP resolved server-side in production
+      captchaToken ?? undefined
+    )
+    if (!check.allowed) {
+      setError(check.error ?? 'Registration not allowed.')
       setLoading(false)
       return
     }
@@ -45,7 +67,7 @@ export default function SignUpPage() {
   if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="w-full max-w-md bg-white rounded-lg shadow-md p-8 text-center">
+        <div data-testid="signup-success" className="w-full max-w-md bg-white rounded-lg shadow-md p-8 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
             <svg
               className="h-6 w-6 text-green-600"
@@ -87,7 +109,7 @@ export default function SignUpPage() {
 
         <div className="bg-white rounded-lg shadow-md p-8">
           {error && (
-            <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700 border border-red-200">
+            <div data-testid="signup-error" className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700 border border-red-200">
               {error}
             </div>
           )}
@@ -102,6 +124,7 @@ export default function SignUpPage() {
                   id="email"
                   type="email"
                   required
+                  data-testid="signup-email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 sm:text-sm"
@@ -117,6 +140,7 @@ export default function SignUpPage() {
                   id="password"
                   type="password"
                   required
+                  data-testid="signup-password"
                   minLength={8}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -127,9 +151,15 @@ export default function SignUpPage() {
               </div>
             </div>
 
+            <TurnstileWidget
+              captchaRequired={captchaRequired}
+              onSuccess={(token) => setCaptchaToken(token)}
+            />
+
             <button
               type="submit"
-              disabled={loading}
+              data-testid="signup-submit"
+              disabled={loading || (captchaRequired && !captchaToken)}
               className="mt-6 w-full rounded-md bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? 'Creating account...' : 'Create account'}
@@ -138,7 +168,7 @@ export default function SignUpPage() {
 
           <p className="mt-6 text-center text-sm text-gray-600">
             Already have an account?{' '}
-            <Link href="/login" className="font-medium text-brand-600 hover:text-brand-700">
+            <Link href="/login" data-testid="signup-login-link" className="font-medium text-brand-600 hover:text-brand-700">
               Sign in
             </Link>
           </p>

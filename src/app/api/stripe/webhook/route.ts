@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getPlanByPriceId } from '@/lib/constants'
 import type { PlanTier } from '@/lib/types'
 import type Stripe from 'stripe'
+import { logPaymentEvent, getSystemFlagsSafe } from '@/lib/protection'
 
 // Disable Next.js body parsing so we can access the raw body for
 // Stripe signature verification.
@@ -141,6 +142,21 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient()
 
   try {
+    // Check payments_enabled flag for checkout/subscription events
+    const paymentEvents = [
+      'checkout.session.completed',
+      'customer.subscription.created',
+      'customer.subscription.updated',
+      'customer.subscription.deleted',
+    ]
+    if (paymentEvents.includes(event.type)) {
+      const flags = await getSystemFlagsSafe()
+      if (!flags.payments_enabled) {
+        console.warn(`[webhook] payments_enabled=false, skipping ${event.type}`)
+        return NextResponse.json({ received: true }, { status: 200 })
+      }
+    }
+
     switch (event.type) {
       // ─── Checkout completed ─────────────────────────────────────
       case 'checkout.session.completed': {
@@ -211,6 +227,11 @@ export async function POST(request: NextRequest) {
         // Set billing_status='active' on all user's businesses
         await syncBusinessBillingStatus(supabase, userId, 'active')
 
+        // Log payment event
+        await logPaymentEvent(userId, stripeCustomerId, subscriptionId, 'checkout.session.completed', {
+          plan_tier: planTier,
+        })
+
         break
       }
 
@@ -260,6 +281,12 @@ export async function POST(request: NextRequest) {
           } else if (['active', 'past_due'].includes(status)) {
             await syncBusinessBillingStatus(supabase, userSub.user_id, 'active')
           }
+
+          // Log payment event
+          await logPaymentEvent(userSub.user_id, null, stripeSubscriptionId, 'customer.subscription.updated', {
+            status,
+            plan_tier: planTier,
+          })
         }
 
         break
@@ -295,6 +322,9 @@ export async function POST(request: NextRequest) {
         // Suspend all user's businesses
         if (userSub) {
           await syncBusinessBillingStatus(supabase, userSub.user_id, 'billing_suspended')
+
+          // Log payment event
+          await logPaymentEvent(userSub.user_id, null, stripeSubscriptionId, 'customer.subscription.deleted')
         }
 
         break
@@ -324,6 +354,16 @@ export async function POST(request: NextRequest) {
             'invoice.payment_failed: failed to update user_subscription:',
             error
           )
+        }
+
+        // Log payment event
+        const { data: failedSub } = await supabase
+          .from('user_subscriptions')
+          .select('user_id')
+          .eq('stripe_subscription_id', subscriptionId)
+          .maybeSingle()
+        if (failedSub) {
+          await logPaymentEvent(failedSub.user_id, null, subscriptionId, 'invoice.payment_failed')
         }
 
         break

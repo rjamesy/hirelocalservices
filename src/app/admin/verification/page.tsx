@@ -292,6 +292,7 @@ export default function AdminVerificationPage() {
                   <div className="flex-1">
                     <label className="block text-xs font-medium text-gray-500 mb-1">Notes (optional)</label>
                     <textarea
+                      data-testid="admin-verification-notes"
                       value={notes[item.id] || ''}
                       onChange={(e) => setNotes({ ...notes, [item.id]: e.target.value })}
                       className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm resize-none"
@@ -301,6 +302,7 @@ export default function AdminVerificationPage() {
                   </div>
                   <div className="flex gap-2">
                     <button
+                      data-testid="admin-approve-btn"
                       onClick={() => handleApprove(item.id)}
                       disabled={actionLoading === item.id}
                       className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
@@ -308,6 +310,7 @@ export default function AdminVerificationPage() {
                       Approve
                     </button>
                     <button
+                      data-testid="admin-reject-btn"
                       onClick={() => handleReject(item.id)}
                       disabled={actionLoading === item.id}
                       className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"

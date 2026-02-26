@@ -331,7 +331,7 @@ function PhotosContent() {
           <svg className="mx-auto h-12 w-12 text-brand-400" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v13.5A1.5 1.5 0 003.75 21z" />
           </svg>
-          <h3 className="mt-4 text-lg font-semibold text-brand-900">Premium Feature</h3>
+          <h3 data-testid="photos-premium-gate" className="mt-4 text-lg font-semibold text-brand-900">Premium Feature</h3>
           <p className="mt-2 text-sm text-brand-700">
             Photo galleries are available on Premium plans. Upgrade to showcase your work with up to 10 photos.
           </p>
@@ -361,8 +361,8 @@ function PhotosContent() {
     <div className="mx-auto max-w-4xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Photos</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 data-testid="photos-heading" className="text-2xl font-bold text-gray-900">Photos</h1>
+          <p data-testid="photos-count" className="mt-1 text-sm text-gray-500">
             {photos.length} of {MAX_PHOTOS} photos
           </p>
         </div>
@@ -405,6 +405,7 @@ function PhotosContent() {
           {photos.map((photo, index) => (
             <div
               key={photo.id}
+              data-testid="photo-card"
               className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white"
             >
               {/* Photo */}
@@ -453,6 +454,7 @@ function PhotosContent() {
                 {/* Delete */}
                 <button
                   type="button"
+                  data-testid="photo-delete"
                   onClick={() => handleDelete(photo.id)}
                   disabled={deletingId === photo.id}
                   className="rounded-lg bg-red-600 p-2 text-white shadow-sm hover:bg-red-700 transition-colors"

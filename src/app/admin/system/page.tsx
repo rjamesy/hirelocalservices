@@ -5,8 +5,16 @@ import Link from 'next/link'
 import { getSettings, updateSetting } from '@/app/actions/system-settings'
 import { getBlacklistEntries, addBlacklistEntry, removeBlacklistEntry } from '@/app/actions/blacklist'
 import { resetAllData } from '@/app/actions/data-reset'
+import {
+  getAdminProtectionData,
+  updateProtectionFlag,
+  activateKillSwitch,
+  activateMaintenanceMode,
+  adminResetCircuitBreaker,
+} from '@/app/actions/protection'
+import type { SystemFlags } from '@/lib/types'
 
-type Tab = 'seed' | 'ai' | 'email' | 'ranking' | 'listings' | 'reset' | 'blacklist'
+type Tab = 'seed' | 'ai' | 'email' | 'ranking' | 'listings' | 'reset' | 'blacklist' | 'protection'
 
 export default function AdminSystemPage() {
   const [tab, setTab] = useState<Tab>('seed')
@@ -34,6 +42,12 @@ export default function AdminSystemPage() {
   const [resetConfirm, setResetConfirm] = useState(false)
   const [resetting, setResetting] = useState(false)
 
+  // Protection state
+  const [protectionFlags, setProtectionFlags] = useState<SystemFlags | null>(null)
+  const [abuseCounts, setAbuseCounts] = useState<Record<string, number>>({})
+  const [recentEvents, setRecentEvents] = useState<any[]>([])
+  const [protectionLoading, setProtectionLoading] = useState(false)
+
   async function loadSettings() {
     setLoading(true)
     const data = await getSettings()
@@ -46,9 +60,23 @@ export default function AdminSystemPage() {
     setBlacklistEntries(result.data)
   }
 
+  async function loadProtection() {
+    setProtectionLoading(true)
+    try {
+      const data = await getAdminProtectionData()
+      setProtectionFlags(data.flags)
+      setAbuseCounts(data.abuseCounts)
+      setRecentEvents(data.recentEvents)
+    } catch (e) {
+      console.error('Failed to load protection data:', e)
+    }
+    setProtectionLoading(false)
+  }
+
   useEffect(() => {
     loadSettings()
     loadBlacklist()
+    loadProtection()
   }, [])
 
   async function saveSetting(key: string, value: unknown) {
@@ -97,6 +125,7 @@ export default function AdminSystemPage() {
   }
 
   const tabs: { key: Tab; label: string }[] = [
+    { key: 'protection', label: 'Protection' },
     { key: 'seed', label: 'Seed Controls' },
     { key: 'ai', label: 'AI Verification' },
     { key: 'email', label: 'Email Template' },
@@ -143,6 +172,7 @@ export default function AdminSystemPage() {
           {tabs.map((t) => (
             <button
               key={t.key}
+              data-testid={`admin-tab-${t.key}`}
               onClick={() => { setTab(t.key); setMessage(null) }}
               className={`py-2 px-1 border-b-2 text-sm font-medium transition-colors ${
                 tab === t.key
@@ -158,6 +188,212 @@ export default function AdminSystemPage() {
 
       {/* Tab content */}
       <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+        {tab === 'protection' && (
+          <div className="space-y-8">
+            <h2 className="text-lg font-semibold text-gray-900">Protection Controls</h2>
+
+            {protectionLoading ? (
+              <p className="text-gray-500">Loading protection data...</p>
+            ) : protectionFlags ? (
+              <>
+                {/* System Flag Toggles */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-800">System Flags</h3>
+                  {([
+                    { key: 'registrations_enabled' as const, label: 'Registrations Enabled' },
+                    { key: 'listings_enabled' as const, label: 'Listings Enabled' },
+                    { key: 'claims_enabled' as const, label: 'Claims Enabled' },
+                    { key: 'payments_enabled' as const, label: 'Payments Enabled' },
+                    { key: 'captcha_required' as const, label: 'Captcha Required' },
+                    { key: 'listings_require_approval' as const, label: 'Listings Require Approval' },
+                  ] as const).map((flag) => (
+                    <label key={flag.key} className="flex items-center gap-3">
+                      <input
+                        data-testid={`admin-flag-toggle-${flag.key}`}
+                        type="checkbox"
+                        checked={Boolean(protectionFlags[flag.key])}
+                        onChange={async (e) => {
+                          const newValue = e.target.checked
+                          setProtectionFlags((f) => f ? { ...f, [flag.key]: newValue } : f)
+                          const result = await updateProtectionFlag(flag.key, newValue)
+                          if (result && 'error' in result) {
+                            setMessage({ type: 'error', text: result.error ?? 'Failed to update flag' })
+                            setProtectionFlags((f) => f ? { ...f, [flag.key]: !newValue } : f)
+                          } else {
+                            setMessage({ type: 'success', text: `${flag.label} updated.` })
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-gray-300 text-brand-600"
+                      />
+                      <span className="text-sm font-medium text-gray-700">{flag.label}</span>
+                    </label>
+                  ))}
+
+                  {/* Maintenance Mode */}
+                  <label className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(protectionFlags.maintenance_mode)}
+                      onChange={async (e) => {
+                        const newValue = e.target.checked
+                        if (newValue && !confirm('Enable maintenance mode? Non-admin routes will show the maintenance page.')) return
+                        setProtectionFlags((f) => f ? { ...f, maintenance_mode: newValue } : f)
+                        const result = await updateProtectionFlag('maintenance_mode', newValue)
+                        if (result && 'error' in result) {
+                          setMessage({ type: 'error', text: result.error ?? 'Failed' })
+                          setProtectionFlags((f) => f ? { ...f, maintenance_mode: !newValue } : f)
+                        } else {
+                          setMessage({ type: 'success', text: `Maintenance mode ${newValue ? 'enabled' : 'disabled'}.` })
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-gray-300 text-brand-600"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Maintenance Mode</span>
+                  </label>
+
+                  {protectionFlags.maintenance_mode && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Maintenance Message</label>
+                      <textarea
+                        value={protectionFlags.maintenance_message}
+                        onChange={(e) => setProtectionFlags((f) => f ? { ...f, maintenance_message: e.target.value } : f)}
+                        rows={3}
+                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      />
+                      <button
+                        onClick={async () => {
+                          await updateProtectionFlag('maintenance_message', protectionFlags.maintenance_message)
+                          setMessage({ type: 'success', text: 'Maintenance message updated.' })
+                        }}
+                        className="mt-2 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
+                      >
+                        Save Message
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <hr className="border-gray-200" />
+
+                {/* Emergency Kill Switch */}
+                <div data-testid="admin-kill-switch" className="rounded-lg bg-red-50 border border-red-200 p-4 space-y-3">
+                  <h3 className="text-sm font-semibold text-red-800">Emergency Kill Switch</h3>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Disable all registrations immediately?')) return
+                        await activateKillSwitch()
+                        setProtectionFlags((f) => f ? { ...f, registrations_enabled: false } : f)
+                        setMessage({ type: 'success', text: 'Registrations disabled.' })
+                      }}
+                      className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                    >
+                      Disable All Registrations
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Enable maintenance mode? All non-admin routes will show the maintenance page.')) return
+                        await activateMaintenanceMode()
+                        setProtectionFlags((f) => f ? { ...f, maintenance_mode: true } : f)
+                        setMessage({ type: 'success', text: 'Maintenance mode enabled.' })
+                      }}
+                      className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                    >
+                      Enable Maintenance Mode
+                    </button>
+                  </div>
+                </div>
+
+                <hr className="border-gray-200" />
+
+                {/* Circuit Breaker Status */}
+                <div data-testid="admin-circuit-breaker" className="space-y-3">
+                  <h3 className="text-sm font-semibold text-gray-800">Circuit Breaker Status</h3>
+                  {protectionFlags.circuit_breaker_triggered_at ? (
+                    <div className="rounded-md bg-yellow-50 border border-yellow-200 p-3">
+                      <p className="text-sm text-yellow-800 font-medium">
+                        Circuit breaker TRIGGERED at{' '}
+                        {new Date(protectionFlags.circuit_breaker_triggered_at).toLocaleString()}
+                      </p>
+                      <button
+                        onClick={async () => {
+                          await adminResetCircuitBreaker()
+                          setProtectionFlags((f) => f ? { ...f, circuit_breaker_triggered_at: null, registrations_enabled: true } : f)
+                          setMessage({ type: 'success', text: 'Circuit breaker reset. Registrations re-enabled.' })
+                        }}
+                        className="mt-2 rounded-md bg-yellow-600 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-700"
+                      >
+                        Reset Circuit Breaker
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-green-700">Circuit breaker is inactive (normal operation).</p>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {Object.entries(abuseCounts).map(([type, count]) => (
+                      <div key={type} className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                        <p className="text-xs text-gray-500 truncate">{type.replace(/_/g, ' ')}</p>
+                        <p className="text-lg font-bold text-gray-900">{count}</p>
+                        <p className="text-xs text-gray-400">last 5 min</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <hr className="border-gray-200" />
+
+                {/* Recent Abuse Events */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-800">Recent Abuse Events</h3>
+                    <button
+                      onClick={loadProtection}
+                      className="text-xs text-brand-600 hover:text-brand-700 font-medium"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  {recentEvents.length === 0 ? (
+                    <p className="text-sm text-gray-500">No recent abuse events.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-200">
+                            <th className="py-2 pr-4 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                            <th className="py-2 pr-4 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                            <th className="py-2 pr-4 text-left text-xs font-medium text-gray-500 uppercase">IP</th>
+                            <th className="py-2 pr-4 text-left text-xs font-medium text-gray-500 uppercase">User ID</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {recentEvents.map((evt: any) => (
+                            <tr key={evt.id}>
+                              <td className="py-2 pr-4 text-gray-600 whitespace-nowrap">
+                                {new Date(evt.created_at).toLocaleString()}
+                              </td>
+                              <td className="py-2 pr-4">
+                                <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                                  {evt.event_type}
+                                </span>
+                              </td>
+                              <td className="py-2 pr-4 text-gray-500 font-mono text-xs">{evt.ip_address || '—'}</td>
+                              <td className="py-2 pr-4 text-gray-500 font-mono text-xs truncate max-w-[120px]">{evt.user_id || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-red-600">Failed to load protection data.</p>
+            )}
+          </div>
+        )}
+
         {tab === 'seed' && (
           <div className="space-y-6">
             <h2 className="text-lg font-semibold text-gray-900">Seed Controls</h2>

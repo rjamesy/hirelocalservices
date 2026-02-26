@@ -38,7 +38,7 @@ export default function BusinessCard({
     safeDescription.length > 150 ? safeDescription.slice(0, 150) + '...' : safeDescription;
 
   return (
-    <div className="group relative rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-200 overflow-hidden">
+    <div data-testid="business-card" className="group relative rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-200 overflow-hidden">
       <Link href={`/business/${slug}`} className="absolute inset-0 z-10">
         <span className="sr-only">View {name}</span>
       </Link>
@@ -62,7 +62,7 @@ export default function BusinessCard({
           <div className="flex-1">
             {/* Header */}
             <div className="flex items-start justify-between gap-2">
-              <h3 className="text-lg font-semibold text-gray-900 group-hover:text-brand-600 transition-colors line-clamp-1">
+              <h3 data-testid="business-card-name" className="text-lg font-semibold text-gray-900 group-hover:text-brand-600 transition-colors line-clamp-1">
                 {name}
               </h3>
             </div>

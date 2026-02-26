@@ -756,7 +756,7 @@ function ListingContent() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-bold text-gray-900">
+      <h1 data-testid="listing-heading" className="text-2xl font-bold text-gray-900">
         {business ? 'Edit Your Listing' : 'Create Your Listing'}
       </h1>
       <p className="mt-1 text-sm text-gray-500">
@@ -863,6 +863,7 @@ function ListingContent() {
               <input
                 id="name"
                 type="text"
+                data-testid="listing-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 maxLength={BUSINESS_NAME_MAX}
@@ -884,6 +885,7 @@ function ListingContent() {
               </label>
               <textarea
                 id="description"
+                data-testid="listing-description"
                 rows={4}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -916,6 +918,7 @@ function ListingContent() {
                 <input
                   id="phone"
                   type="tel"
+                  data-testid="listing-phone"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className={cn(
@@ -934,6 +937,7 @@ function ListingContent() {
                 <input
                   id="email_contact"
                   type="email"
+                  data-testid="listing-email"
                   value={emailContact}
                   onChange={(e) => setEmailContact(e.target.value)}
                   className={cn(
@@ -954,6 +958,7 @@ function ListingContent() {
                 <input
                   id="website"
                   type="url"
+                  data-testid="listing-website"
                   value={website}
                   onChange={(e) => setWebsite(e.target.value)}
                   className={cn(
@@ -1588,6 +1593,7 @@ function ListingContent() {
                     </div>
                     <button
                       type="button"
+                      data-testid="listing-publish"
                       onClick={handlePublish}
                       disabled={saving}
                       className="inline-flex items-center justify-center rounded-lg bg-green-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -1614,6 +1620,7 @@ function ListingContent() {
         <div className="mt-8 flex items-center justify-between border-t border-gray-200 pt-6">
           <button
             type="button"
+            data-testid="listing-back"
             onClick={handleBack}
             disabled={currentStep === 1}
             className={cn(
@@ -1632,6 +1639,7 @@ function ListingContent() {
           {currentStep < 6 ? (
             <button
               type="button"
+              data-testid="listing-next"
               onClick={handleNext}
               disabled={saving}
               className="inline-flex items-center rounded-lg bg-brand-600 px-6 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -1661,11 +1669,13 @@ function ListingContent() {
 
       {/* Toast notification */}
       {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
+        <div data-testid="listing-toast">
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        </div>
       )}
     </div>
   )

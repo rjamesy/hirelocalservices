@@ -257,7 +257,7 @@ function TestimonialsContent() {
           <svg className="mx-auto h-12 w-12 text-brand-400" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
           </svg>
-          <h3 className="mt-4 text-lg font-semibold text-brand-900">Premium Feature</h3>
+          <h3 data-testid="testimonials-premium-gate" className="mt-4 text-lg font-semibold text-brand-900">Premium Feature</h3>
           <p className="mt-2 text-sm text-brand-700">
             Customer testimonials are available on Premium plans. Upgrade to display up to 20 testimonials.
           </p>
@@ -286,8 +286,8 @@ function TestimonialsContent() {
   return (
     <div className="mx-auto max-w-4xl">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Testimonials</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 data-testid="testimonials-heading" className="text-2xl font-bold text-gray-900">Testimonials</h1>
+        <p data-testid="testimonials-count" className="mt-1 text-sm text-gray-500">
           {testimonials.length} of {MAX_TESTIMONIALS} testimonials
         </p>
       </div>
@@ -346,6 +346,7 @@ function TestimonialsContent() {
             {testimonials.map((testimonial) => (
               <div
                 key={testimonial.id}
+                data-testid="testimonial-card"
                 className="relative rounded-xl border border-gray-200 bg-white"
               >
                 <div className="p-4">
@@ -365,6 +366,7 @@ function TestimonialsContent() {
                     disabled={deletingId === testimonial.id}
                     className="rounded-lg border border-red-200 bg-white p-2 text-red-600 hover:bg-red-50 hover:border-red-300 disabled:opacity-50 transition-colors"
                     title="Delete testimonial"
+                    data-testid="testimonial-delete"
                   >
                     {deletingId === testimonial.id ? (
                       <LoadingSpinner />

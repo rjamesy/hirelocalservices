@@ -9,6 +9,8 @@ import { quickBlacklistCheck } from '@/lib/blacklist'
 import { revalidatePath } from 'next/cache'
 import { logAudit } from '@/lib/audit'
 import { getUserListingCapacity } from '@/lib/listing-limits'
+import { getSystemFlagsSafe, requireEmailVerified } from '@/lib/protection'
+import { checkRateLimit, listingCreateLimiter } from '@/lib/rate-limiter'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -59,6 +61,22 @@ async function verifyBusinessOwnership(businessId: string) {
 
 export async function createBusinessDraft(formData: FormData) {
   const { supabase, user } = await getAuthenticatedUser()
+
+  // ── Protection guards ──────────────────────────────────────────────
+  const flags = await getSystemFlagsSafe()
+  if (!flags.listings_enabled) {
+    return { error: 'Listing creation is currently disabled. Please try again later.' }
+  }
+  try {
+    await checkRateLimit(listingCreateLimiter, user.id, 'rejected_listing')
+  } catch {
+    return { error: 'Too many requests. Please try again later.' }
+  }
+  try {
+    requireEmailVerified(user)
+  } catch {
+    return { error: 'Please verify your email address before creating a listing.' }
+  }
 
   // Check listing capacity based on user's plan tier
   const capacity = await getUserListingCapacity(supabase, user.id)
@@ -469,6 +487,12 @@ export async function updateBusinessCategories(
 export async function publishChanges(businessId: string) {
   const { supabase, user } = await verifyBusinessOwnership(businessId)
 
+  // ── Protection guard ───────────────────────────────────────────────
+  const publishFlags = await getSystemFlagsSafe()
+  if (!publishFlags.listings_enabled) {
+    return { error: 'Listing publishing is currently disabled. Please try again later.' }
+  }
+
   // Check user subscription
   const { data: userSub } = await supabase
     .from('user_subscriptions')
@@ -593,7 +617,11 @@ export async function publishChanges(businessId: string) {
   }
 
   // If images are rejected, override decision
-  const finalDecision = imageModDecision === 'rejected' ? 'rejected' : decision
+  // If listings_require_approval is true, override to pending regardless of AI result
+  let finalDecision = imageModDecision === 'rejected' ? 'rejected' : decision
+  if (publishFlags.listings_require_approval && finalDecision === 'approved') {
+    finalDecision = 'pending'
+  }
 
   // Create verification job
   await supabase.from('verification_jobs').insert({

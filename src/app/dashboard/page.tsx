@@ -111,12 +111,12 @@ export default async function DashboardPage() {
   if (!business) {
     return (
       <div className="mx-auto max-w-2xl">
-        <h1 className="text-2xl font-bold text-gray-900">Welcome to your Dashboard</h1>
+        <h1 data-testid="dashboard-heading" className="text-2xl font-bold text-gray-900">Welcome to your Dashboard</h1>
         <p className="mt-2 text-gray-600">
           Get started by creating your business listing. It only takes a few minutes.
         </p>
 
-        <div className="mt-8 rounded-xl border border-gray-200 bg-white p-8 text-center">
+        <div data-testid="dashboard-create-cta" className="mt-8 rounded-xl border border-gray-200 bg-white p-8 text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-50">
             <svg className="h-8 w-8 text-brand-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.016A3.001 3.001 0 0021 9.349m-18 0a2.99 2.99 0 00.621-1.82L4.5 3h15l.879 4.529a2.99 2.99 0 00.621 1.82" />
@@ -129,6 +129,7 @@ export default async function DashboardPage() {
           </p>
           <Link
             href="/dashboard/listing"
+            data-testid="dashboard-create-link"
             className="mt-6 inline-flex items-center rounded-lg bg-brand-600 px-6 py-3 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
           >
             <svg className="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -189,13 +190,13 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+      <h1 data-testid="dashboard-heading" className="text-2xl font-bold text-gray-900">Dashboard</h1>
       <p className="mt-1 text-sm text-gray-500">
         Manage your business listing and subscription.
       </p>
 
       {/* Status card */}
-      <div className="mt-6">
+      <div data-testid="dashboard-status-card" className="mt-6">
         <StatusCard status={status} billingStatus={billingStatus} hasSubscription={!!hasActiveSubscription} hasContact={hasContact} />
       </div>
 
@@ -550,6 +551,7 @@ export default async function DashboardPage() {
             <>
               <Link
                 href="/dashboard/listing"
+                data-testid="dashboard-edit-link"
                 className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-brand-300 hover:bg-brand-50 transition-colors"
               >
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 group-hover:bg-brand-100">
@@ -565,6 +567,7 @@ export default async function DashboardPage() {
 
               <Link
                 href="/dashboard/photos"
+                data-testid="dashboard-photos-link"
                 className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-brand-300 hover:bg-brand-50 transition-colors"
               >
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 group-hover:bg-brand-100">

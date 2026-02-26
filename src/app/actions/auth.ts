@@ -1,0 +1,45 @@
+'use server'
+
+import { getSystemFlagsSafe, verifyCaptcha, logAbuseEvent } from '@/lib/protection'
+import { checkRateLimit, registrationLimiter } from '@/lib/rate-limiter'
+
+/**
+ * Pre-signup check. Client calls this BEFORE supabase.auth.signUp().
+ * Enforces: registrations_enabled flag, rate limit, captcha.
+ */
+export async function checkRegistrationAllowed(
+  ip: string,
+  captchaToken?: string
+): Promise<{ allowed: boolean; error?: string }> {
+  try {
+    const flags = await getSystemFlagsSafe()
+
+    // Check registrations enabled
+    if (!flags.registrations_enabled) {
+      return { allowed: false, error: 'Registrations are currently disabled. Please try again later.' }
+    }
+
+    // Rate limit by IP
+    try {
+      await checkRateLimit(registrationLimiter, ip, 'failed_registration')
+    } catch {
+      return { allowed: false, error: 'Too many registration attempts. Please try again later.' }
+    }
+
+    // Captcha verification
+    if (flags.captcha_required && captchaToken) {
+      const captchaResult = await verifyCaptcha(captchaToken)
+      if (!captchaResult.success) {
+        await logAbuseEvent('captcha_failure', ip, null, { context: 'registration' })
+        return { allowed: false, error: 'Captcha verification failed. Please try again.' }
+      }
+    } else if (flags.captcha_required && !captchaToken) {
+      return { allowed: false, error: 'Please complete the captcha verification.' }
+    }
+
+    return { allowed: true }
+  } catch {
+    // Fail open — allow registration if protection check fails
+    return { allowed: true }
+  }
+}

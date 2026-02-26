@@ -126,6 +126,7 @@ function LoginForm() {
           <div className="flex rounded-lg bg-gray-100 p-1 mb-6">
             <button
               type="button"
+              data-testid="login-mode-password"
               onClick={() => {
                 setMode('password')
                 setError(null)
@@ -140,6 +141,7 @@ function LoginForm() {
             </button>
             <button
               type="button"
+              data-testid="login-mode-magic"
               onClick={() => {
                 setMode('magic-link')
                 setError(null)
@@ -155,7 +157,7 @@ function LoginForm() {
           </div>
 
           {error && (
-            <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700 border border-red-200">
+            <div data-testid="login-error" className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700 border border-red-200">
               {error}
             </div>
           )}
@@ -170,6 +172,7 @@ function LoginForm() {
                   id="email"
                   type="email"
                   required
+                  data-testid="login-email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 sm:text-sm"
@@ -186,6 +189,7 @@ function LoginForm() {
                     id="password"
                     type="password"
                     required
+                    data-testid="login-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 sm:text-sm"
@@ -197,6 +201,7 @@ function LoginForm() {
 
             <button
               type="submit"
+              data-testid="login-submit"
               disabled={loading}
               className="mt-6 w-full rounded-md bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
@@ -210,7 +215,7 @@ function LoginForm() {
 
           <p className="mt-6 text-center text-sm text-gray-600">
             Don&apos;t have an account?{' '}
-            <Link href="/signup" className="font-medium text-brand-600 hover:text-brand-700">
+            <Link href="/signup" data-testid="login-signup-link" className="font-medium text-brand-600 hover:text-brand-700">
               Sign up
             </Link>
           </p>

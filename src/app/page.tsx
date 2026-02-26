@@ -96,11 +96,11 @@ export default async function HomePage() {
   return (
     <>
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 text-white">
+      <section data-testid="hero-section" className="relative bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 text-white">
         <div className="absolute inset-0 opacity-10 bg-[length:40px_40px] bg-[image:linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)]" />
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20 sm:py-28 lg:py-36">
           <div className="mx-auto max-w-3xl text-center">
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight">
+            <h1 data-testid="hero-heading" className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight">
               Find Local Services Across Australia
             </h1>
             <p className="mt-6 text-lg sm:text-xl text-brand-100 leading-relaxed">
@@ -116,7 +116,7 @@ export default async function HomePage() {
       </section>
 
       {/* Popular Categories */}
-      <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
+      <section data-testid="categories-section" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
         <div className="text-center">
           <h2 className="text-3xl font-bold tracking-tight text-gray-900">
             Popular Categories
@@ -131,7 +131,7 @@ export default async function HomePage() {
       </section>
 
       {/* How It Works */}
-      <section className="bg-gray-50 py-16 sm:py-20">
+      <section data-testid="how-it-works-section" className="bg-gray-50 py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center">
             <h2 className="text-3xl font-bold tracking-tight text-gray-900">
@@ -163,7 +163,7 @@ export default async function HomePage() {
       </section>
 
       {/* List Your Business CTA */}
-      <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
+      <section data-testid="cta-section" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
         <div className="rounded-2xl bg-gradient-to-r from-brand-600 to-brand-800 px-8 py-14 sm:px-16 text-center">
           <h2 className="text-3xl font-bold tracking-tight text-white">
             List Your Business
@@ -182,6 +182,7 @@ export default async function HomePage() {
             </Link>
             <Link
               href="/login?redirect=/dashboard"
+              data-testid="cta-get-started-link"
               className="rounded-lg border-2 border-white/30 px-8 py-3 text-base font-semibold text-white hover:bg-white/10 transition-colors"
             >
               Get Started

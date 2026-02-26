@@ -80,6 +80,7 @@ function SubscriptionBadge({ status }: { status: string }) {
 
   return (
     <span
+      data-testid="billing-status-badge"
       className={cn(
         'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
         styles[status] ?? 'bg-gray-100 text-gray-800'
@@ -369,7 +370,7 @@ function BillingContent() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="text-2xl font-bold text-gray-900">Billing</h1>
+      <h1 data-testid="billing-heading" className="text-2xl font-bold text-gray-900">Billing</h1>
       <p className="mt-1 text-sm text-gray-500">
         Manage your subscription and billing details.
       </p>
@@ -411,7 +412,7 @@ function BillingContent() {
         <div className="p-6 sm:p-8">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 data-testid="billing-current-plan" className="text-lg font-semibold text-gray-900">
                 {isFreeTrial ? 'Free Trial' : `${currentPlan.name} Plan`}
               </h2>
               <SubscriptionBadge status={isFreeTrial ? 'trialing' : subscription.status} />
@@ -508,6 +509,7 @@ function BillingContent() {
               </p>
               <button
                 type="button"
+                data-testid="billing-manage-btn"
                 onClick={handleManage}
                 disabled={redirecting}
                 className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -527,6 +529,7 @@ function BillingContent() {
                   </>
                 )}
               </button>
+
             </div>
           </div>
         )}
@@ -575,7 +578,7 @@ function BillingContent() {
       )}
 
       {/* FAQ / Help */}
-      <div className="mt-8 rounded-xl border border-gray-200 bg-white p-6 sm:p-8">
+      <div data-testid="billing-faq" className="mt-8 rounded-xl border border-gray-200 bg-white p-6 sm:p-8">
         <h3 className="text-sm font-semibold text-gray-900">Frequently Asked Questions</h3>
         <dl className="mt-4 space-y-4">
           <div>

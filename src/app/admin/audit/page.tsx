@@ -222,7 +222,7 @@ export default function AdminAuditPage() {
       ) : (
         <>
           <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table data-testid="admin-audit-table" className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Time</th>
@@ -235,7 +235,7 @@ export default function AdminAuditPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {entries.map((entry) => (
-                  <tr key={entry.id} className="hover:bg-gray-50">
+                  <tr key={entry.id} data-testid="admin-audit-row" className="hover:bg-gray-50">
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-500">
                       {new Date(entry.created_at).toLocaleString('en-AU')}
                     </td>

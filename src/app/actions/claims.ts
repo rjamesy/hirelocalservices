@@ -13,6 +13,8 @@ import { TRIAL_DURATION_DAYS } from '@/lib/ranking'
 import { logAudit } from '@/lib/audit'
 import { getUserListingCapacity } from '@/lib/listing-limits'
 import { createNotification } from '@/app/actions/notifications'
+import { getSystemFlagsSafe, requireEmailVerified, verifyCaptcha, logAbuseEvent } from '@/lib/protection'
+import { checkRateLimit, claimSubmitLimiter } from '@/lib/rate-limiter'
 
 async function requireAuth() {
   const supabase = await createClient()
@@ -95,9 +97,36 @@ export async function claimBusiness(
     phone?: string
     website?: string
     postcode?: string
+    captchaToken?: string
   }
 ) {
   const { supabase, user } = await requireAuth()
+
+  // ── Protection guards ──────────────────────────────────────────────
+  const flags = await getSystemFlagsSafe()
+  if (!flags.claims_enabled) {
+    return { error: 'Claim submissions are currently disabled. Please try again later.' }
+  }
+  try {
+    await checkRateLimit(claimSubmitLimiter, user.id, 'rate_limit_violation')
+  } catch {
+    return { error: 'Too many requests. Please try again later.' }
+  }
+  try {
+    requireEmailVerified(user)
+  } catch {
+    return { error: 'Please verify your email address before claiming a business.' }
+  }
+  if (flags.captcha_required) {
+    if (!claimData.captchaToken) {
+      return { error: 'Please complete the captcha verification.' }
+    }
+    const captchaResult = await verifyCaptcha(claimData.captchaToken)
+    if (!captchaResult.success) {
+      await logAbuseEvent('captcha_failure', null, user.id, { context: 'claim' })
+      return { error: 'Captcha verification failed. Please try again.' }
+    }
+  }
 
   // Validate claim data
   const parsed = claimSchema.safeParse(claimData)
