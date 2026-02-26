@@ -11,6 +11,8 @@ import { logAudit } from '@/lib/audit'
 import { getUserListingCapacity } from '@/lib/listing-limits'
 import { getSystemFlagsSafe, requireEmailVerified } from '@/lib/protection'
 import { checkRateLimit, listingCreateLimiter } from '@/lib/rate-limiter'
+import { getUserEntitlements } from '@/lib/entitlements'
+import { getListingQuality, type QualityFlags } from '@/lib/listing-quality'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -896,6 +898,13 @@ export async function unpublishBusiness(businessId: string) {
   return { success: true }
 }
 
+function hasValidLocation(
+  locations?: { postcode?: string | null; suburb?: string | null; state?: string | null }[]
+): boolean {
+  if (!locations || locations.length === 0) return false
+  return locations.some(l => l.postcode || (l.suburb && l.state))
+}
+
 export async function getMyBusinesses() {
   const supabase = await createClient()
   const {
@@ -906,12 +915,51 @@ export async function getMyBusinesses() {
 
   const { data } = await supabase
     .from('businesses')
-    .select('id, name, slug, status, billing_status')
+    .select(`
+      id, name, slug, status,
+      description, phone, email_contact, website,
+      verification_status, pending_changes, deleted_at,
+      business_locations(id, postcode, suburb, state),
+      business_categories(category_id)
+    `)
     .eq('owner_id', user.id)
     .eq('is_seed', false)
     .order('created_at', { ascending: false })
 
-  return data ?? []
+  if (!data || data.length === 0) return []
+
+  const [entitlements, systemFlags] = await Promise.all([
+    getUserEntitlements(supabase, user.id),
+    getSystemFlagsSafe(),
+  ])
+
+  const qualityFlags: QualityFlags = {
+    canPublish: entitlements.canPublish,
+    isActive: entitlements.isActive,
+    effectiveState: entitlements.effectiveState,
+    reasonCodes: entitlements.reasonCodes,
+    listingsEnabled: systemFlags.listings_enabled,
+  }
+
+  return data.map((b) => ({
+    id: b.id,
+    name: b.name,
+    slug: b.slug,
+    status: b.status,
+    quality: getListingQuality({
+      name: b.name,
+      description: b.description,
+      phone: b.phone,
+      email_contact: b.email_contact,
+      website: b.website,
+      status: b.status,
+      verification_status: b.verification_status,
+      pending_changes: b.pending_changes,
+      deleted_at: b.deleted_at,
+      hasCategories: (b.business_categories ?? []).length > 0,
+      hasLocation: hasValidLocation(b.business_locations),
+    }, qualityFlags),
+  }))
 }
 
 export async function getUserPlan(): Promise<PlanTier | null> {

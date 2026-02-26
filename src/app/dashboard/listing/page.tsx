@@ -16,6 +16,7 @@ import { createBusinessSchema, locationSchema } from '@/lib/validations'
 import { AU_STATES, RADIUS_OPTIONS, MAX_PHOTOS, MAX_TESTIMONIALS } from '@/lib/constants'
 import { BUSINESS_NAME_MAX, getDescriptionLimit } from '@/lib/plan-limits'
 import type { PlanTier } from '@/lib/types'
+import type { QualityResult } from '@/lib/listing-quality'
 import { cn, formatPhone } from '@/lib/utils'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import BusinessSelector from '@/components/BusinessSelector'
@@ -140,10 +141,11 @@ function ListingContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const bid = searchParams.get('bid')
+  const stepParam = searchParams.get('step')
 
   // Multi-business selector state
   const [allBusinesses, setAllBusinesses] = useState<
-    { id: string; name: string; status: string; billing_status: string }[]
+    { id: string; name: string; status: string; quality?: QualityResult }[]
   >([])
   const [showSelector, setShowSelector] = useState(false)
 
@@ -268,13 +270,21 @@ function ListingContent() {
         if (biz.testimonials) {
           setTestimonials(biz.testimonials as typeof testimonials)
         }
+
+        // Deep-link to a specific step if ?step= param is present
+        if (stepParam) {
+          const stepNum = parseInt(stepParam, 10)
+          if (stepNum >= 1 && stepNum <= 6) {
+            setCurrentStep(stepNum)
+          }
+        }
       }
     } catch {
       setToast({ message: 'Failed to load data. Please refresh.', type: 'error' })
     } finally {
       setLoading(false)
     }
-  }, [bid])
+  }, [bid, stepParam])
 
   useEffect(() => {
     fetchData()

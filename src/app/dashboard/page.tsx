@@ -497,20 +497,24 @@ export default async function DashboardPage() {
                 paused: 'bg-gray-100 text-gray-800',
                 suspended: 'bg-red-100 text-red-800',
               }
-              const billingColor = b.billing_status === 'billing_suspended' ? 'bg-orange-100 text-orange-800' : ''
-              const badgeClass = billingColor || statusColors[b.status] || 'bg-gray-100 text-gray-800'
-              const badgeLabel = b.billing_status === 'billing_suspended' ? 'billing suspended' : b.status
+              const badgeClass = statusColors[b.status] || 'bg-gray-100 text-gray-800'
+              const q = b.quality
 
               return (
                 <div
                   key={b.id}
                   className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4"
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-gray-900">{b.name}</span>
                     <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', badgeClass)}>
-                      {badgeLabel}
+                      {b.status}
                     </span>
+                    {q && q.flag !== 'complete' && (
+                      <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', q.colorClass)}>
+                        {q.label}
+                      </span>
+                    )}
                   </div>
                   <Link
                     href={`/dashboard/listing?bid=${b.id}`}

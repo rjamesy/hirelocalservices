@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import PhotoUploader from '@/components/PhotoUploader'
 import BusinessSelector from '@/components/BusinessSelector'
+import type { QualityResult } from '@/lib/listing-quality'
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -68,7 +69,7 @@ function PhotosContent() {
   const [canUploadPhotos, setCanUploadPhotos] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [allBusinesses, setAllBusinesses] = useState<
-    { id: string; name: string; status: string; billing_status: string }[]
+    { id: string; name: string; status: string; quality?: QualityResult }[]
   >([])
   const [showSelector, setShowSelector] = useState(false)
 
