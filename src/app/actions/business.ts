@@ -956,29 +956,36 @@ export async function getMyBusinesses() {
     listingsEnabled: systemFlags.listings_enabled,
   }
 
-  return data.map((b) => ({
-    id: b.id,
-    name: b.name,
-    slug: b.slug,
-    status: b.status,
-    verification_status: b.verification_status,
-    pending_changes: b.pending_changes,
-    suspended_reason: (b as any).suspended_reason ?? null,
-    quality: getListingQuality({
+  return data.map((b) => {
+    const loc = Array.isArray(b.business_locations)
+      ? b.business_locations[0] ?? null
+      : b.business_locations
+    return {
+      id: b.id,
       name: b.name,
-      description: b.description,
-      phone: b.phone,
-      email_contact: b.email_contact,
-      website: b.website,
+      slug: b.slug,
       status: b.status,
+      suburb: (loc as any)?.suburb ?? null,
+      state: (loc as any)?.state ?? null,
       verification_status: b.verification_status,
       pending_changes: b.pending_changes,
-      deleted_at: b.deleted_at,
       suspended_reason: (b as any).suspended_reason ?? null,
-      hasCategories: (b.business_categories ?? []).length > 0,
-      hasLocation: hasValidLocation(b.business_locations),
-    }, qualityFlags),
-  }))
+      quality: getListingQuality({
+        name: b.name,
+        description: b.description,
+        phone: b.phone,
+        email_contact: b.email_contact,
+        website: b.website,
+        status: b.status,
+        verification_status: b.verification_status,
+        pending_changes: b.pending_changes,
+        deleted_at: b.deleted_at,
+        suspended_reason: (b as any).suspended_reason ?? null,
+        hasCategories: (b.business_categories ?? []).length > 0,
+        hasLocation: hasValidLocation(b.business_locations),
+      }, qualityFlags),
+    }
+  })
 }
 
 export async function softDeleteBusiness(businessId: string) {

@@ -44,10 +44,8 @@ export default async function DashboardPage() {
     (b) => b.quality && b.quality.flag !== 'complete' && b.quality.flag !== 'under_review'
   )
 
-  // Published businesses for public profile links
-  const publishedBusinesses = businesses
-    .filter((b) => b.status === 'published')
-    .map((b) => ({ name: b.name, slug: b.slug }))
+  // Live businesses (have a public page) for public profile link
+  const liveBusinesses = businesses.filter((b) => b.status === 'published' || b.status === 'paused')
 
   // Primary CTA logic
   let ctaLabel: string
@@ -275,8 +273,11 @@ export default async function DashboardPage() {
             </div>
           </Link>
 
-          {publishedBusinesses.length > 0 && (
-            <ViewPublicProfileCard businesses={publishedBusinesses} />
+          {liveBusinesses.length > 0 && (
+            <ViewPublicProfileCard
+              slug={liveBusinesses.length === 1 ? liveBusinesses[0].slug : undefined}
+              multi={liveBusinesses.length > 1}
+            />
           )}
         </div>
       </div>

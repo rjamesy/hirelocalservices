@@ -11,6 +11,8 @@ interface BusinessItem {
   name: string
   slug: string
   status: string
+  suburb?: string | null
+  state?: string | null
   quality?: QualityResult
   verification_status?: string
   pending_changes?: unknown | null
@@ -264,6 +266,11 @@ export default function ListingsCommandCenter({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-gray-900 truncate">{b.name}</span>
+                    {(b.suburb || b.state) && (
+                      <span className="text-xs text-gray-400 truncate">
+                        {[b.suburb, b.state].filter(Boolean).join(', ')}
+                      </span>
+                    )}
                     {/* Lifecycle badge (always) */}
                     <span
                       className={cn(
