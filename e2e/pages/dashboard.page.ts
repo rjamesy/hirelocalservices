@@ -5,11 +5,13 @@ export class DashboardPage {
   constructor(private page: Page) {}
 
   get heading() { return this.page.getByTestId('dashboard-heading') }
-  get statusCard() { return this.page.getByTestId('dashboard-status-card') }
+  get accountSummary() { return this.page.getByTestId('dashboard-account-summary') }
+  get planBadge() { return this.page.getByTestId('dashboard-plan-badge') }
+  get listingsUsed() { return this.page.getByTestId('dashboard-listings-used') }
+  get primaryCta() { return this.page.getByTestId('dashboard-primary-cta') }
   get createCta() { return this.page.getByTestId('dashboard-create-cta') }
   get createLink() { return this.page.getByTestId('dashboard-create-link') }
   get editLink() { return this.page.getByTestId('dashboard-edit-link') }
-  get photosLink() { return this.page.getByTestId('dashboard-photos-link') }
 
   async goto() {
     await this.page.goto('/dashboard')
@@ -24,7 +26,7 @@ export class DashboardPage {
   }
 
   async expectHasBusiness() {
-    await expect(this.statusCard).toBeVisible()
+    await expect(this.accountSummary).toBeVisible()
   }
 
   async clickCreateListing() {

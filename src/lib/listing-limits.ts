@@ -14,12 +14,13 @@ export async function getUserListingCapacity(
   canClaimMore: boolean
   userPlan: PlanTier | null
 }> {
-  // 1. Count non-seed businesses owned by user
+  // 1. Count non-seed, non-deleted businesses owned by user
   const { count } = await supabase
     .from('businesses')
     .select('*', { count: 'exact', head: true })
     .eq('owner_id', userId)
     .eq('is_seed', false)
+    .is('deleted_at', null)
 
   // 2. Get user's plan from user_subscriptions
   const { data: userSub } = await supabase

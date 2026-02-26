@@ -924,6 +924,7 @@ export async function getMyBusinesses() {
     `)
     .eq('owner_id', user.id)
     .eq('is_seed', false)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
   if (!data || data.length === 0) return []
@@ -960,6 +961,73 @@ export async function getMyBusinesses() {
       hasLocation: hasValidLocation(b.business_locations),
     }, qualityFlags),
   }))
+}
+
+export async function softDeleteBusiness(businessId: string) {
+  const { supabase, user } = await verifyBusinessOwnership(businessId)
+
+  const { data: business, error: fetchError } = await supabase
+    .from('businesses')
+    .select('id, slug, name, status, deleted_at')
+    .eq('id', businessId)
+    .single()
+
+  if (fetchError || !business) {
+    return { error: 'Business not found' }
+  }
+
+  if (business.deleted_at) {
+    return { error: 'Business is already deleted' }
+  }
+
+  const now = new Date().toISOString()
+
+  const { error } = await supabase
+    .from('businesses')
+    .update({
+      status: 'deleted',
+      deleted_at: now,
+    })
+    .eq('id', businessId)
+
+  if (error) {
+    return { error: 'Failed to delete business. Please try again.' }
+  }
+
+  // Refresh search index to remove from results
+  await supabase.rpc('refresh_search_index', { p_business_id: businessId })
+
+  await logAudit(supabase, {
+    action: 'listing_deleted',
+    entityType: 'listing',
+    entityId: businessId,
+    actorId: user.id,
+    details: {
+      listing_name: business.name,
+      before_state: { status: business.status },
+      after_state: { status: 'deleted', deleted_at: now },
+    },
+  })
+
+  revalidatePath('/dashboard')
+  if (business.slug) revalidatePath(`/business/${business.slug}`)
+  return { success: true }
+}
+
+export async function getListingsPageData() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { businesses: [], canCreateMore: false, entitlements: null }
+
+  const [businesses, entitlements] = await Promise.all([
+    getMyBusinesses(),
+    getUserEntitlements(supabase, user.id),
+  ])
+
+  const canCreateMore = businesses.length < entitlements.maxListings && entitlements.isActive
+
+  return { businesses, canCreateMore, entitlements }
 }
 
 export async function getUserPlan(): Promise<PlanTier | null> {

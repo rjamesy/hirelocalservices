@@ -59,12 +59,13 @@ export async function getUserEntitlements(
     .limit(1)
     .maybeSingle()
 
-  // 2. Count user's non-seed businesses
+  // 2. Count user's non-seed, non-deleted businesses
   const { count } = await supabase
     .from('businesses')
     .select('*', { count: 'exact', head: true })
     .eq('owner_id', userId)
     .eq('is_seed', false)
+    .is('deleted_at', null)
 
   const currentListingCount = count ?? 0
 

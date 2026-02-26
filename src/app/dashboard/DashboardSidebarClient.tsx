@@ -11,36 +11,19 @@ interface NavItemData {
 }
 
 interface DashboardSidebarClientProps {
-  businessName: string | null
-  businessStatus: string | null
   navItems: NavItemData[]
-  hasBusiness: boolean
   children: React.ReactNode
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    draft: 'bg-yellow-100 text-yellow-800',
-    published: 'bg-green-100 text-green-800',
-    suspended: 'bg-red-100 text-red-800',
-  }
-
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize',
-        styles[status] ?? 'bg-gray-100 text-gray-800'
-      )}
-    >
-      {status}
-    </span>
-  )
 }
 
 const navIcons: Record<string, React.ReactNode> = {
   Dashboard: (
     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955a1.126 1.126 0 011.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+    </svg>
+  ),
+  'My Listings': (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.016A3.001 3.001 0 0021 9.349m-18 0a2.99 2.99 0 00.621-1.82L4.5 3h15l.879 4.529a2.99 2.99 0 00.621 1.82" />
     </svg>
   ),
   'My Listing': (
@@ -53,16 +36,6 @@ const navIcons: Record<string, React.ReactNode> = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
     </svg>
   ),
-  Photos: (
-    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v13.5A1.5 1.5 0 003.75 21z" />
-    </svg>
-  ),
-  Testimonials: (
-    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-    </svg>
-  ),
   Billing: (
     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
@@ -71,10 +44,7 @@ const navIcons: Record<string, React.ReactNode> = {
 }
 
 export function DashboardSidebarClient({
-  businessName,
-  businessStatus,
   navItems,
-  hasBusiness,
   children,
 }: DashboardSidebarClientProps) {
   const pathname = usePathname()
@@ -102,9 +72,8 @@ export function DashboardSidebarClient({
           </svg>
         </button>
         <div className="flex-1 text-sm font-semibold text-gray-900">
-          {businessName ?? 'Dashboard'}
+          Dashboard
         </div>
-        {businessStatus && <StatusBadge status={businessStatus} />}
       </div>
 
       {/* Mobile sidebar overlay */}
@@ -156,20 +125,6 @@ export function DashboardSidebarClient({
                     </span>
                   </Link>
                 </div>
-
-                {/* Business info */}
-                {hasBusiness && businessName ? (
-                  <div className="border-b border-gray-200 pb-3">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {businessName}
-                    </p>
-                    {businessStatus && <StatusBadge status={businessStatus} />}
-                  </div>
-                ) : (
-                  <div className="border-b border-gray-200 pb-3">
-                    <p className="text-sm text-gray-500">No listing yet</p>
-                  </div>
-                )}
 
                 {/* Nav */}
                 <nav className="flex flex-1 flex-col">

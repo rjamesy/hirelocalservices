@@ -50,7 +50,7 @@ function createMockSupabase(opts: {
   function buildChainable(data: unknown): any {
     const chain: any = {}
     const terminalMethods = ['maybeSingle', 'single']
-    const chainingMethods = ['select', 'eq', 'neq', 'order', 'limit', 'range', 'in', 'ilike']
+    const chainingMethods = ['select', 'eq', 'neq', 'is', 'order', 'limit', 'range', 'in', 'ilike']
 
     for (const m of terminalMethods) {
       chain[m] = vi.fn(() => Promise.resolve({ data, error: null }))

@@ -9,7 +9,7 @@ import {
   updateBusinessCategories,
   publishChanges,
   getMyBusiness,
-  getMyBusinesses,
+  getListingsPageData,
   getUserPlan,
 } from '@/app/actions/business'
 import { createBusinessSchema, locationSchema } from '@/lib/validations'
@@ -19,7 +19,7 @@ import type { PlanTier } from '@/lib/types'
 import type { QualityResult } from '@/lib/listing-quality'
 import { cn, formatPhone } from '@/lib/utils'
 import LoadingSpinner from '@/components/LoadingSpinner'
-import BusinessSelector from '@/components/BusinessSelector'
+import ListingsCommandCenter from '@/components/ListingsCommandCenter'
 import PhotoUploader from '@/components/PhotoUploader'
 import TestimonialForm from '@/components/TestimonialForm'
 import TestimonialCard from '@/components/TestimonialCard'
@@ -143,11 +143,12 @@ function ListingContent() {
   const bid = searchParams.get('bid')
   const stepParam = searchParams.get('step')
 
-  // Multi-business selector state
+  // Multi-business command center state
   const [allBusinesses, setAllBusinesses] = useState<
-    { id: string; name: string; status: string; quality?: QualityResult }[]
+    { id: string; name: string; slug: string; status: string; quality?: QualityResult }[]
   >([])
-  const [showSelector, setShowSelector] = useState(false)
+  const [canCreateMore, setCanCreateMore] = useState(false)
+  const [showCommandCenter, setShowCommandCenter] = useState(false)
 
   // Global state
   const [loading, setLoading] = useState(true)
@@ -205,17 +206,35 @@ function ListingContent() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
-      setShowSelector(false)
+      setShowCommandCenter(false)
 
-      // If no bid specified, check if user has multiple businesses
-      if (!bid) {
-        const businesses = await getMyBusinesses()
-        if (businesses.length > 1) {
-          setAllBusinesses(businesses)
-          setShowSelector(true)
-          setLoading(false)
+      // bid=new: start fresh editor (check canCreateMore first)
+      if (bid === 'new') {
+        const pageData = await getListingsPageData()
+        if (!pageData.canCreateMore) {
+          setToast({ message: "You've reached your listing limit.", type: 'error' })
+          router.push('/dashboard/billing')
           return
         }
+        // Fall through to load editor with no business
+        const [categoriesRes, plan] = await Promise.all([
+          fetch('/api/categories').then((res) => (res.ok ? res.json() : [])),
+          getUserPlan(),
+        ])
+        setUserPlan(plan)
+        if (categoriesRes && Array.isArray(categoriesRes)) setCategories(categoriesRes)
+        setLoading(false)
+        return
+      }
+
+      // No bid: always show command center
+      if (!bid) {
+        const pageData = await getListingsPageData()
+        setAllBusinesses(pageData.businesses)
+        setCanCreateMore(pageData.canCreateMore)
+        setShowCommandCenter(true)
+        setLoading(false)
+        return
       }
 
       // Fetch business, categories, and user plan in parallel
@@ -749,15 +768,15 @@ function ListingContent() {
     )
   }
 
-  // ─── Business selector for multi-listing users ─────────────────
+  // ─── Listings command center ────────────────────────────────────
 
-  if (showSelector) {
+  if (showCommandCenter) {
+    const filterParam = searchParams.get('filter') as 'action_needed' | undefined
     return (
-      <BusinessSelector
+      <ListingsCommandCenter
         businesses={allBusinesses}
-        onSelect={(id) => router.push(`/dashboard/listing?bid=${id}`)}
-        title="My Listings"
-        subtitle="Choose a listing to edit."
+        canCreateMore={canCreateMore}
+        initialFilter={filterParam || undefined}
       />
     )
   }

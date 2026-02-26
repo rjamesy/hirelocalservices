@@ -12,21 +12,6 @@ export const metadata: Metadata = {
   },
 }
 
-const allFeatures = [
-  'Professional business profile',
-  'Appear in search results',
-  'Phone, email, and website links',
-  'Custom service area radius',
-  'SEO-optimised listing',
-  'ABN display',
-  '250 character business description',
-  '500 character business description',
-  '1,500 character business description',
-  '2,500 character business description',
-  'Photo gallery (up to 10 photos)',
-  'Customer testimonials (up to 20)',
-]
-
 const plans = [
   {
     id: 'free_trial',
@@ -35,13 +20,14 @@ const plans = [
     interval: 'for 30 days',
     description: 'Try it free for 30 days. No credit card required upfront.',
     included: [
+      '1 listing',
       'Professional business profile',
       'Appear in search results',
       'Phone, email, and website links',
       'Custom service area radius',
       'SEO-optimised listing',
       'ABN display',
-      '250 character business description',
+      'Up to 250 character description',
     ],
     cta: 'Start Free Trial',
     highlighted: false,
@@ -54,13 +40,14 @@ const plans = [
     interval: '/month',
     description: 'Get your business visible to local customers.',
     included: [
+      '1 listing',
       'Professional business profile',
       'Appear in search results',
       'Phone, email, and website links',
       'Custom service area radius',
       'SEO-optimised listing',
       'ABN display',
-      '500 character business description',
+      'Up to 500 character description',
     ],
     cta: 'Get Started',
     highlighted: false,
@@ -73,13 +60,14 @@ const plans = [
     interval: '/month',
     description: 'Showcase your work with photos and testimonials.',
     included: [
+      'Up to 10 listings',
       'Professional business profile',
       'Appear in search results',
       'Phone, email, and website links',
       'Custom service area radius',
       'SEO-optimised listing',
       'ABN display',
-      '1,500 character business description',
+      'Up to 1,500 character description',
       'Photo gallery (up to 10 photos)',
       'Customer testimonials (up to 20)',
     ],
@@ -94,13 +82,14 @@ const plans = [
     interval: '/year',
     description: 'Save over 17% with annual billing. All premium features.',
     included: [
+      'Up to 10 listings',
       'Professional business profile',
       'Appear in search results',
       'Phone, email, and website links',
       'Custom service area radius',
       'SEO-optimised listing',
       'ABN display',
-      '2,500 character business description',
+      'Up to 2,500 character description',
       'Photo gallery (up to 10 photos)',
       'Customer testimonials (up to 20)',
     ],
@@ -161,24 +150,6 @@ function CheckIcon({ className }: { className?: string }) {
   )
 }
 
-function CrossIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className ?? 'h-5 w-5 text-gray-300'}
-      fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={2}
-      stroke="currentColor"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M6 18L18 6M6 6l12 12"
-      />
-    </svg>
-  )
-}
-
 export default function PricingPage() {
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
@@ -228,29 +199,18 @@ export default function PricingPage() {
               <p className="mt-3 text-sm text-gray-500">{plan.description}</p>
             </div>
 
-            {/* Features */}
+            {/* Features - only included items with checkmarks */}
             <div className="flex-1 px-6 pb-6">
               <ul className="space-y-3">
-                {allFeatures.map((feature) => {
-                  const included = plan.included.includes(feature)
-                  return (
-                    <li
-                      key={feature}
-                      className={`flex items-start gap-2.5 text-sm ${
-                        included ? 'text-gray-700' : 'text-gray-400'
-                      }`}
-                    >
-                      {included ? (
-                        <CheckIcon className="h-4 w-4 shrink-0 text-brand-600 mt-0.5" />
-                      ) : (
-                        <CrossIcon className="h-4 w-4 shrink-0 text-gray-300 mt-0.5" />
-                      )}
-                      <span className={included ? '' : 'line-through'}>
-                        {feature}
-                      </span>
-                    </li>
-                  )
-                })}
+                {plan.included.map((feature) => (
+                  <li
+                    key={feature}
+                    className="flex items-start gap-2.5 text-sm text-gray-700"
+                  >
+                    <CheckIcon className="h-4 w-4 shrink-0 text-brand-600 mt-0.5" />
+                    <span>{feature}</span>
+                  </li>
+                ))}
               </ul>
             </div>
 

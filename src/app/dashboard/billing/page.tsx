@@ -452,24 +452,15 @@ function BillingContent() {
               </div>
             )}
 
-            {!isFreeTrial && (
-              <>
-                <div className="flex items-center justify-between py-3">
-                  <span className="text-sm text-gray-500">Current Period Ends</span>
-                  <span className="text-sm font-medium text-gray-900">
-                    {formatDate(subscription.current_period_end)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between py-3">
-                  <span className="text-sm text-gray-500">Next Billing Date</span>
-                  <span className="text-sm font-medium text-gray-900">
-                    {subscription.cancel_at_period_end
-                      ? 'Cancels at end of period'
-                      : formatDate(subscription.current_period_end)}
-                  </span>
-                </div>
-              </>
+            {!isFreeTrial && subscription.current_period_end && (
+              <div className="flex items-center justify-between py-3">
+                <span className="text-sm text-gray-500">Current Period Ends</span>
+                <span className="text-sm font-medium text-gray-900">
+                  {subscription.cancel_at_period_end
+                    ? `Cancels ${formatDate(subscription.current_period_end)}`
+                    : formatDate(subscription.current_period_end)}
+                </span>
+              </div>
             )}
 
             <div className="flex items-center justify-between py-3">
