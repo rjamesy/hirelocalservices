@@ -14,183 +14,153 @@ export default function PrivacyPage() {
         Privacy Policy
       </h1>
       <p className="mt-4 text-sm text-gray-500">
-        Last updated: 22 February 2026
+        Last updated: 28 February 2026
       </p>
 
       <div className="mt-8 prose prose-gray max-w-none">
-        {/* Introduction */}
-        <p className="text-gray-600 leading-relaxed">
-          HireLocalServices (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) is committed to
-          protecting your privacy and handling your personal information in accordance with the
-          Australian Privacy Principles (APPs) set out in the <em>Privacy Act 1988</em> (Cth).
-          This Privacy Policy explains how we collect, use, disclose, and protect your personal
-          information when you use our platform.
-        </p>
-
-        {/* 1. Information We Collect */}
+        {/* 1. Who We Are */}
         <h2 className="text-xl font-semibold text-gray-900 mt-8">
-          1. Information We Collect
+          1. Who We Are
         </h2>
         <p className="mt-3 text-gray-600 leading-relaxed">
-          We collect personal information that you provide directly to us, as well as information
-          collected automatically when you use our platform.
+          HireLocalServices is operated by an Australian sole trader
+          (ABN 42 329 061 077) based in Queensland, Australia. We run{' '}
+          <Link href="/" className="text-brand-600 hover:text-brand-700 underline">
+            hirelocalservices.com.au
+          </Link>
+          , an online directory connecting Australians with local service providers.
         </p>
 
+        {/* 2. What We Collect */}
+        <h2 className="text-xl font-semibold text-gray-900 mt-8">
+          2. What We Collect
+        </h2>
+
         <h3 className="text-lg font-medium text-gray-800 mt-5">
-          Information you provide
+          Account information
         </h3>
         <ul className="mt-3 list-disc pl-6 space-y-2 text-gray-600">
+          <li>Email address and an optional display name.</li>
           <li>
-            <strong>Account information:</strong> your email address and password when you create
-            an account.
-          </li>
-          <li>
-            <strong>Business listing information:</strong> business name, description, phone number,
-            email address, website URL, ABN, suburb, state, postcode, service radius, categories,
-            photos, and testimonials.
-          </li>
-          <li>
-            <strong>Payment information:</strong> payment details are collected and processed by our
-            payment processor, Stripe. We do not store your full credit card number on our servers.
-          </li>
-          <li>
-            <strong>Communications:</strong> any messages or correspondence you send to us via email
-            or through the platform.
+            Password &mdash; stored as a cryptographic hash, never in plaintext.
+            We cannot see or retrieve your password.
           </li>
         </ul>
 
         <h3 className="text-lg font-medium text-gray-800 mt-5">
-          Information collected automatically
+          Business listing information
         </h3>
         <ul className="mt-3 list-disc pl-6 space-y-2 text-gray-600">
           <li>
-            <strong>Usage data:</strong> pages visited, search queries, time spent on pages, and
-            interaction with features.
+            Details you provide when creating or editing a listing: business name,
+            description, phone, email, website, ABN, suburb, state, postcode,
+            service radius, categories, photos, and testimonials.
           </li>
           <li>
-            <strong>Device information:</strong> browser type, operating system, device type, and
-            screen resolution.
-          </li>
-          <li>
-            <strong>Log data:</strong> IP address, access times, and referring URLs.
+            <strong>Seed listings:</strong> some listings are sourced from publicly
+            available data (e.g. Google Places) to provide initial directory
+            coverage. These contain only business contact details already published
+            online.
           </li>
         </ul>
 
-        {/* 2. How We Use Your Information */}
-        <h2 className="text-xl font-semibold text-gray-900 mt-8">
-          2. How We Use Your Information
-        </h2>
-        <p className="mt-3 text-gray-600 leading-relaxed">
-          We use the personal information we collect for the following purposes:
-        </p>
-        <ul className="mt-3 list-disc pl-6 space-y-2 text-gray-600">
-          <li>To create and manage your account and business listing.</li>
-          <li>To process payments and manage your subscription.</li>
-          <li>To display your business information publicly in search results and on your profile page.</li>
-          <li>To communicate with you about your account, subscription, and any changes to our services.</li>
-          <li>To improve, personalise, and optimise the platform and user experience.</li>
-          <li>To detect, prevent, and address fraud, abuse, and security issues.</li>
-          <li>To comply with legal obligations and enforce our Terms of Service.</li>
-        </ul>
-
-        {/* 3. Cookies and Tracking */}
-        <h2 className="text-xl font-semibold text-gray-900 mt-8">
-          3. Cookies and Tracking Technologies
-        </h2>
-        <p className="mt-3 text-gray-600 leading-relaxed">
-          We use cookies and similar tracking technologies to enhance your experience on our platform.
-          Cookies are small text files stored on your device that help us remember your preferences
-          and understand how you use our platform.
-        </p>
-        <p className="mt-3 text-gray-600 leading-relaxed">
-          We use the following types of cookies:
-        </p>
+        <h3 className="text-lg font-medium text-gray-800 mt-5">
+          Usage and analytics
+        </h3>
         <ul className="mt-3 list-disc pl-6 space-y-2 text-gray-600">
           <li>
-            <strong>Essential cookies:</strong> required for the platform to function, including
-            authentication and session management.
+            If analytics are enabled: IP address, device/browser type, pages
+            viewed, and interaction data.
           </li>
           <li>
-            <strong>Analytics cookies:</strong> help us understand how visitors interact with our
-            platform so we can improve it.
+            Server logs may record IP addresses and request timestamps for security
+            purposes regardless of analytics settings.
           </li>
         </ul>
-        <p className="mt-3 text-gray-600 leading-relaxed">
-          You can control cookie preferences through your browser settings. Disabling essential
-          cookies may affect your ability to use certain features of the platform.
-        </p>
 
-        {/* 4. Third-Party Services */}
+        {/* 3. Purpose of Processing */}
         <h2 className="text-xl font-semibold text-gray-900 mt-8">
-          4. Third-Party Services
+          3. Why We Collect It
+        </h2>
+        <ul className="mt-3 list-disc pl-6 space-y-2 text-gray-600">
+          <li>Provide and operate the service (display listings, enable search).</li>
+          <li>Authenticate you and secure your account.</li>
+          <li>Process subscription payments and manage billing.</li>
+          <li>Prevent fraud, abuse, and spam.</li>
+          <li>Respond to support requests.</li>
+          <li>Improve the platform based on usage patterns.</li>
+          <li>Comply with legal obligations.</li>
+        </ul>
+
+        {/* 4. Sharing & Processors */}
+        <h2 className="text-xl font-semibold text-gray-900 mt-8">
+          4. Data Processors &amp; Sharing
         </h2>
         <p className="mt-3 text-gray-600 leading-relaxed">
-          We use the following third-party services to operate our platform. Each has its own
-          privacy policy governing how they handle your information:
+          We do not sell your personal information. We share data only with the
+          following processors, each under their own privacy policies:
         </p>
         <ul className="mt-3 list-disc pl-6 space-y-2 text-gray-600">
           <li>
-            <strong>Stripe:</strong> processes payments and manages subscriptions. When you subscribe,
-            your payment information is handled directly by Stripe in accordance with their{' '}
-            <a
-              href="https://stripe.com/au/privacy"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-brand-600 hover:text-brand-700 underline"
-            >
-              Privacy Policy
-            </a>.
+            <strong>AWS</strong> (Amazon Web Services) &mdash; cloud hosting and
+            infrastructure.
           </li>
           <li>
-            <strong>Supabase:</strong> provides our database, authentication, and file storage
-            infrastructure. Data is stored securely in accordance with their{' '}
+            <strong>Amazon SES</strong> &mdash; transactional emails (e.g. sign-in
+            links, subscription confirmations). Only your email address is shared.
+          </li>
+          <li>
+            <strong>Supabase</strong> &mdash; database, authentication, and file
+            storage ({' '}
             <a
               href="https://supabase.com/privacy"
               target="_blank"
               rel="noopener noreferrer"
               className="text-brand-600 hover:text-brand-700 underline"
             >
-              Privacy Policy
-            </a>.
+              privacy policy
+            </a>
+            ).
           </li>
           <li>
-            <strong>Vercel:</strong> hosts our web application. Requests are processed in accordance
-            with their{' '}
+            <strong>Stripe</strong> &mdash; payment processing. Your card details
+            go directly to Stripe; we never see or store full card numbers ({' '}
             <a
-              href="https://vercel.com/legal/privacy-policy"
+              href="https://stripe.com/au/privacy"
               target="_blank"
               rel="noopener noreferrer"
               className="text-brand-600 hover:text-brand-700 underline"
             >
-              Privacy Policy
-            </a>.
+              privacy policy
+            </a>
+            ).
+          </li>
+          <li>
+            <strong>OpenAI</strong> &mdash; content moderation, validation, and
+            description generation for business listings. Only listing text and
+            media submitted to the platform are sent; unrelated personal data is
+            not shared.
           </li>
         </ul>
-
-        {/* 5. Data Sharing and Disclosure */}
-        <h2 className="text-xl font-semibold text-gray-900 mt-8">
-          5. Data Sharing and Disclosure
-        </h2>
         <p className="mt-3 text-gray-600 leading-relaxed">
-          We do not sell your personal information to third parties. We may share your information
-          in the following circumstances:
+          We may also disclose information if required by law, regulation, or legal
+          process, or to protect the safety of our users and enforce our Terms of
+          Service.
         </p>
+
+        {/* 5. Cookies */}
+        <h2 className="text-xl font-semibold text-gray-900 mt-8">
+          5. Cookies
+        </h2>
         <ul className="mt-3 list-disc pl-6 space-y-2 text-gray-600">
           <li>
-            <strong>Public profile:</strong> business listing information (business name, description,
-            contact details, photos, testimonials, location) is displayed publicly on the platform.
+            <strong>Essential cookies:</strong> required for login and session
+            management. The site cannot function without these.
           </li>
           <li>
-            <strong>Service providers:</strong> we share information with third-party service providers
-            (Stripe, Supabase, Vercel) who assist us in operating the platform, as described above.
-          </li>
-          <li>
-            <strong>Legal requirements:</strong> we may disclose your information if required by law,
-            regulation, legal process, or governmental request.
-          </li>
-          <li>
-            <strong>Safety and enforcement:</strong> we may disclose information to protect the safety
-            of our users, enforce our Terms of Service, or respond to fraud or security concerns.
+            <strong>Analytics cookies:</strong> optional. Help us understand how
+            visitors use the site so we can improve it. You can disable these in
+            your browser settings.
           </li>
         </ul>
 
@@ -198,112 +168,177 @@ export default function PrivacyPage() {
         <h2 className="text-xl font-semibold text-gray-900 mt-8">
           6. Data Retention
         </h2>
-        <p className="mt-3 text-gray-600 leading-relaxed">
-          We retain your personal information for as long as your account is active or as needed to
-          provide you with our services. If you cancel your subscription, your business listing will
-          be unpublished but your account data may be retained for a reasonable period to allow you
-          to resubscribe.
-        </p>
-        <p className="mt-3 text-gray-600 leading-relaxed">
-          If you request deletion of your account, we will delete your personal information within
-          30 days, except where we are required to retain it for legal, regulatory, or legitimate
-          business purposes (such as fraud prevention or compliance with financial record-keeping
-          obligations).
-        </p>
-
-        {/* 7. Data Security */}
-        <h2 className="text-xl font-semibold text-gray-900 mt-8">
-          7. Data Security
-        </h2>
-        <p className="mt-3 text-gray-600 leading-relaxed">
-          We take reasonable steps to protect your personal information from unauthorised access,
-          use, modification, or disclosure. Our security measures include encryption of data in
-          transit (HTTPS/TLS), secure authentication, and access controls. However, no method of
-          transmission over the internet or electronic storage is completely secure, and we cannot
-          guarantee absolute security.
-        </p>
-
-        {/* 8. Your Rights */}
-        <h2 className="text-xl font-semibold text-gray-900 mt-8">
-          8. Your Rights
-        </h2>
-        <p className="mt-3 text-gray-600 leading-relaxed">
-          Under the Australian Privacy Principles, you have the following rights regarding your
-          personal information:
-        </p>
         <ul className="mt-3 list-disc pl-6 space-y-2 text-gray-600">
           <li>
-            <strong>Access:</strong> you may request access to the personal information we hold
-            about you.
+            Account data is retained while your account is active and for 30 days
+            after a deletion request, to allow for recovery if needed.
           </li>
           <li>
-            <strong>Correction:</strong> you may request that we correct any inaccurate or
-            incomplete personal information. You can also update most of your information
-            directly through your dashboard.
+            If you cancel your subscription, your listing is unpublished but your
+            account remains so you can resubscribe later.
           </li>
           <li>
-            <strong>Deletion:</strong> you may request that we delete your personal information,
-            subject to any legal obligations we may have to retain it.
+            Database backups are retained for up to 30 days and are automatically
+            purged after that window.
           </li>
           <li>
-            <strong>Complaint:</strong> if you believe we have breached the Australian Privacy
-            Principles, you may lodge a complaint with us or with the Office of the Australian
-            Information Commissioner (OAIC) at{' '}
-            <a
-              href="https://www.oaic.gov.au"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-brand-600 hover:text-brand-700 underline"
-            >
-              www.oaic.gov.au
-            </a>.
+            Payment records may be retained longer to meet financial record-keeping
+            obligations.
           </li>
         </ul>
 
-        {/* 9. Children */}
+        {/* 7. Account Deletion */}
         <h2 className="text-xl font-semibold text-gray-900 mt-8">
-          9. Children&apos;s Privacy
+          7. Account Deletion
         </h2>
         <p className="mt-3 text-gray-600 leading-relaxed">
-          Our platform is not directed at individuals under the age of 18. We do not knowingly
-          collect personal information from children. If we become aware that we have collected
-          personal information from a child, we will take steps to delete it promptly.
-        </p>
-
-        {/* 10. Changes */}
-        <h2 className="text-xl font-semibold text-gray-900 mt-8">
-          10. Changes to This Privacy Policy
-        </h2>
-        <p className="mt-3 text-gray-600 leading-relaxed">
-          We may update this Privacy Policy from time to time. If we make material changes, we will
-          notify you by email or through a notice on the platform. Your continued use of the platform
-          after any changes constitutes your acceptance of the revised Privacy Policy.
-        </p>
-
-        {/* 11. Contact */}
-        <h2 className="text-xl font-semibold text-gray-900 mt-8">
-          11. Contact Us
-        </h2>
-        <p className="mt-3 text-gray-600 leading-relaxed">
-          If you have any questions about this Privacy Policy or wish to exercise your rights,
-          please contact us at{' '}
+          You can request deletion of your account and all associated data by
+          emailing{' '}
           <a
-            href="mailto:privacy@hirelocalservices.com.au"
+            href="mailto:support@hirelocalservices.com.au"
             className="text-brand-600 hover:text-brand-700 underline"
           >
-            privacy@hirelocalservices.com.au
-          </a>.
+            support@hirelocalservices.com.au
+          </a>
+          . Upon receiving your request we will:
         </p>
+        <ul className="mt-3 list-disc pl-6 space-y-2 text-gray-600">
+          <li>Cancel any active subscription immediately.</li>
+          <li>Unpublish and remove your business listing from search results.</li>
+          <li>Delete your account data within 30 days.</li>
+          <li>
+            Retain only records required by law (e.g. payment history for tax
+            compliance).
+          </li>
+        </ul>
+
+        {/* 8. International Data Transfers */}
+        <h2 className="text-xl font-semibold text-gray-900 mt-8">
+          8. International Data Transfers
+        </h2>
         <p className="mt-3 text-gray-600 leading-relaxed">
-          You may also view our{' '}
+          Some of our processors (AWS, Supabase, Stripe, OpenAI) may store or
+          process data outside Australia, including in the United States. Where
+          data is transferred internationally, we rely on the privacy commitments
+          and safeguards provided by those processors. By using our platform you
+          consent to these transfers.
+        </p>
+
+        {/* 9. Your Rights */}
+        <h2 className="text-xl font-semibold text-gray-900 mt-8">
+          9. Your Rights
+        </h2>
+        <p className="mt-3 text-gray-600 leading-relaxed">
+          Under the Australian Privacy Principles you can:
+        </p>
+        <ul className="mt-3 list-disc pl-6 space-y-2 text-gray-600">
+          <li>
+            <strong>Access</strong> the personal information we hold about you.
+          </li>
+          <li>
+            <strong>Correct</strong> inaccurate information &mdash; most details
+            can be updated directly from your dashboard.
+          </li>
+          <li>
+            <strong>Request deletion</strong> of your account and associated data.
+          </li>
+        </ul>
+        <p className="mt-3 text-gray-600 leading-relaxed">
+          To exercise any of these rights, email{' '}
+          <a
+            href="mailto:support@hirelocalservices.com.au"
+            className="text-brand-600 hover:text-brand-700 underline"
+          >
+            support@hirelocalservices.com.au
+          </a>
+          . If you believe we have breached the Australian Privacy Principles, you
+          may also lodge a complaint with the{' '}
+          <a
+            href="https://www.oaic.gov.au"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-brand-600 hover:text-brand-700 underline"
+          >
+            Office of the Australian Information Commissioner (OAIC)
+          </a>
+          .
+        </p>
+
+        {/* 10. Security */}
+        <h2 className="text-xl font-semibold text-gray-900 mt-8">
+          10. Security
+        </h2>
+        <p className="mt-3 text-gray-600 leading-relaxed">
+          We use reasonable safeguards to protect your data, including:
+        </p>
+        <ul className="mt-3 list-disc pl-6 space-y-2 text-gray-600">
+          <li>TLS/HTTPS encryption for all data in transit.</li>
+          <li>Cryptographically hashed passwords (never stored in plaintext).</li>
+          <li>Role-based access controls (RBAC) limiting internal data access.</li>
+        </ul>
+        <p className="mt-3 text-gray-600 leading-relaxed">
+          No system is 100% secure. We cannot guarantee absolute security of
+          information transmitted or stored online.
+        </p>
+
+        {/* 11. Seed Listings */}
+        <h2 className="text-xl font-semibold text-gray-900 mt-8">
+          11. Seed Listings
+        </h2>
+        <p className="mt-3 text-gray-600 leading-relaxed">
+          Some listings on our platform are created from publicly available
+          business contact details (e.g. Google Places). If you are a business
+          owner and want to update or remove a seed listing, you can{' '}
+          <Link href="/claim" className="text-brand-600 hover:text-brand-700 underline">
+            claim your listing
+          </Link>{' '}
+          or{' '}
+          <a
+            href="mailto:support@hirelocalservices.com.au"
+            className="text-brand-600 hover:text-brand-700 underline"
+          >
+            contact us
+          </a>{' '}
+          and we will action your request promptly.
+        </p>
+
+        {/* 12. Changes */}
+        <h2 className="text-xl font-semibold text-gray-900 mt-8">
+          12. Changes to This Policy
+        </h2>
+        <p className="mt-3 text-gray-600 leading-relaxed">
+          We may update this policy from time to time. If we make material changes
+          we will notify you by email or through a notice on the platform. Your
+          continued use of the platform after changes constitutes acceptance of the
+          revised policy.
+        </p>
+
+        {/* 13. Contact */}
+        <h2 className="text-xl font-semibold text-gray-900 mt-8">
+          13. Contact
+        </h2>
+        <p className="mt-3 text-gray-600 leading-relaxed">
+          HireLocalServices<br />
+          ABN 42 329 061 077<br />
+          Queensland, Australia<br />
+          Email:{' '}
+          <a
+            href="mailto:support@hirelocalservices.com.au"
+            className="text-brand-600 hover:text-brand-700 underline"
+          >
+            support@hirelocalservices.com.au
+          </a>
+        </p>
+        <p className="mt-4 text-gray-600 leading-relaxed">
+          See also our{' '}
           <Link href="/terms" className="text-brand-600 hover:text-brand-700 underline">
             Terms of Service
           </Link>{' '}
           and{' '}
           <Link href="/disclaimer" className="text-brand-600 hover:text-brand-700 underline">
             Disclaimer
-          </Link>{' '}
-          for more information about how we operate.
+          </Link>
+          .
         </p>
       </div>
     </div>

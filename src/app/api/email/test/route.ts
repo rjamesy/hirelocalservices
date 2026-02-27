@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { sendEmail, isEmailConfigured } from '@/lib/email'
+import { sendEmail, isEmailConfigured, EMAIL_FOOTER_HTML, EMAIL_FOOTER_TEXT } from '@/lib/email'
 
 /**
  * POST /api/email/test
@@ -61,13 +61,13 @@ export async function POST(request: Request) {
         <h2 style="color: #1a56db;">HireLocalServices</h2>
         <p>This is a test email from your HireLocalServices platform.</p>
         <p>If you received this, your AWS SES email configuration is working correctly.</p>
-        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
         <p style="color: #6b7280; font-size: 12px;">
           Sent at ${new Date().toISOString()} by admin ${user.email}
         </p>
+        ${EMAIL_FOOTER_HTML}
       </div>
     `,
-    text: `HireLocalServices — Test Email\n\nThis is a test email from your HireLocalServices platform.\nIf you received this, your AWS SES email configuration is working correctly.\n\nSent at ${new Date().toISOString()} by admin ${user.email}`,
+    text: `HireLocalServices — Test Email\n\nThis is a test email from your HireLocalServices platform.\nIf you received this, your AWS SES email configuration is working correctly.\n\nSent at ${new Date().toISOString()} by admin ${user.email}${EMAIL_FOOTER_TEXT}`,
   })
 
   if (!result.success) {

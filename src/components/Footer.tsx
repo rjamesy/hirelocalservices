@@ -49,10 +49,18 @@ export default function Footer() {
               </svg>
               HireLocalServices
             </Link>
-            <p className="mt-3 text-sm text-gray-400 leading-relaxed">
-              Find trusted local services across Australia. Connect with
-              verified professionals in your area.
-            </p>
+            <div className="mt-3 space-y-1 text-sm text-gray-400 leading-relaxed">
+              <p>ABN 42 329 061 077</p>
+              <p>Queensland, Australia</p>
+              <p>
+                <a
+                  href="mailto:support@hirelocalservices.com.au"
+                  className="hover:text-white transition-colors"
+                >
+                  support@hirelocalservices.com.au
+                </a>
+              </p>
+            </div>
           </div>
 
           {/* Company Links */}
@@ -63,10 +71,10 @@ export default function Footer() {
             <ul className="mt-4 space-y-2">
               <li>
                 <Link
-                  href="/about"
+                  href="/privacy"
                   className="text-sm text-gray-400 hover:text-white transition-colors"
                 >
-                  About
+                  Privacy Policy
                 </Link>
               </li>
               <li>
@@ -75,14 +83,6 @@ export default function Footer() {
                   className="text-sm text-gray-400 hover:text-white transition-colors"
                 >
                   Terms of Service
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/privacy"
-                  className="text-sm text-gray-400 hover:text-white transition-colors"
-                >
-                  Privacy Policy
                 </Link>
               </li>
               <li>
@@ -99,6 +99,14 @@ export default function Footer() {
                   className="text-sm text-gray-400 hover:text-white transition-colors"
                 >
                   Contact
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/claim"
+                  className="text-sm text-gray-400 hover:text-white transition-colors"
+                >
+                  Claim Listing
                 </Link>
               </li>
             </ul>

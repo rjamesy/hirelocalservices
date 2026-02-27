@@ -142,3 +142,21 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
 export function isEmailConfigured(): boolean {
   return getSESConfig() !== null
 }
+
+// ─── Shared Email Footer ─────────────────────────────────────────────
+
+export const EMAIL_FOOTER_HTML = `
+<hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0 16px;" />
+<table style="width: 100%;">
+  <tr>
+    <td style="color: #6b7280; font-size: 12px; line-height: 1.6; font-family: Arial, sans-serif;">
+      HireLocalServices<br />
+      ABN 42 329 061 077<br />
+      Queensland, Australia<br />
+      <a href="mailto:support@hirelocalservices.com.au" style="color: #2563eb; text-decoration: none;">support@hirelocalservices.com.au</a>
+    </td>
+  </tr>
+</table>
+`
+
+export const EMAIL_FOOTER_TEXT = `\n---\nHireLocalServices\nABN 42 329 061 077\nQueensland, Australia\nsupport@hirelocalservices.com.au`
