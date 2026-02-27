@@ -106,7 +106,7 @@ export async function updateProtectionFlag(
   await logAudit(supabase, {
     action: 'protection_flag_changed',
     entityType: 'system_flags',
-    entityId: '1',
+    entityId: null,
     actorId: user.id,
     details: { flag, previous_value: previousValue, new_value: value },
   })
@@ -124,7 +124,7 @@ export async function activateKillSwitch() {
   await logAudit(supabase, {
     action: 'kill_switch_activated',
     entityType: 'system_flags',
-    entityId: '1',
+    entityId: null,
     actorId: user.id,
     details: { action: 'registrations_disabled' },
   })
@@ -145,7 +145,7 @@ export async function activateMaintenanceMode(message?: string) {
   await logAudit(supabase, {
     action: 'maintenance_mode_changed',
     entityType: 'system_flags',
-    entityId: '1',
+    entityId: null,
     actorId: user.id,
     details: { enabled: true, message: message ?? null },
   })

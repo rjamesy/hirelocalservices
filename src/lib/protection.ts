@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { SystemFlags, AbuseEventType } from '@/lib/types'
 import { logAudit } from '@/lib/audit'
+import { createSystemAlert } from '@/app/actions/alerts'
 
 // ─── Safe Defaults (fail-open) ──────────────────────────────────────
 
@@ -14,6 +15,7 @@ const SAFE_DEFAULTS: SystemFlags = {
   maintenance_message: '',
   captcha_required: false,
   listings_require_approval: false,
+  soft_launch_mode: false,
   circuit_breaker_triggered_at: null,
   circuit_breaker_cooldown_minutes: 15,
   created_at: '',
@@ -61,7 +63,12 @@ export async function getSystemFlags(): Promise<SystemFlags> {
  */
 export async function getSystemFlagsSafe(): Promise<SystemFlags> {
   try {
-    return await getSystemFlags()
+    const flags = await getSystemFlags()
+    // Soft launch mode forces listings_require_approval
+    if (flags.soft_launch_mode) {
+      return { ...flags, listings_require_approval: true }
+    }
+    return flags
   } catch (e) {
     console.error('Protection flags unavailable — fail open', e)
     return SAFE_DEFAULTS
@@ -166,14 +173,33 @@ async function checkCircuitBreaker(): Promise<void> {
     await logAudit(supabase, {
       action: 'circuit_breaker_triggered',
       entityType: 'system_flags',
-      entityId: '1',
-      actorId: 'system',
+      entityId: null,
+      actorId: null,
       details: {
         failed_registrations: Number(failedRegCount),
         rate_limit_violations: Number(rateLimitCount),
         captcha_failures: Number(captchaFailCount),
       },
     })
+
+    // Create system alert + notify admins (fire-and-forget)
+    const reason = [
+      Number(failedRegCount) > 50 ? `${failedRegCount} failed registrations` : null,
+      Number(rateLimitCount) > 100 ? `${rateLimitCount} rate limit violations` : null,
+      Number(captchaFailCount) > 50 ? `${captchaFailCount} captcha failures` : null,
+    ].filter(Boolean).join(', ')
+
+    createSystemAlert(
+      'critical',
+      'Circuit breaker triggered',
+      `Auto-protection activated. Registrations disabled. Triggers: ${reason}`,
+      'circuit_breaker',
+      {
+        failed_registrations: Number(failedRegCount),
+        rate_limit_violations: Number(rateLimitCount),
+        captcha_failures: Number(captchaFailCount),
+      }
+    ).catch((e) => console.error('[protection] Failed to create circuit breaker alert:', e))
   } catch (e) {
     console.error('[protection] Circuit breaker check failed:', e)
   }
@@ -198,7 +224,7 @@ export async function resetCircuitBreaker(actorId: string): Promise<void> {
   await logAudit(supabase, {
     action: 'protection_flag_changed',
     entityType: 'system_flags',
-    entityId: '1',
+    entityId: null,
     actorId,
     details: { action: 'circuit_breaker_reset' },
   })

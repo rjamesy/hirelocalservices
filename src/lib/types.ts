@@ -332,6 +332,7 @@ export type NotificationType =
   | 'verification_approved'
   | 'verification_rejected'
   | 'listing_suspended'
+  | 'system_alert'
 
 export type UserNotification = {
   id: string
@@ -341,6 +342,22 @@ export type UserNotification = {
   message: string
   metadata: Record<string, unknown>
   read: boolean
+  created_at: string
+}
+
+// ─── System Alerts ─────────────────────────────────────────────────
+
+export type AlertSeverity = 'info' | 'warning' | 'critical'
+
+export type SystemAlert = {
+  id: string
+  severity: AlertSeverity
+  title: string
+  body: string | null
+  source: string | null
+  metadata: Record<string, unknown>
+  resolved_at: string | null
+  resolved_by: string | null
   created_at: string
 }
 
@@ -356,6 +373,7 @@ export type SystemFlags = {
   maintenance_message: string
   captcha_required: boolean
   listings_require_approval: boolean
+  soft_launch_mode: boolean
   circuit_breaker_triggered_at: string | null
   circuit_breaker_cooldown_minutes: number
   created_at: string
@@ -746,6 +764,12 @@ export type Database = {
         Row: PaymentEvent
         Insert: Omit<PaymentEvent, 'id' | 'created_at'>
         Update: never
+        Relationships: []
+      }
+      system_alerts: {
+        Row: SystemAlert
+        Insert: Omit<SystemAlert, 'id' | 'created_at' | 'resolved_at' | 'resolved_by'> & Partial<Pick<SystemAlert, 'resolved_at' | 'resolved_by'>>
+        Update: Partial<Pick<SystemAlert, 'resolved_at' | 'resolved_by'>>
         Relationships: []
       }
       business_search_index: {

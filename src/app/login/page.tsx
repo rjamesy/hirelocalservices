@@ -3,7 +3,10 @@
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useState } from 'react'
+import { Suspense, useState, useEffect } from 'react'
+import { checkLoginAllowed } from '@/app/actions/auth'
+import { getPublicProtectionFlags } from '@/app/actions/protection'
+import TurnstileWidget from '@/components/TurnstileWidget'
 
 type AuthMode = 'password' | 'magic-link'
 
@@ -30,13 +33,29 @@ function LoginForm() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [magicLinkSent, setMagicLinkSent] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaRequired, setCaptchaRequired] = useState(false)
 
   const supabase = createClient()
+
+  useEffect(() => {
+    getPublicProtectionFlags().then((flags) => {
+      setCaptchaRequired(flags.captcha_required)
+    })
+  }, [])
 
   async function handlePasswordLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError(null)
+
+    // Pre-login protection check
+    const check = await checkLoginAllowed(captchaToken ?? undefined)
+    if (!check.allowed) {
+      setError(check.error ?? 'Login not allowed.')
+      setLoading(false)
+      return
+    }
 
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -57,6 +76,14 @@ function LoginForm() {
     e.preventDefault()
     setLoading(true)
     setError(null)
+
+    // Pre-login protection check
+    const check = await checkLoginAllowed(captchaToken ?? undefined)
+    if (!check.allowed) {
+      setError(check.error ?? 'Login not allowed.')
+      setLoading(false)
+      return
+    }
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
@@ -199,10 +226,15 @@ function LoginForm() {
               )}
             </div>
 
+            <TurnstileWidget
+              captchaRequired={captchaRequired}
+              onSuccess={(token) => setCaptchaToken(token)}
+            />
+
             <button
               type="submit"
               data-testid="login-submit"
-              disabled={loading}
+              disabled={loading || (captchaRequired && !captchaToken)}
               className="mt-6 w-full rounded-md bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading

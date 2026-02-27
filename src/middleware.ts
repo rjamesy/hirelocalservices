@@ -17,13 +17,39 @@ export async function middleware(request: NextRequest) {
     !pathname.startsWith('/api/stripe/webhook') &&
     !pathname.startsWith('/_next') &&
     !pathname.startsWith('/favicon') &&
-    !pathname.startsWith('/maintenance')
+    !pathname.startsWith('/maintenance') &&
+    !pathname.startsWith('/login') &&
+    !pathname.startsWith('/auth') &&
+    !pathname.startsWith('/api/auth')
   ) {
     const flags = await getSystemFlagsSafe()
     if (flags.maintenance_mode) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/maintenance'
-      return NextResponse.rewrite(url)
+      // Allow admins to preview public pages with a banner
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+
+        if (profile?.role === 'admin') {
+          supabaseResponse.headers.set('x-maintenance-active', 'true')
+          // Fall through — admin sees the page normally (banner shown in layout)
+        } else {
+          const url = request.nextUrl.clone()
+          url.pathname = '/maintenance'
+          return NextResponse.rewrite(url)
+        }
+      } else {
+        const url = request.nextUrl.clone()
+        url.pathname = '/maintenance'
+        return NextResponse.rewrite(url)
+      }
+    }
+
+    // Soft launch mode banner header (for all users)
+    if (flags.soft_launch_mode) {
+      supabaseResponse.headers.set('x-soft-launch', 'true')
     }
   }
 

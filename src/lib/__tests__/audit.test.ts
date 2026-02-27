@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock the supabase client
-const mockRpc = vi.fn(() => Promise.resolve({ data: null, error: null }))
+const mockRpc = vi.fn((): any => Promise.resolve({ data: null, error: null }))
 const mockSupabase = { rpc: mockRpc }
 
-// Dynamic import to test the module
-const { logAudit } = await import('@/lib/audit')
+// Import the module
+import { logAudit } from '@/lib/audit'
 
 describe('logAudit', () => {
   beforeEach(() => {

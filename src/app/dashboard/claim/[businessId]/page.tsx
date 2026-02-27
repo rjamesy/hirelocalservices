@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { claimBusiness } from '@/app/actions/claims'
+import { getPublicProtectionFlags } from '@/app/actions/protection'
+import TurnstileWidget from '@/components/TurnstileWidget'
 
 interface ClaimPageProps {
   params: Promise<{ businessId: string }>
@@ -17,11 +19,21 @@ export default function ClaimBusinessPage({ params }: ClaimPageProps) {
   const [businessId, setBusinessId] = useState('')
   const router = useRouter()
 
+  // CAPTCHA state
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaRequired, setCaptchaRequired] = useState(false)
+
   // Form state
   const [businessName, setBusinessName] = useState('')
   const [phone, setPhone] = useState('')
   const [website, setWebsite] = useState('')
   const [postcode, setPostcode] = useState('')
+
+  useEffect(() => {
+    getPublicProtectionFlags().then((flags) => {
+      setCaptchaRequired(flags.captcha_required)
+    })
+  }, [])
 
   useEffect(() => {
     // Handle both Promise params (Next.js 15) and sync proxy params (Next.js 14.2.x)
@@ -51,6 +63,7 @@ export default function ClaimBusinessPage({ params }: ClaimPageProps) {
         phone: phone || undefined,
         website: website || undefined,
         postcode: postcode || undefined,
+        captchaToken: captchaToken ?? undefined,
       })
 
       if (result.error && typeof result.error === 'string') {
@@ -212,6 +225,11 @@ export default function ClaimBusinessPage({ params }: ClaimPageProps) {
             At least the business name is required.
           </p>
 
+          <TurnstileWidget
+            captchaRequired={captchaRequired}
+            onSuccess={(token) => setCaptchaToken(token)}
+          />
+
           <div className="flex gap-3 pt-2">
             <button
               type="button"
@@ -222,7 +240,7 @@ export default function ClaimBusinessPage({ params }: ClaimPageProps) {
             </button>
             <button
               type="submit"
-              disabled={step === 'loading' || !businessId}
+              disabled={step === 'loading' || !businessId || (captchaRequired && !captchaToken)}
               className="flex-1 rounded-lg bg-amber-600 px-4 py-3 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
             >
               {step === 'loading' ? 'Verifying...' : 'Submit Claim'}

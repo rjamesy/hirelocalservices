@@ -155,6 +155,7 @@ export const mockSystemFlags: SystemFlags = {
   maintenance_message: 'System temporarily unavailable.',
   captcha_required: false,
   listings_require_approval: false,
+  soft_launch_mode: false,
   circuit_breaker_triggered_at: null,
   circuit_breaker_cooldown_minutes: 15,
   created_at: '2024-01-01T00:00:00Z',

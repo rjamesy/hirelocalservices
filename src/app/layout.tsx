@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import { headers } from 'next/headers';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import './globals.css';
@@ -44,14 +45,28 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const headerList = await headers()
+  const maintenanceActive = headerList.get('x-maintenance-active') === 'true'
+  const softLaunch = headerList.get('x-soft-launch') === 'true'
+
   return (
     <html lang="en" className={inter.variable}>
       <body className={`${inter.className} flex min-h-screen flex-col`}>
+        {maintenanceActive && (
+          <div className="bg-yellow-500 text-yellow-950 text-center text-sm font-medium py-2 px-4">
+            Maintenance mode is active — only you can see this page. Public users see the maintenance page.
+          </div>
+        )}
+        {softLaunch && !maintenanceActive && (
+          <div className="bg-blue-500 text-white text-center text-sm font-medium py-2 px-4">
+            We&apos;re rolling out access gradually. New listings are reviewed before going live.
+          </div>
+        )}
         <Header />
         <main className="flex-1">{children}</main>
         <Footer />

@@ -13,8 +13,8 @@ import { vi } from 'vitest'
  */
 export function createMockSupabaseClient() {
   // Terminal method spies — tests configure with mockResolvedValueOnce
-  const singleSpy = vi.fn(() => Promise.resolve({ data: null, error: null }))
-  const maybeSingleSpy = vi.fn(() => Promise.resolve({ data: null, error: null }))
+  const singleSpy = vi.fn((): any => Promise.resolve({ data: null, error: null }))
+  const maybeSingleSpy = vi.fn((): any => Promise.resolve({ data: null, error: null }))
 
   // Chaining method spies — return undefined by default (→ chain continues)
   // Use mockReturnValueOnce to override and act as terminal
@@ -38,7 +38,7 @@ export function createMockSupabaseClient() {
   const isSpy = vi.fn()
   const orSpy = vi.fn()
 
-  const chainingSpies: Record<string, ReturnType<typeof vi.fn>> = {
+  const chainingSpies: Record<string, (...args: any[]) => any> = {
     select: selectSpy, insert: insertSpy, update: updateSpy,
     delete: deleteSpy, upsert: upsertSpy, eq: eqSpy, neq: neqSpy,
     gt: gtSpy, gte: gteSpy, lt: ltSpy, lte: lteSpy,
@@ -47,7 +47,7 @@ export function createMockSupabaseClient() {
   }
 
   // Spy for direct-await chain results (count queries, deletes, updates without .single())
-  const chainResultSpy = vi.fn(() => ({ data: null, error: null }))
+  const chainResultSpy = vi.fn((): any => ({ data: null, error: null }))
 
   function buildChainable() {
     const chain: Record<string, any> = {}
@@ -67,7 +67,7 @@ export function createMockSupabaseClient() {
   }
 
   const fromSpy = vi.fn(() => buildChainable())
-  const rpcSpy = vi.fn(() => Promise.resolve({ data: null, error: null }))
+  const rpcSpy = vi.fn((): any => Promise.resolve({ data: null, error: null }))
 
   const storageBucket = {
     createSignedUploadUrl: vi.fn(() =>
@@ -81,13 +81,13 @@ export function createMockSupabaseClient() {
     from: fromSpy,
     rpc: rpcSpy,
     auth: {
-      getUser: vi.fn(() =>
+      getUser: vi.fn((): any =>
         Promise.resolve({ data: { user: null }, error: null })
       ),
-      getSession: vi.fn(() =>
+      getSession: vi.fn((): any =>
         Promise.resolve({ data: { session: null }, error: null })
       ),
-      signOut: vi.fn(() => Promise.resolve({ error: null })),
+      signOut: vi.fn((): any => Promise.resolve({ error: null })),
       onAuthStateChange: vi.fn(() => ({
         data: { subscription: { unsubscribe: vi.fn() } },
       })),

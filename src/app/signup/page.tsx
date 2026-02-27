@@ -37,7 +37,6 @@ export default function SignUpPage() {
 
     // Pre-signup protection check
     const check = await checkRegistrationAllowed(
-      'client', // IP resolved server-side in production
       captchaToken ?? undefined
     )
     if (!check.allowed) {

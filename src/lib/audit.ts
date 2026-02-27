@@ -10,8 +10,8 @@ export async function logAudit(
   params: {
     action: AuditAction
     entityType: string
-    entityId: string
-    actorId: string
+    entityId: string | null
+    actorId: string | null
     details?: Record<string, unknown>
   }
 ) {
@@ -19,8 +19,8 @@ export async function logAudit(
     const { error } = await supabase.rpc('insert_audit_log', {
       p_action: params.action,
       p_entity_type: params.entityType,
-      p_entity_id: params.entityId,
-      p_actor_id: params.actorId,
+      p_entity_id: params.entityId ?? undefined,
+      p_actor_id: params.actorId ?? undefined,
       p_details: params.details ?? {},
     })
     if (error) {

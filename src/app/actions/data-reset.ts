@@ -52,6 +52,9 @@ export async function resetAllData(confirmPhrase: string, secondConfirm: boolean
     'business_search_index',
     'business_locations',
     'subscriptions',
+    'user_subscriptions',
+    'user_notifications',
+    'abuse_events',
     'reports',
     'businesses',
   ] as const

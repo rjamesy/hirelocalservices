@@ -12,9 +12,10 @@ import {
   activateMaintenanceMode,
   adminResetCircuitBreaker,
 } from '@/app/actions/protection'
-import type { SystemFlags } from '@/lib/types'
+import { getSystemAlerts, resolveAlert } from '@/app/actions/alerts'
+import type { SystemFlags, SystemAlert } from '@/lib/types'
 
-type Tab = 'seed' | 'ai' | 'email' | 'ranking' | 'listings' | 'reset' | 'blacklist' | 'protection'
+type Tab = 'seed' | 'ai' | 'email' | 'ranking' | 'listings' | 'reset' | 'blacklist' | 'protection' | 'alerts'
 
 export default function AdminSystemPage() {
   const [tab, setTab] = useState<Tab>('seed')
@@ -48,6 +49,11 @@ export default function AdminSystemPage() {
   const [recentEvents, setRecentEvents] = useState<any[]>([])
   const [protectionLoading, setProtectionLoading] = useState(false)
 
+  // Alerts state
+  const [alerts, setAlerts] = useState<SystemAlert[]>([])
+  const [alertsLoading, setAlertsLoading] = useState(false)
+  const [alertFilter, setAlertFilter] = useState<'all' | '24h' | '7d' | '30d'>('7d')
+
   async function loadSettings() {
     setLoading(true)
     const data = await getSettings()
@@ -73,11 +79,30 @@ export default function AdminSystemPage() {
     setProtectionLoading(false)
   }
 
+  async function loadAlerts() {
+    setAlertsLoading(true)
+    try {
+      const days = alertFilter === '24h' ? 1 : alertFilter === '7d' ? 7 : alertFilter === '30d' ? 30 : undefined
+      const result = await getSystemAlerts({ days })
+      setAlerts(result.data)
+    } catch (e) {
+      console.error('Failed to load alerts:', e)
+    }
+    setAlertsLoading(false)
+  }
+
   useEffect(() => {
     loadSettings()
     loadBlacklist()
     loadProtection()
+    loadAlerts()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    loadAlerts()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alertFilter])
 
   async function saveSetting(key: string, value: unknown) {
     setSaving(true)
@@ -126,6 +151,7 @@ export default function AdminSystemPage() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'protection', label: 'Protection' },
+    { key: 'alerts', label: 'Alerts' },
     { key: 'seed', label: 'Seed Controls' },
     { key: 'ai', label: 'AI Verification' },
     { key: 'email', label: 'Email Template' },
@@ -206,6 +232,7 @@ export default function AdminSystemPage() {
                     { key: 'payments_enabled' as const, label: 'Payments Enabled' },
                     { key: 'captcha_required' as const, label: 'Captcha Required' },
                     { key: 'listings_require_approval' as const, label: 'Listings Require Approval' },
+                    { key: 'soft_launch_mode' as const, label: 'Soft Launch Mode' },
                   ] as const).map((flag) => (
                     <label key={flag.key} className="flex items-center gap-3">
                       <input
@@ -1007,6 +1034,119 @@ export default function AdminSystemPage() {
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'alerts' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">System Alerts</h2>
+              <div className="flex items-center gap-2">
+                {(['24h', '7d', '30d', 'all'] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => { setAlertFilter(f); }}
+                    className={`rounded-md px-2 py-1 text-xs font-medium ${
+                      alertFilter === f
+                        ? 'bg-brand-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {f === 'all' ? 'All' : f}
+                  </button>
+                ))}
+                <button
+                  onClick={loadAlerts}
+                  className="ml-2 text-xs text-brand-600 hover:text-brand-700 font-medium"
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            {alertsLoading ? (
+              <p className="text-sm text-gray-500">Loading alerts...</p>
+            ) : alerts.length === 0 ? (
+              <p className="text-sm text-gray-500">No alerts in this time range.</p>
+            ) : (
+              <div className="space-y-3">
+                {/* Unresolved first */}
+                {alerts
+                  .sort((a, b) => {
+                    if (!a.resolved_at && b.resolved_at) return -1
+                    if (a.resolved_at && !b.resolved_at) return 1
+                    const severityOrder = { critical: 0, warning: 1, info: 2 }
+                    if (!a.resolved_at && !b.resolved_at) {
+                      const diff = severityOrder[a.severity] - severityOrder[b.severity]
+                      if (diff !== 0) return diff
+                    }
+                    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                  })
+                  .map((alert) => {
+                    const severityColors = {
+                      critical: 'bg-red-50 border-red-200',
+                      warning: 'bg-yellow-50 border-yellow-200',
+                      info: 'bg-blue-50 border-blue-200',
+                    }
+                    const badgeColors = {
+                      critical: 'bg-red-100 text-red-800',
+                      warning: 'bg-yellow-100 text-yellow-800',
+                      info: 'bg-blue-100 text-blue-800',
+                    }
+                    return (
+                      <div
+                        key={alert.id}
+                        className={`rounded-lg border p-4 ${
+                          alert.resolved_at ? 'bg-gray-50 border-gray-200 opacity-60' : severityColors[alert.severity]
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badgeColors[alert.severity]}`}>
+                                {alert.severity}
+                              </span>
+                              {alert.source && (
+                                <span className="text-xs text-gray-500">{alert.source}</span>
+                              )}
+                              <span className="text-xs text-gray-400">
+                                {new Date(alert.created_at).toLocaleString()}
+                              </span>
+                            </div>
+                            <p className="text-sm font-medium text-gray-900">{alert.title}</p>
+                            {alert.body && <p className="text-sm text-gray-600">{alert.body}</p>}
+                            {alert.resolved_at && (
+                              <p className="text-xs text-gray-400">
+                                Resolved {new Date(alert.resolved_at).toLocaleString()}
+                              </p>
+                            )}
+                          </div>
+                          {!alert.resolved_at && (
+                            <button
+                              onClick={async () => {
+                                const result = await resolveAlert(alert.id)
+                                if (!result.error) {
+                                  setAlerts((prev) =>
+                                    prev.map((a) =>
+                                      a.id === alert.id
+                                        ? { ...a, resolved_at: new Date().toISOString() }
+                                        : a
+                                    )
+                                  )
+                                  setMessage({ type: 'success', text: 'Alert resolved.' })
+                                }
+                              }}
+                              className="rounded-md bg-white px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-300 hover:bg-gray-50"
+                            >
+                              Resolve
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
               </div>
             )}
           </div>

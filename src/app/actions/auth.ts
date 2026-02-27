@@ -1,14 +1,14 @@
 'use server'
 
 import { getSystemFlagsSafe, verifyCaptcha, logAbuseEvent } from '@/lib/protection'
-import { checkRateLimit, registrationLimiter } from '@/lib/rate-limiter'
+import { checkRateLimit, registrationLimiter, loginLimiter } from '@/lib/rate-limiter'
+import { getClientIp } from '@/lib/ip'
 
 /**
  * Pre-signup check. Client calls this BEFORE supabase.auth.signUp().
  * Enforces: registrations_enabled flag, rate limit, captcha.
  */
 export async function checkRegistrationAllowed(
-  ip: string,
   captchaToken?: string
 ): Promise<{ allowed: boolean; error?: string }> {
   try {
@@ -20,8 +20,9 @@ export async function checkRegistrationAllowed(
     }
 
     // Rate limit by IP
+    const ip = await getClientIp()
     try {
-      await checkRateLimit(registrationLimiter, ip, 'failed_registration')
+      await checkRateLimit(registrationLimiter, `register:${ip}`, 'failed_registration')
     } catch {
       return { allowed: false, error: 'Too many registration attempts. Please try again later.' }
     }
@@ -40,6 +41,42 @@ export async function checkRegistrationAllowed(
     return { allowed: true }
   } catch {
     // Fail open — allow registration if protection check fails
+    return { allowed: true }
+  }
+}
+
+/**
+ * Pre-login check. Client calls this BEFORE supabase.auth.signInWithPassword().
+ * Enforces: rate limit, captcha.
+ */
+export async function checkLoginAllowed(
+  captchaToken?: string
+): Promise<{ allowed: boolean; error?: string; captchaRequired?: boolean }> {
+  try {
+    const flags = await getSystemFlagsSafe()
+    const ip = await getClientIp()
+
+    // Rate limit by IP
+    try {
+      await checkRateLimit(loginLimiter, `login:${ip}`, 'rate_limit_violation')
+    } catch {
+      return { allowed: false, error: 'Too many login attempts. Please try again later.' }
+    }
+
+    // Captcha verification
+    if (flags.captcha_required && captchaToken) {
+      const captchaResult = await verifyCaptcha(captchaToken)
+      if (!captchaResult.success) {
+        await logAbuseEvent('captcha_failure', ip, null, { context: 'login' })
+        return { allowed: false, error: 'Captcha verification failed. Please try again.' }
+      }
+    } else if (flags.captcha_required && !captchaToken) {
+      return { allowed: false, error: 'Please complete the captcha verification.' }
+    }
+
+    return { allowed: true }
+  } catch {
+    // Fail open — allow login if protection check fails
     return { allowed: true }
   }
 }

@@ -14,6 +14,10 @@ vi.mock('@/lib/audit', () => ({
   logAudit: vi.fn(),
 }))
 
+vi.mock('@/app/actions/alerts', () => ({
+  createSystemAlert: vi.fn(() => Promise.resolve({ id: 'alert-1', error: null })),
+}))
+
 // Build a chainable mock for Supabase queries
 function buildChainable(resolveValue: any = { data: null, error: null }) {
   const chain: any = {}
@@ -124,6 +128,33 @@ describe('getSystemFlagsSafe', () => {
     expect(result.registrations_enabled).toBe(true)
     expect(result.listings_enabled).toBe(true)
     expect(result.maintenance_mode).toBe(false)
+  })
+
+  it('forces listings_require_approval when soft_launch_mode is true', async () => {
+    const mockFlags = {
+      id: 1,
+      registrations_enabled: true,
+      listings_enabled: true,
+      payments_enabled: true,
+      claims_enabled: true,
+      maintenance_mode: false,
+      maintenance_message: '',
+      captcha_required: false,
+      listings_require_approval: false,
+      soft_launch_mode: true,
+      circuit_breaker_triggered_at: null,
+      circuit_breaker_cooldown_minutes: 15,
+      created_at: '2024-01-01',
+      updated_at: '2024-01-01',
+    }
+
+    mockAdminClient.from.mockReturnValue(
+      buildChainable({ data: mockFlags, error: null })
+    )
+
+    const result = await getSystemFlagsSafe()
+    expect(result.soft_launch_mode).toBe(true)
+    expect(result.listings_require_approval).toBe(true)
   })
 })
 

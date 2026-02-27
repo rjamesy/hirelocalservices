@@ -205,6 +205,47 @@ Operational readiness
 [x] Recovery procedures documented (restore_test.sh, zcat backup.sql.gz | psql)
 
 ------------------------------------------------------------
+## Phase 4: Operational Hardening
+------------------------------------------------------------
+
+Error monitoring
+[ ] Sentry DSN configured in production
+[ ] Server-side errors captured in Sentry
+[ ] Client-side errors captured in Sentry
+[x] Global error boundary present (global-error.tsx)
+[x] PII scrubbed from error payloads
+
+System alerts
+[x] system_alerts table deployed
+[x] Circuit breaker creates system_alert on trigger
+[x] Admin notified (in-app) when circuit breaker fires
+[x] Alerts tab in admin system page
+
+Protection verification
+[x] Circuit breaker verified (auto-disables registrations)
+[x] Kill switch verified (admin can disable registrations)
+[x] Maintenance mode verified (admin never locked out)
+[x] Admin can preview public pages during maintenance
+[x] /login and /api/auth bypass maintenance mode
+
+Performance and DB
+[x] billing_status index added
+[x] Search uses materialized index (no N+1)
+[x] Core query index usage verified (verify-indexes.sql)
+
+Soft launch mode
+[x] soft_launch_mode flag in system_flags
+[x] Soft launch forces listings_require_approval
+[x] User-facing banner when soft launch active
+[x] Admin toggle for soft launch mode
+
+Abuse simulation
+[x] Registration flood script (rate limit verified)
+[x] Login flood script (rate limit verified)
+[x] Invalid upload rejection verified
+[x] Abuse simulation Playwright tests created
+
+------------------------------------------------------------
 ## Test Coverage
 ------------------------------------------------------------
 
