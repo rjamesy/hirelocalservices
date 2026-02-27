@@ -21,6 +21,7 @@
     "deploy:verify": "bash scripts/verify-deploy.sh"
   },
   "dependencies": {
+    "@aws-sdk/client-ses": "^3.999.0",
     "@marsidev/react-turnstile": "^1.4.2",
     "@sentry/nextjs": "^10.40.0",
     "@stripe/stripe-js": "^5.5.0",
