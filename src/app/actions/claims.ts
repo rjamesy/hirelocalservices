@@ -430,7 +430,7 @@ export async function approveClaim(claimId: string, notes?: string) {
   // Handles: claim update, ownership transfer, contact verification,
   // reject other claims, refresh search index, audit log, notification
   const { data: result, error: rpcError } = await supabase.rpc(
-    'approve_business_claim',
+    'approve_business_claim' as any,
     {
       p_claim_id: claimId,
       p_admin_notes: notes || null,
@@ -464,7 +464,7 @@ export async function rejectClaim(claimId: string, notes?: string) {
   // Admin check enforced at SQL level (is_admin() + auth.uid())
   // Handles: claim rejection, business claim_status reset, audit log, notification
   const { data: result, error: rpcError } = await supabase.rpc(
-    'reject_business_claim',
+    'reject_business_claim' as any,
     {
       p_claim_id: claimId,
       p_admin_notes: notes || null,
