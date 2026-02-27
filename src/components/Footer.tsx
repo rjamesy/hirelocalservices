@@ -51,6 +51,7 @@ export default function Footer() {
             </Link>
             <div className="mt-3 space-y-1 text-sm text-gray-400 leading-relaxed">
               <p>ABN 42 329 061 077</p>
+              <p>Greenbank, QLD 4124</p>
               <p>Queensland, Australia</p>
               <p>
                 <a
@@ -160,25 +161,9 @@ export default function Footer() {
             v{packageJson.version}
           </p>
           <p className="text-xs text-gray-600">
-            Some listing data sourced from{' '}
-            <a
-              href="https://www.openstreetmap.org/copyright"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-gray-400 transition-colors"
-            >
-              OpenStreetMap
-            </a>{' '}
-            contributors, available under the{' '}
-            <a
-              href="https://opendatacommons.org/licenses/odbl/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-gray-400 transition-colors"
-            >
-              ODbL
-            </a>
-            .
+            Some location and mapping data may be sourced from publicly
+            available geographic data providers to improve search functionality
+            and accuracy.
           </p>
         </div>
       </div>
