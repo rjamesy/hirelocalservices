@@ -231,9 +231,9 @@ Operational readiness
 ------------------------------------------------------------
 
 Error monitoring
-[ ] Sentry DSN configured in production
-[ ] Server-side errors captured in Sentry
-[ ] Client-side errors captured in Sentry
+[x] Sentry DSN configured in production
+[x] Server-side errors captured in Sentry
+[x] Client-side errors captured in Sentry
 [x] Global error boundary present (global-error.tsx)
 [x] PII scrubbed from error payloads
 
