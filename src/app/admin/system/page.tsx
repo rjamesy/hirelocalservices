@@ -13,9 +13,180 @@ import {
   adminResetCircuitBreaker,
 } from '@/app/actions/protection'
 import { getSystemAlerts, resolveAlert } from '@/app/actions/alerts'
+import {
+  getSeedStats,
+  getSeedBlacklist,
+  addSeedBlacklistEntry,
+  removeSeedBlacklistEntry,
+} from '@/app/actions/seed-admin'
 import type { SystemFlags, SystemAlert } from '@/lib/types'
 
 type Tab = 'seed' | 'ai' | 'email' | 'ranking' | 'listings' | 'reset' | 'blacklist' | 'protection' | 'alerts'
+
+function SeedStatsPanel() {
+  const [stats, setStats] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    getSeedStats().then((s) => { setStats(s); setLoading(false) })
+  }, [])
+
+  if (loading) return <p className="text-sm text-gray-500">Loading seed stats...</p>
+  if (!stats) return <p className="text-sm text-red-500">Failed to load stats.</p>
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+        <p className="text-xs text-gray-500">Total Seeds</p>
+        <p className="text-lg font-bold text-gray-900">{stats.total}</p>
+      </div>
+      <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+        <p className="text-xs text-gray-500">Avg Confidence</p>
+        <p className="text-lg font-bold text-gray-900">{stats.avgConfidence}</p>
+      </div>
+      <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+        <p className="text-xs text-gray-500">With Phone</p>
+        <p className="text-lg font-bold text-gray-900">{stats.withPhone}</p>
+      </div>
+      <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+        <p className="text-xs text-gray-500">Without Phone</p>
+        <p className="text-lg font-bold text-gray-900">{stats.withoutPhone}</p>
+      </div>
+      {Object.entries(stats.sourceCounts as Record<string, number>).map(([src, count]) => (
+        <div key={src} className="rounded-md border border-gray-200 bg-gray-50 p-3">
+          <p className="text-xs text-gray-500">{src}</p>
+          <p className="text-lg font-bold text-gray-900">{count}</p>
+        </div>
+      ))}
+      <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+        <p className="text-xs text-gray-500">Confidence &lt;0.3</p>
+        <p className="text-lg font-bold text-red-600">{stats.brackets.low}</p>
+      </div>
+      <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+        <p className="text-xs text-gray-500">Confidence 0.3-0.5</p>
+        <p className="text-lg font-bold text-yellow-600">{stats.brackets.medium}</p>
+      </div>
+      <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+        <p className="text-xs text-gray-500">Confidence 0.5-0.7</p>
+        <p className="text-lg font-bold text-blue-600">{stats.brackets.good}</p>
+      </div>
+      <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+        <p className="text-xs text-gray-500">Confidence 0.7+</p>
+        <p className="text-lg font-bold text-green-600">{stats.brackets.high}</p>
+      </div>
+    </div>
+  )
+}
+
+function SeedBlacklistPanel() {
+  const [entries, setEntries] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [placeId, setPlaceId] = useState('')
+  const [bizName, setBizName] = useState('')
+  const [reason, setReason] = useState('')
+  const [msg, setMsg] = useState('')
+
+  useEffect(() => {
+    getSeedBlacklist().then((r) => { setEntries(r.data); setLoading(false) })
+  }, [])
+
+  async function handleAdd() {
+    setMsg('')
+    const result = await addSeedBlacklistEntry(placeId || null, bizName || null, reason)
+    if (result.error) {
+      setMsg(result.error)
+    } else {
+      setPlaceId('')
+      setBizName('')
+      setReason('')
+      const refreshed = await getSeedBlacklist()
+      setEntries(refreshed.data)
+    }
+  }
+
+  async function handleRemove(id: string) {
+    await removeSeedBlacklistEntry(id)
+    const refreshed = await getSeedBlacklist()
+    setEntries(refreshed.data)
+  }
+
+  if (loading) return <p className="text-sm text-gray-500">Loading blacklist...</p>
+
+  return (
+    <div className="space-y-3">
+      {/* Add form */}
+      <div className="flex flex-col gap-2 rounded-md border border-gray-200 bg-gray-50 p-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <input
+            type="text"
+            placeholder="Google Place ID"
+            value={placeId}
+            onChange={(e) => setPlaceId(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          />
+          <input
+            type="text"
+            placeholder="Business name"
+            value={bizName}
+            onChange={(e) => setBizName(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          />
+          <input
+            type="text"
+            placeholder="Reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          />
+        </div>
+        <button
+          onClick={handleAdd}
+          disabled={!reason || (!placeId && !bizName)}
+          className="self-start rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+        >
+          Add to Blacklist
+        </button>
+        {msg && <p className="text-sm text-red-600">{msg}</p>}
+      </div>
+
+      {/* List */}
+      {entries.length === 0 ? (
+        <p className="text-sm text-gray-500">No seed blacklist entries.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="py-2 pr-4 text-left text-xs font-medium text-gray-500 uppercase">Place ID / Name</th>
+                <th className="py-2 pr-4 text-left text-xs font-medium text-gray-500 uppercase">Reason</th>
+                <th className="py-2 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {entries.map((e: any) => (
+                <tr key={e.id}>
+                  <td className="py-2 pr-4 text-gray-700">
+                    {e.google_place_id && <span className="font-mono text-xs">{e.google_place_id}</span>}
+                    {e.business_name && <span>{e.business_name}</span>}
+                  </td>
+                  <td className="py-2 pr-4 text-gray-500">{e.reason}</td>
+                  <td className="py-2 text-right">
+                    <button
+                      onClick={() => handleRemove(e.id)}
+                      className="text-xs text-red-600 hover:text-red-700 font-medium"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function AdminSystemPage() {
   const [tab, setTab] = useState<Tab>('seed')
@@ -233,6 +404,7 @@ export default function AdminSystemPage() {
                     { key: 'captcha_required' as const, label: 'Captcha Required' },
                     { key: 'listings_require_approval' as const, label: 'Listings Require Approval' },
                     { key: 'soft_launch_mode' as const, label: 'Soft Launch Mode' },
+                    { key: 'seed_require_phone' as const, label: 'Seeds Require Phone' },
                   ] as const).map((flag) => (
                     <label key={flag.key} className="flex items-center gap-3">
                       <input
@@ -298,6 +470,35 @@ export default function AdminSystemPage() {
                       </button>
                     </div>
                   )}
+                </div>
+
+                {/* Seed Min Confidence */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Seed Min Confidence: {protectionFlags.seed_min_confidence?.toFixed(2) ?? '0.50'}
+                  </label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={protectionFlags.seed_min_confidence ?? 0.5}
+                    onChange={(e) => setProtectionFlags((f) => f ? { ...f, seed_min_confidence: Number(e.target.value) } : f)}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-gray-400">
+                    <span>0.00 (all seeds)</span>
+                    <span>1.00 (highest only)</span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      await updateProtectionFlag('seed_min_confidence', protectionFlags.seed_min_confidence ?? 0.5)
+                      setMessage({ type: 'success', text: 'Seed minimum confidence updated.' })
+                    }}
+                    className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
+                  >
+                    Save
+                  </button>
                 </div>
 
                 <hr className="border-gray-200" />
@@ -555,6 +756,22 @@ export default function AdminSystemPage() {
                 </button>
               </div>
               <p className="mt-1 text-xs text-gray-500">Seed listings older than this many days will be auto-unpublished.</p>
+            </div>
+
+            <hr className="border-gray-200" />
+
+            {/* Seed Stats */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-gray-800">Seed Statistics</h3>
+              <SeedStatsPanel />
+            </div>
+
+            <hr className="border-gray-200" />
+
+            {/* Seed Blacklist */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-gray-800">Seed Blacklist</h3>
+              <SeedBlacklistPanel />
             </div>
           </div>
         )}

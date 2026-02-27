@@ -127,6 +127,18 @@ Admin usability improvements
 ## Seeding Tasks (CRITICAL FOR PLATFORM USEFULNESS)
 ------------------------------------------------------------
 
+Seed pipeline (Phase 5)
+[x] Google Places API adapter implemented
+[x] Business normalizer (AU phone, address parsing, category mapping)
+[x] Deduplication engine (source_id, slug, fuzzy name+suburb)
+[x] Confidence scoring (phone, website, address, hours, rating, reviews)
+[x] Template-based description generator
+[x] DB writer with PostGIS location insertion
+[x] Seed blacklist checking (Google Place ID + general blacklist)
+[x] CLI seed runner (--city, --category, --dry-run, --limit)
+[x] Deterministic daily ranking (md5 hash tiebreaker replaces random())
+[x] Unclaimed seeds appear in search (confidence >= 0.5)
+
 Seed coverage requirements
 [ ] Minimum 3 listings per suburb per category where businesses exist
 [ ] Major cities seeded first
@@ -136,9 +148,9 @@ Seed coverage requirements
 
 Seed quality requirements
 [ ] Seed listings must have real phone number where available
-[ ] Seed listings must never fabricate contact data
-[ ] Seed listings must never fabricate service radius
-[ ] Seed listings must have confidence score above minimum threshold
+[x] Seed listings must never fabricate contact data
+[x] Seed listings must never fabricate service radius
+[x] Seed listings must have confidence score above minimum threshold
 [ ] Seed listings must display real useful information
 
 Seed management requirements
@@ -146,6 +158,16 @@ Seed management requirements
 [x] Seed listings claimable
 [x] Seed listings remain visible indefinitely (seed_expiry_enabled defaults to false)
 [ ] Seed listings never expire automatically
+[x] Admin seed stats panel (counts, confidence brackets, phone/website coverage)
+[x] Admin seed blacklist management
+[x] seed_min_confidence admin slider
+[x] seed_require_phone admin toggle
+
+Claim verification
+[x] Twilio SMS OTP integration
+[x] OTP verification step in claim UI
+[x] OTP rate limiting (max 3 per 5 minutes)
+[x] Graceful fallback when Twilio not configured
 
 ------------------------------------------------------------
 ## Database Tasks

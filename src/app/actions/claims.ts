@@ -15,6 +15,7 @@ import { getUserEntitlements } from '@/lib/entitlements'
 import { createNotification } from '@/app/actions/notifications'
 import { getSystemFlagsSafe, requireEmailVerified, verifyCaptcha, logAbuseEvent } from '@/lib/protection'
 import { checkRateLimit, claimSubmitLimiter } from '@/lib/rate-limiter'
+import { sendOTP, verifyOTP, isTwilioConfigured } from '@/lib/twilio'
 
 async function requireAuth() {
   const supabase = await createClient()
@@ -355,6 +356,26 @@ export async function claimBusiness(
   revalidatePath('/admin/claims')
   revalidatePath('/dashboard')
   return { step, matchScore }
+}
+
+// ─── OTP Verification for Claims ─────────────────────────────────────
+
+export async function sendClaimOTP(phone: string) {
+  const { user } = await requireAuth()
+
+  if (!isTwilioConfigured()) {
+    return { skipped: true, error: null }
+  }
+
+  const result = await sendOTP(user.id, phone)
+  return result
+}
+
+export async function verifyClaimOTP(phone: string, code: string) {
+  const { user } = await requireAuth()
+
+  const result = await verifyOTP(user.id, phone, code)
+  return result
 }
 
 // ─── Legacy submitClaim (redirect to new flow) ──────────────────────

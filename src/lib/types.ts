@@ -14,7 +14,7 @@ export type Profile = {
 
 export type VerificationStatus = 'pending' | 'approved' | 'review' | 'rejected' | 'suspended'
 
-export type ListingSource = 'manual' | 'osm' | 'csv_import'
+export type ListingSource = 'manual' | 'osm' | 'csv_import' | 'google_places'
 
 export type ClaimStatus = 'unclaimed' | 'pending' | 'claimed'
 
@@ -49,6 +49,7 @@ export type Business = {
   pending_changes: PendingChanges | null
   suspended_reason: string | null
   suspended_at: string | null
+  seed_confidence: number | null
   deleted_at: string | null
   created_at: string
   updated_at: string
@@ -361,6 +362,17 @@ export type SystemAlert = {
   created_at: string
 }
 
+export type OTPVerification = {
+  id: string
+  user_id: string
+  phone: string
+  code: string
+  expires_at: string
+  verified_at: string | null
+  attempts: number
+  created_at: string
+}
+
 // ─── Protection Pack Types ──────────────────────────────────────────
 
 export type SystemFlags = {
@@ -374,6 +386,8 @@ export type SystemFlags = {
   captcha_required: boolean
   listings_require_approval: boolean
   soft_launch_mode: boolean
+  seed_min_confidence: number
+  seed_require_phone: boolean
   circuit_breaker_triggered_at: string | null
   circuit_breaker_cooldown_minutes: number
   created_at: string
@@ -486,7 +500,7 @@ export type Database = {
       }
       businesses: {
         Row: Business
-        Insert: Omit<Business, 'id' | 'created_at' | 'updated_at' | 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at' | 'suspended_reason' | 'suspended_at' | 'deleted_at'> & Partial<Pick<Business, 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at' | 'suspended_reason' | 'suspended_at' | 'deleted_at'>>
+        Insert: Omit<Business, 'id' | 'created_at' | 'updated_at' | 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'seed_confidence' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at' | 'suspended_reason' | 'suspended_at' | 'deleted_at'> & Partial<Pick<Business, 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'seed_confidence' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at' | 'suspended_reason' | 'suspended_at' | 'deleted_at'>>
         Update: Partial<Omit<Business, 'id' | 'created_at'>>
         Relationships: [
           {
@@ -796,6 +810,25 @@ export type Database = {
         }
         Insert: never
         Update: never
+        Relationships: []
+      }
+      seed_blacklist: {
+        Row: {
+          id: string
+          google_place_id: string | null
+          business_name: string | null
+          reason: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: Partial<{ id: string }> & { google_place_id?: string | null; business_name?: string | null; reason?: string | null; created_by?: string | null }
+        Update: Partial<{ google_place_id: string | null; business_name: string | null; reason: string | null }>
+        Relationships: []
+      }
+      otp_verifications: {
+        Row: OTPVerification
+        Insert: Omit<OTPVerification, 'id' | 'created_at' | 'verified_at' | 'attempts'> & Partial<Pick<OTPVerification, 'verified_at' | 'attempts'>>
+        Update: Partial<Pick<OTPVerification, 'verified_at' | 'attempts'>>
         Relationships: []
       }
     }

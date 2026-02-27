@@ -16,6 +16,8 @@ const SAFE_DEFAULTS: SystemFlags = {
   captcha_required: false,
   listings_require_approval: false,
   soft_launch_mode: false,
+  seed_min_confidence: 0.5,
+  seed_require_phone: false,
   circuit_breaker_triggered_at: null,
   circuit_breaker_cooldown_minutes: 15,
   created_at: '',
