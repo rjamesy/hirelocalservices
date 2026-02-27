@@ -1184,19 +1184,39 @@ export async function getBusinessBySlug(slug: string) {
     `
     )
     .eq('slug', slug)
-    .neq('status', 'suspended')
     .maybeSingle()
 
   if (error || !business) {
     return null
   }
 
-  // billing_suspended listings are hidden from non-owners
-  if (business.billing_status === 'billing_suspended') {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user || user.id !== business.owner_id) {
+  // Determine viewer identity
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const isOwner = !!user && user.id === business.owner_id
+
+  // Check admin only if authenticated and not owner (avoid unnecessary DB call)
+  let isAdmin = false
+  if (user && !isOwner) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+    isAdmin = profile?.role === 'admin'
+  }
+
+  // Public visibility gate: non-owner, non-admin can only see
+  // published + approved + not deleted + not billing-suspended listings
+  if (!isOwner && !isAdmin) {
+    if (
+      business.status !== 'published' ||
+      business.verification_status !== 'approved' ||
+      business.deleted_at !== null ||
+      business.billing_status === 'billing_suspended'
+    ) {
       return null
     }
   }

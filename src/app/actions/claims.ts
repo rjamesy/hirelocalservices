@@ -403,8 +403,9 @@ export async function getAdminClaims(page = 1) {
 // ─── Admin: Approve Claim ───────────────────────────────────────────
 
 export async function approveClaim(claimId: string, notes?: string) {
-  const { supabase, user } = await requireAdmin()
+  const { supabase } = await requireAdmin()
 
+  // Pre-flight: check claimer capacity (requires TS-side plan tier lookup)
   const { data: claim, error: claimError } = await supabase
     .from('business_claims')
     .select('id, business_id, claimer_id, status')
@@ -419,89 +420,34 @@ export async function approveClaim(claimId: string, notes?: string) {
     return { error: 'Claim is not pending' }
   }
 
-  // Check claimer has capacity for another listing
   const capacity = await getUserListingCapacity(supabase, claim.claimer_id)
   if (!capacity.canClaimMore) {
     return { error: 'Claimer has reached their listing limit. Cannot approve.' }
   }
 
-  // Update claim status
-  const { error: claimUpdateError } = await supabase
-    .from('business_claims')
-    .update({
-      status: 'approved',
-      reviewed_at: new Date().toISOString(),
-      reviewed_by: user.id,
-      admin_notes: notes || null,
-    })
-    .eq('id', claimId)
+  // Atomic DB operations via SQL function
+  // Admin check enforced at SQL level (is_admin() + auth.uid())
+  // Handles: claim update, ownership transfer, contact verification,
+  // reject other claims, refresh search index, audit log, notification
+  const { data: result, error: rpcError } = await supabase.rpc(
+    'approve_business_claim',
+    {
+      p_claim_id: claimId,
+      p_admin_notes: notes || null,
+    }
+  )
 
-  if (claimUpdateError) {
-    console.error('[approveClaim] Failed to update claim status:', claimUpdateError)
-    return { error: 'Failed to update claim status' }
+  if (rpcError) {
+    console.error('[approveClaim] RPC error:', rpcError)
+    return { error: 'Failed to approve claim. Please try again.' }
   }
 
-  // Transfer business ownership, keep published, mark verified
-  const { error: bizUpdateError } = await supabase
-    .from('businesses')
-    .update({
-      owner_id: claim.claimer_id,
-      claim_status: 'claimed',
-      is_seed: false,
-      status: 'published',
-      verification_status: 'approved',
-    })
-    .eq('id', claim.business_id)
-
-  if (bizUpdateError) {
-    console.error('[approveClaim] Failed to transfer business ownership:', bizUpdateError)
-    return { error: 'Failed to transfer business ownership. Check server logs.' }
+  if (result?.error) {
+    return { error: result.error }
   }
 
-  // Mark contacts as verified
-  await supabase
-    .from('business_contacts')
-    .update({ verified_at: new Date().toISOString() })
-    .eq('business_id', claim.business_id)
-
-  // Ensure claimer has a subscription (trial if none exists)
-  await ensureUserSubscription(supabase, claim.claimer_id, claim.business_id)
-
-  // Refresh search index so the claimed business appears in results
-  await supabase.rpc('refresh_search_index', { p_business_id: claim.business_id })
-
-  // Reject any other pending claims for this business
-  await supabase
-    .from('business_claims')
-    .update({
-      status: 'rejected',
-      reviewed_at: new Date().toISOString(),
-      reviewed_by: user.id,
-    })
-    .eq('business_id', claim.business_id)
-    .eq('status', 'pending')
-    .neq('id', claimId)
-
-  await logAudit(supabase, {
-    action: 'listing_claim_approved',
-    entityType: 'listing',
-    entityId: claim.business_id,
-    actorId: user.id,
-    details: {
-      claim_id: claimId,
-      claimer_id: claim.claimer_id,
-      admin_notes: notes || null,
-    },
-  })
-
-  // Notify claimer
-  await createNotification(supabase, {
-    userId: claim.claimer_id,
-    type: 'claim_approved',
-    title: 'Claim Approved',
-    message: `Your claim has been approved! You now own this business listing.`,
-    metadata: { claimId, businessId: claim.business_id },
-  })
+  // Ensure claimer has a subscription (may involve Stripe — must stay in TS)
+  await ensureUserSubscription(supabase, result.claimer_id, result.business_id)
 
   revalidatePath('/admin/claims')
   revalidatePath('/admin')
@@ -512,72 +458,26 @@ export async function approveClaim(claimId: string, notes?: string) {
 // ─── Admin: Reject Claim ────────────────────────────────────────────
 
 export async function rejectClaim(claimId: string, notes?: string) {
-  const { supabase, user } = await requireAdmin()
+  const { supabase } = await requireAdmin()
 
-  const { data: claim, error: claimError } = await supabase
-    .from('business_claims')
-    .select('id, business_id, status')
-    .eq('id', claimId)
-    .single()
+  // Atomic DB operations via SQL function
+  // Admin check enforced at SQL level (is_admin() + auth.uid())
+  // Handles: claim rejection, business claim_status reset, audit log, notification
+  const { data: result, error: rpcError } = await supabase.rpc(
+    'reject_business_claim',
+    {
+      p_claim_id: claimId,
+      p_admin_notes: notes || null,
+    }
+  )
 
-  if (claimError || !claim) {
-    return { error: 'Claim not found' }
+  if (rpcError) {
+    console.error('[rejectClaim] RPC error:', rpcError)
+    return { error: 'Failed to reject claim. Please try again.' }
   }
 
-  if (claim.status !== 'pending') {
-    return { error: 'Claim is not pending' }
-  }
-
-  await supabase
-    .from('business_claims')
-    .update({
-      status: 'rejected',
-      reviewed_at: new Date().toISOString(),
-      reviewed_by: user.id,
-      admin_notes: notes || null,
-    })
-    .eq('id', claimId)
-
-  // Reset business claim_status back to unclaimed if no other pending claims
-  const { count } = await supabase
-    .from('business_claims')
-    .select('*', { count: 'exact', head: true })
-    .eq('business_id', claim.business_id)
-    .eq('status', 'pending')
-
-  if (!count || count === 0) {
-    await supabase
-      .from('businesses')
-      .update({ claim_status: 'unclaimed' })
-      .eq('id', claim.business_id)
-  }
-
-  await logAudit(supabase, {
-    action: 'listing_claim_rejected',
-    entityType: 'listing',
-    entityId: claim.business_id,
-    actorId: user.id,
-    details: {
-      claim_id: claimId,
-      admin_notes: notes || null,
-    },
-  })
-
-  // Notify claimer
-  const { data: claimForNotify } = await supabase
-    .from('business_claims')
-    .select('claimer_id')
-    .eq('id', claimId)
-    .single()
-
-  if (claimForNotify) {
-    await createNotification(supabase, {
-      userId: claimForNotify.claimer_id,
-      type: 'claim_rejected',
-      title: 'Claim Rejected',
-      message: `Your claim has been rejected.${notes ? ` Reason: ${notes}` : ''}`,
-      metadata: { claimId, businessId: claim.business_id, notes },
-    })
+  if (result?.error) {
+    return { error: result.error }
   }
 
   revalidatePath('/admin/claims')
