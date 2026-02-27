@@ -64,7 +64,7 @@ export default async function RootLayout({
         )}
         {softLaunch && !maintenanceActive && (
           <div className="bg-blue-500 text-white text-center text-sm font-medium py-2 px-4">
-            We&apos;re rolling out access gradually. New listings are reviewed before going live.
+            New listings are reviewed before going live to ensure quality.
           </div>
         )}
         <Header />
