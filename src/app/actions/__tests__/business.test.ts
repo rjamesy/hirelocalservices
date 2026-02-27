@@ -36,6 +36,11 @@ vi.mock('@/lib/rate-limiter', () => ({
   listingCreateLimiter: {},
 }))
 
+const mockGetListingEligibility = vi.fn()
+vi.mock('@/lib/search/eligibility', () => ({
+  getListingEligibility: (...args: any[]) => mockGetListingEligibility(...args),
+}))
+
 // Import actions after mocks
 import {
   createBusinessDraft,
@@ -46,7 +51,7 @@ import {
   unpublishBusiness,
   getMyBusiness,
   getMyBusinesses,
-  getUserPlan,
+  getMyEntitlements,
   getBusinessBySlug,
 } from '../business'
 
@@ -77,10 +82,10 @@ describe('createBusinessDraft', () => {
   })
 
   it('rejects if user has reached listing limit', async () => {
-    // getUserListingCapacity: count query returns 1 existing business
-    chainResult.mockReturnValueOnce({ count: 1, error: null })
-    // getUserListingCapacity: user_subscriptions query
+    // getUserEntitlements: subscription query (active basic)
     maybeSingle.mockResolvedValueOnce({ data: { plan: 'basic', status: 'active' }, error: null })
+    // getUserEntitlements: business count = 1 (at limit for basic)
+    chainResult.mockReturnValueOnce({ count: 1, error: null })
 
     const fd = makeFormData({ name: 'Test', description: 'A valid description for testing.' })
     const result = await createBusinessDraft(fd)
@@ -89,9 +94,11 @@ describe('createBusinessDraft', () => {
   })
 
   it('returns validation errors for invalid data', async () => {
-    // getUserListingCapacity: count=0 (no businesses)
+    // getUserEntitlements: no subscription
+    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    // getUserEntitlements: business count = 0
     chainResult.mockReturnValueOnce({ count: 0, error: null })
-    // getUserListingCapacity: no subscription
+    // getUserEntitlements: canceled sub check
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
 
     const fd = makeFormData({ name: 'A', description: 'Short' })
@@ -100,9 +107,11 @@ describe('createBusinessDraft', () => {
   })
 
   it('creates a draft on valid data', async () => {
-    // getUserListingCapacity: count=0
+    // getUserEntitlements: no subscription
+    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    // getUserEntitlements: business count = 0
     chainResult.mockReturnValueOnce({ count: 0, error: null })
-    // getUserListingCapacity: no subscription
+    // getUserEntitlements: canceled sub check
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
     // slug check
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
@@ -119,9 +128,11 @@ describe('createBusinessDraft', () => {
   })
 
   it('appends random suffix for duplicate slugs', async () => {
-    // getUserListingCapacity: count=0
+    // getUserEntitlements: no subscription
+    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    // getUserEntitlements: business count = 0
     chainResult.mockReturnValueOnce({ count: 0, error: null })
-    // getUserListingCapacity: no subscription
+    // getUserEntitlements: canceled sub check
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
     maybeSingle.mockResolvedValueOnce({ data: { id: 'dup' }, error: null }) // slug exists
     single.mockResolvedValueOnce({ data: mockBusiness, error: null })
@@ -138,9 +149,11 @@ describe('createBusinessDraft', () => {
   })
 
   it('handles insert failure', async () => {
-    // getUserListingCapacity: count=0
+    // getUserEntitlements: no subscription
+    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    // getUserEntitlements: business count = 0
     chainResult.mockReturnValueOnce({ count: 0, error: null })
-    // getUserListingCapacity: no subscription
+    // getUserEntitlements: canceled sub check
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
     single.mockResolvedValueOnce({ data: null, error: { message: 'DB error' } })
@@ -167,6 +180,12 @@ describe('updateBusiness', () => {
       data: { id: 'biz-123', owner_id: 'user-123', status: 'published', slug: 'test', billing_status: 'active' },
       error: null,
     })
+    // getUserEntitlements: no subscription
+    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    // getUserEntitlements: business count
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
+    // getUserEntitlements: canceled sub check
+    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
   })
 
   it('returns validation errors for invalid data', async () => {
@@ -176,6 +195,7 @@ describe('updateBusiness', () => {
   })
 
   it('updates business on valid data', async () => {
+    // fetch current business status
     single.mockResolvedValueOnce({
       data: { ...mockBusiness, name: 'Updated' },
       error: null,
@@ -348,16 +368,24 @@ describe('publishChanges', () => {
   })
 
   it('requires active user subscription', async () => {
-    // user_subscriptions check returns no subscription
+    // getUserEntitlements: no subscription
+    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    // getUserEntitlements: business count
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
+    // getUserEntitlements: canceled sub check
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
     const result = await publishChanges('biz-123')
     expect(result).toEqual({ error: 'subscription_required' })
   })
 
   it('rejects canceled user subscription', async () => {
-    // user_subscriptions check returns canceled
+    // getUserEntitlements: no active sub (neq status canceled filters it out)
+    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    // getUserEntitlements: business count
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
+    // getUserEntitlements: canceled sub check — expired
     maybeSingle.mockResolvedValueOnce({
-      data: { status: 'canceled' },
+      data: { status: 'canceled', current_period_end: '2020-01-01T00:00:00Z', updated_at: '2020-01-01T00:00:00Z' },
       error: null,
     })
     const result = await publishChanges('biz-123')
@@ -487,7 +515,7 @@ describe('getBusinessBySlug', () => {
     expect(result).toBeNull()
   })
 
-  it('returns null if billing_suspended and not owner', async () => {
+  it('returns null if not publicly visible and not owner', async () => {
     // No authenticated user
     mockSupabase.auth.getUser.mockResolvedValue({
       data: { user: null },
@@ -504,6 +532,7 @@ describe('getBusinessBySlug', () => {
       },
       error: null,
     })
+    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: false })
 
     const result = await getBusinessBySlug('test-business')
     expect(result).toBeNull()
@@ -524,6 +553,7 @@ describe('getBusinessBySlug', () => {
       },
       error: null,
     })
+    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: true })
 
     const result = await getBusinessBySlug('test-business')
     expect(result).not.toBeNull()
@@ -543,6 +573,7 @@ describe('getBusinessBySlug', () => {
       },
       error: null,
     })
+    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: true })
 
     const result = await getBusinessBySlug('test-business')
     expect(result).not.toBeNull()
@@ -550,7 +581,7 @@ describe('getBusinessBySlug', () => {
   })
 })
 
-describe('getUserPlan', () => {
+describe('getMyEntitlements', () => {
   beforeEach(() => {
     vi.resetAllMocks()
   })
@@ -560,82 +591,48 @@ describe('getUserPlan', () => {
       data: { user: null },
       error: null,
     })
-    const result = await getUserPlan()
+    const result = await getMyEntitlements()
     expect(result).toBeNull()
   })
 
-  it('returns null when no subscription exists', async () => {
+  it('returns entitlements for active subscription', async () => {
     mockSupabase.auth.getUser.mockResolvedValue({
       data: { user: mockUser },
       error: null,
     })
+    // getUserEntitlements: active sub
+    maybeSingle.mockResolvedValueOnce({
+      data: { plan: 'premium', status: 'active', user_id: 'user-123' },
+      error: null,
+    })
+    // getUserEntitlements: business count
+    chainResult.mockReturnValueOnce({ count: 1, error: null })
+
+    const result = await getMyEntitlements()
+    expect(result).not.toBeNull()
+    expect(result!.plan).toBe('premium')
+    expect(result!.isActive).toBe(true)
+    expect(result!.canUploadPhotos).toBe(true)
+    expect(result!.descriptionLimit).toBe(1500)
+  })
+
+  it('returns blocked entitlements when no subscription', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    })
+    // getUserEntitlements: no active sub
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
-    const result = await getUserPlan()
-    expect(result).toBeNull()
-  })
+    // getUserEntitlements: business count
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
+    // getUserEntitlements: canceled sub check
+    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
 
-  it('returns null for canceled subscription', async () => {
-    mockSupabase.auth.getUser.mockResolvedValue({
-      data: { user: mockUser },
-      error: null,
-    })
-    maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium', status: 'canceled' },
-      error: null,
-    })
-    const result = await getUserPlan()
-    expect(result).toBeNull()
-  })
-
-  it('returns plan for active subscription', async () => {
-    mockSupabase.auth.getUser.mockResolvedValue({
-      data: { user: mockUser },
-      error: null,
-    })
-    maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium', status: 'active' },
-      error: null,
-    })
-    const result = await getUserPlan()
-    expect(result).toBe('premium')
-  })
-
-  it('returns plan for past_due subscription', async () => {
-    mockSupabase.auth.getUser.mockResolvedValue({
-      data: { user: mockUser },
-      error: null,
-    })
-    maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'premium_annual', status: 'past_due' },
-      error: null,
-    })
-    const result = await getUserPlan()
-    expect(result).toBe('premium_annual')
-  })
-
-  it('returns correct plan for basic tier', async () => {
-    mockSupabase.auth.getUser.mockResolvedValue({
-      data: { user: mockUser },
-      error: null,
-    })
-    maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'basic', status: 'active' },
-      error: null,
-    })
-    const result = await getUserPlan()
-    expect(result).toBe('basic')
-  })
-
-  it('returns correct plan for free_trial tier', async () => {
-    mockSupabase.auth.getUser.mockResolvedValue({
-      data: { user: mockUser },
-      error: null,
-    })
-    maybeSingle.mockResolvedValueOnce({
-      data: { plan: 'free_trial', status: 'active' },
-      error: null,
-    })
-    const result = await getUserPlan()
-    expect(result).toBe('free_trial')
+    const result = await getMyEntitlements()
+    expect(result).not.toBeNull()
+    expect(result!.plan).toBeNull()
+    expect(result!.isActive).toBe(false)
+    expect(result!.canPublish).toBe(false)
+    expect(result!.descriptionLimit).toBe(250)
   })
 })

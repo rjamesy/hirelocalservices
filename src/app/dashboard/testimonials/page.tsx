@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { getMyBusiness, getMyBusinesses, getUserPlan } from '@/app/actions/business'
+import { getMyBusiness, getMyBusinesses, getMyEntitlements } from '@/app/actions/business'
 import { addTestimonial, deleteTestimonial } from '@/app/actions/testimonials'
 import { testimonialSchema } from '@/lib/validations'
 import { MAX_TESTIMONIALS } from '@/lib/constants'
@@ -102,9 +102,9 @@ function TestimonialsContent() {
 
       setBusinessId(business.id)
 
-      // Check plan tier for testimonial access
-      const plan = await getUserPlan()
-      setCanAddTestimonials(plan === 'premium' || plan === 'premium_annual')
+      // Check plan tier for testimonial access via canonical entitlements
+      const ent = await getMyEntitlements()
+      setCanAddTestimonials(ent?.canAddTestimonials ?? false)
 
       const sorted = [...(business.testimonials ?? [])].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()

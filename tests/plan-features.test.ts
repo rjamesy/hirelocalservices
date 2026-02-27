@@ -91,13 +91,13 @@ describe('Plan-Based Feature Access', () => {
       expect(plan).toBe('basic')
     })
 
-    it('new pattern: getUserPlan() returns actual plan from user_subscriptions', () => {
-      // Simulate what getUserPlan() returns for a premium user
+    it('new pattern: getMyEntitlements() returns actual plan from user_subscriptions', () => {
+      // Simulate what getMyEntitlements() returns for a premium user
       const planFromUserSubscriptions: PlanTier = 'premium'
       expect(isPremium(planFromUserSubscriptions)).toBe(true)
     })
 
-    it('new pattern: getUserPlan() returns null for no subscription', () => {
+    it('new pattern: getMyEntitlements() returns null for no subscription', () => {
       const planFromUserSubscriptions: PlanTier | null = null
       expect(isPremium(planFromUserSubscriptions)).toBe(false)
     })

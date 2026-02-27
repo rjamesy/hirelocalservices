@@ -1,4 +1,4 @@
-import { getPlanById, type PlanDefinition } from '@/lib/constants'
+import { getPlanById } from '@/lib/constants'
 import { getSettingValue } from '@/app/actions/system-settings'
 import type { PlanTier, SubscriptionStatus, BillingStatus } from '@/lib/types'
 
@@ -35,8 +35,13 @@ type SupabaseClient = {
 
 // ─── Constants ──────────────────────────────────────────────────────
 
-const DEFAULT_DESCRIPTION_LIMIT = 500
-const PREMIUM_DESCRIPTION_LIMIT = 2000
+const DESCRIPTION_LIMITS: Record<PlanTier, number> = {
+  free_trial: 250,
+  basic: 500,
+  premium: 1500,
+  premium_annual: 2500,
+}
+const DEFAULT_DESCRIPTION_LIMIT = 250
 
 // ─── THE ONLY AUTHORITY FOR SUBSCRIPTION STATE ──────────────────────
 
@@ -151,7 +156,7 @@ async function buildEntitlements(
     canAddTestimonials: effectivelyActive && planDef.canAddTestimonials,
     maxPhotos: planDef.maxPhotos,
     maxTestimonials: planDef.maxTestimonials,
-    descriptionLimit: getDescriptionLimitForPlan(planDef),
+    descriptionLimit: DESCRIPTION_LIMITS[plan] ?? DEFAULT_DESCRIPTION_LIMIT,
     trialEndsAt: sub.trial_ends_at ?? null,
     cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
     currentPeriodEnd: sub.current_period_end ?? null,
@@ -176,20 +181,13 @@ function nullEntitlements(userId: string, currentListingCount: number): Entitlem
     canAddTestimonials: false,
     maxPhotos: 0,
     maxTestimonials: 0,
-    descriptionLimit: DEFAULT_DESCRIPTION_LIMIT,
+    descriptionLimit: 250,
     trialEndsAt: null,
     cancelAtPeriodEnd: false,
     currentPeriodEnd: null,
     effectiveState: 'blocked',
     reasonCodes: ['no_subscription'],
   }
-}
-
-function getDescriptionLimitForPlan(planDef: PlanDefinition): number {
-  if (planDef.id === 'premium' || planDef.id === 'premium_annual') {
-    return PREMIUM_DESCRIPTION_LIMIT
-  }
-  return DEFAULT_DESCRIPTION_LIMIT
 }
 
 // ─── Batch Entitlements ──────────────────────────────────────────────

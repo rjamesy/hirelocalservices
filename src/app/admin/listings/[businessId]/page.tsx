@@ -215,7 +215,7 @@ export default function AdminListingDetailPage() {
     )
   }
 
-  const { business, owner, location, categories, contacts, reports, claims, photos, testimonials, entitlements, eligibility, pendingChanges } = data
+  const { business, owner, location, categories, contacts, reports, claims, photos, testimonials, entitlements, eligibility, listingEligibility, pendingChanges } = data
   const isDeleted = !!business.deleted_at
   const isSuspended = business.status === 'suspended'
   const isPublished = business.status === 'published'
@@ -622,6 +622,61 @@ export default function AdminListingDetailPage() {
           <p className="text-sm text-gray-400">No eligibility data available.</p>
         )}
       </div>
+
+      {/* ──────────── 6b. Listing Visibility ──────────── */}
+      {listingEligibility && (
+        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-gray-900 mb-3">Listing Visibility</h2>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <span className="text-xs text-gray-500">Public Visible</span>
+              <div className={`text-sm font-medium ${listingEligibility.visiblePublic ? 'text-green-700' : 'text-red-700'}`}>
+                {listingEligibility.visiblePublic ? 'Yes' : 'No'}
+              </div>
+            </div>
+            <div>
+              <span className="text-xs text-gray-500">In Search</span>
+              <div className={`text-sm font-medium ${listingEligibility.visibleInSearch ? 'text-green-700' : 'text-red-700'}`}>
+                {listingEligibility.visibleInSearch ? 'Yes' : 'No'}
+              </div>
+            </div>
+          </div>
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead>
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Check</th>
+                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider text-gray-500">Result</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {Object.entries(listingEligibility.checks).map(([key, value]) => (
+                <tr key={key}>
+                  <td className="px-3 py-2 text-gray-700 font-medium">{key}</td>
+                  <td className="px-3 py-2 text-center">
+                    {typeof value === 'boolean' ? (
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        {value ? 'Pass' : 'Fail'}
+                      </span>
+                    ) : (
+                      <span className="text-gray-600 text-xs">{value ?? 'none'}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {listingEligibility.blockedReasons.length > 0 && (
+            <div className="mt-3">
+              <span className="text-xs text-gray-500">Blocked Reasons:</span>
+              <ul className="mt-1 text-xs text-red-600 list-disc list-inside">
+                {listingEligibility.blockedReasons.map((reason, i) => (
+                  <li key={i}>{reason}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ──────────── 7. Reports Section ──────────── */}
       <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">

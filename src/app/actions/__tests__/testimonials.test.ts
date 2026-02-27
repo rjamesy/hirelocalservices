@@ -12,6 +12,10 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }))
 
+vi.mock('@/app/actions/system-settings', () => ({
+  getSettingValue: vi.fn(() => Promise.resolve(10)),
+}))
+
 import { addTestimonial, deleteTestimonial } from '../testimonials'
 
 function makeFormData(data: Record<string, string>): FormData {
@@ -46,10 +50,12 @@ describe('addTestimonial', () => {
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
       error: null,
     })
+    // getUserEntitlements: basic plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'basic', status: 'active' },
       error: null,
     })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
     const fd = makeFormData({ author_name: 'John', text: 'Great service provided!', rating: '5' })
     const result = await addTestimonial('biz-123', fd)
     expect(result).toEqual({ error: 'premium_required' })
@@ -60,11 +66,13 @@ describe('addTestimonial', () => {
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
       error: null,
     })
+    // getUserEntitlements: premium plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium', status: 'active' },
       error: null,
     })
-    chainResult.mockReturnValueOnce({ data: null, error: null, count: 20 })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 20 }) // testimonial count
 
     const fd = makeFormData({ author_name: 'John', text: 'Great service provided!', rating: '5' })
     const result = await addTestimonial('biz-123', fd)
@@ -77,11 +85,13 @@ describe('addTestimonial', () => {
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
       error: null,
     })
+    // getUserEntitlements: premium plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium', status: 'active' },
       error: null,
     })
-    chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 }) // testimonial count
 
     const fd = makeFormData({ author_name: 'J', text: 'Short', rating: '0' })
     const result = await addTestimonial('biz-123', fd)
@@ -93,11 +103,13 @@ describe('addTestimonial', () => {
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
       error: null,
     })
+    // getUserEntitlements: premium plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium', status: 'active' },
       error: null,
     })
-    chainResult.mockReturnValueOnce({ data: null, error: null, count: 5 })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 5 }) // testimonial count
     single.mockResolvedValueOnce({
       data: { id: 'test-1', author_name: 'John Smith', text: 'Great service provided!', rating: 5, status: 'live' },
       error: null,
@@ -114,11 +126,13 @@ describe('addTestimonial', () => {
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'published' },
       error: null,
     })
+    // getUserEntitlements: premium plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium', status: 'active' },
       error: null,
     })
-    chainResult.mockReturnValueOnce({ data: null, error: null, count: 5 })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 5 }) // testimonial count
     single.mockResolvedValueOnce({
       data: { id: 'test-1', author_name: 'John Smith', text: 'Great service!', rating: 5, status: 'pending_add' },
       error: null,
@@ -135,11 +149,13 @@ describe('addTestimonial', () => {
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'paused' },
       error: null,
     })
+    // getUserEntitlements: premium plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium', status: 'active' },
       error: null,
     })
-    chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 }) // testimonial count
     single.mockResolvedValueOnce({
       data: { id: 'test-1', author_name: 'Jane', text: 'Excellent!', rating: 4, status: 'pending_add' },
       error: null,
@@ -156,11 +172,13 @@ describe('addTestimonial', () => {
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
       error: null,
     })
+    // getUserEntitlements: premium_annual plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium_annual', status: 'active' },
       error: null,
     })
-    chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 }) // testimonial count
     single.mockResolvedValueOnce({
       data: { id: 'test-1' },
       error: null,
@@ -176,11 +194,13 @@ describe('addTestimonial', () => {
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
       error: null,
     })
+    // getUserEntitlements: premium plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium', status: 'active' },
       error: null,
     })
-    chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 }) // testimonial count
     single.mockResolvedValueOnce({ data: null, error: { message: 'DB error' } })
 
     const fd = makeFormData({ author_name: 'John Smith', text: 'Great service provided by the team!', rating: '5' })

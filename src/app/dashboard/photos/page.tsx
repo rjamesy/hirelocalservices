@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { getMyBusiness, getMyBusinesses, getUserPlan } from '@/app/actions/business'
+import { getMyBusiness, getMyBusinesses, getMyEntitlements } from '@/app/actions/business'
 import { addPhoto, deletePhoto, reorderPhotos, getUploadUrl } from '@/app/actions/photos'
 import { MAX_PHOTOS } from '@/lib/constants'
 import { cn } from '@/lib/utils'
@@ -100,9 +100,9 @@ function PhotosContent() {
 
       setBusinessId(business.id)
 
-      // Check plan tier for photo access
-      const plan = await getUserPlan()
-      setCanUploadPhotos(plan === 'premium' || plan === 'premium_annual')
+      // Check plan tier for photo access via canonical entitlements
+      const ent = await getMyEntitlements()
+      setCanUploadPhotos(ent?.canUploadPhotos ?? false)
 
       const sortedPhotos = [...(business.photos ?? [])].sort(
         (a, b) => a.sort_order - b.sort_order

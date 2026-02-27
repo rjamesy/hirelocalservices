@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { testimonialSchema } from '@/lib/validations'
 import { MAX_TESTIMONIALS } from '@/lib/constants'
 import { revalidatePath } from 'next/cache'
+import { getUserEntitlements } from '@/lib/entitlements'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -56,14 +57,9 @@ export async function addTestimonial(
 ) {
   const { supabase, user, business } = await verifyBusinessOwnership(businessId)
 
-  // Check plan tier — testimonials require premium (user-level subscription)
-  const { data: sub } = await supabase
-    .from('user_subscriptions')
-    .select('plan, status')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (!sub || !['active', 'past_due'].includes(sub.status) || (sub.plan !== 'premium' && sub.plan !== 'premium_annual')) {
+  // Check plan tier via canonical entitlements — testimonials require premium
+  const entitlements = await getUserEntitlements(supabase, user.id)
+  if (!entitlements.canAddTestimonials) {
     return { error: 'premium_required' }
   }
 

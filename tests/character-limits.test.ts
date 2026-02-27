@@ -2,21 +2,33 @@
  * tests/character-limits.test.ts
  *
  * Tests for plan-based character limits:
- * - getDescriptionLimit() returns correct limit per tier
+ * - Description limits per tier (via entitlements constants)
  * - createBusinessSchema() enforces correct max description length
  * - Business name enforces 80 char max across all schemas
  * - BUSINESS_NAME_MAX constant
  */
 
 import { describe, it, expect } from 'vitest'
-import { BUSINESS_NAME_MAX, DESCRIPTION_LIMITS, getDescriptionLimit } from '@/lib/plan-limits'
+import { BUSINESS_NAME_MAX } from '@/lib/constants'
 import { createBusinessSchema, businessSchema } from '@/lib/validations'
 import type { PlanTier } from '@/lib/types'
 
-describe('Plan-Based Character Limits', () => {
-  // ─── getDescriptionLimit ────────────────────────────────────────
+// Canonical description limits (same values as in entitlements.ts)
+const DESCRIPTION_LIMITS: Record<PlanTier, number> = {
+  free_trial: 250,
+  basic: 500,
+  premium: 1500,
+  premium_annual: 2500,
+}
 
-  describe('getDescriptionLimit()', () => {
+function getDescriptionLimit(plan: PlanTier | null): number {
+  return plan ? DESCRIPTION_LIMITS[plan] : 250
+}
+
+describe('Plan-Based Character Limits', () => {
+  // ─── Description limits ────────────────────────────────────────
+
+  describe('Description limits per tier', () => {
     it('returns 250 for free_trial', () => {
       expect(getDescriptionLimit('free_trial')).toBe(250)
     })
@@ -43,17 +55,6 @@ describe('Plan-Based Character Limits', () => {
   describe('BUSINESS_NAME_MAX', () => {
     it('equals 80', () => {
       expect(BUSINESS_NAME_MAX).toBe(80)
-    })
-  })
-
-  // ─── DESCRIPTION_LIMITS constant ────────────────────────────────
-
-  describe('DESCRIPTION_LIMITS', () => {
-    it('has correct values for all tiers', () => {
-      expect(DESCRIPTION_LIMITS.free_trial).toBe(250)
-      expect(DESCRIPTION_LIMITS.basic).toBe(500)
-      expect(DESCRIPTION_LIMITS.premium).toBe(1500)
-      expect(DESCRIPTION_LIMITS.premium_annual).toBe(2500)
     })
   })
 

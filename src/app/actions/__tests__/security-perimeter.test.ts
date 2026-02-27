@@ -42,6 +42,11 @@ vi.mock('@/lib/blacklist', () => ({
   quickBlacklistCheck: vi.fn(() => Promise.resolve({ blocked: false })),
 }))
 
+const mockGetListingEligibility = vi.fn()
+vi.mock('@/lib/search/eligibility', () => ({
+  getListingEligibility: (...args: any[]) => mockGetListingEligibility(...args),
+}))
+
 vi.mock('@/lib/audit', () => ({
   logAudit: vi.fn(),
 }))
@@ -77,6 +82,7 @@ describe('getBusinessBySlug — public visibility gate', () => {
     const draft = { ...publishedApproved, status: 'draft' }
     maybeSingle.mockResolvedValueOnce({ data: draft, error: null })
     mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
+    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: false })
 
     const result = await getBusinessBySlug('test-business')
     expect(result).toBeNull()
@@ -86,6 +92,7 @@ describe('getBusinessBySlug — public visibility gate', () => {
     const pending = { ...publishedApproved, verification_status: 'pending' }
     maybeSingle.mockResolvedValueOnce({ data: pending, error: null })
     mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
+    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: false })
 
     const result = await getBusinessBySlug('test-business')
     expect(result).toBeNull()
@@ -95,6 +102,7 @@ describe('getBusinessBySlug — public visibility gate', () => {
     const rejected = { ...publishedApproved, verification_status: 'rejected' }
     maybeSingle.mockResolvedValueOnce({ data: rejected, error: null })
     mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
+    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: false })
 
     const result = await getBusinessBySlug('test-business')
     expect(result).toBeNull()
@@ -104,6 +112,7 @@ describe('getBusinessBySlug — public visibility gate', () => {
     const deleted = { ...publishedApproved, deleted_at: '2024-01-01T00:00:00Z' }
     maybeSingle.mockResolvedValueOnce({ data: deleted, error: null })
     mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
+    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: false })
 
     const result = await getBusinessBySlug('test-business')
     expect(result).toBeNull()
@@ -113,6 +122,7 @@ describe('getBusinessBySlug — public visibility gate', () => {
     const suspended = { ...publishedApproved, billing_status: 'billing_suspended' }
     maybeSingle.mockResolvedValueOnce({ data: suspended, error: null })
     mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
+    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: false })
 
     const result = await getBusinessBySlug('test-business')
     expect(result).toBeNull()
@@ -122,6 +132,7 @@ describe('getBusinessBySlug — public visibility gate', () => {
     const suspended = { ...publishedApproved, status: 'suspended' }
     maybeSingle.mockResolvedValueOnce({ data: suspended, error: null })
     mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
+    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: false })
 
     const result = await getBusinessBySlug('test-business')
     expect(result).toBeNull()
@@ -130,6 +141,7 @@ describe('getBusinessBySlug — public visibility gate', () => {
   it('returns business for published+approved when anonymous', async () => {
     maybeSingle.mockResolvedValueOnce({ data: publishedApproved, error: null })
     mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
+    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: true })
 
     const result = await getBusinessBySlug('test-business')
     expect(result).not.toBeNull()
@@ -181,9 +193,9 @@ describe('approveClaim — transactional RPC', () => {
       data: { id: 'claim-1', business_id: 'biz-1', claimer_id: 'user-2', status: 'pending' },
       error: null,
     })
-    // getUserListingCapacity: business count (chainResult) then subscription (maybeSingle)
-    chainResult.mockReturnValueOnce({ count: 1, error: null })
+    // getUserEntitlements: subscription (maybeSingle) then business count (chainResult)
     maybeSingle.mockResolvedValueOnce({ data: { plan: 'premium', status: 'active' }, error: null })
+    chainResult.mockReturnValueOnce({ count: 1, error: null })
     // RPC
     rpc.mockResolvedValueOnce({
       data: { success: true, business_id: 'biz-1', claimer_id: 'user-2' },
@@ -205,8 +217,10 @@ describe('approveClaim — transactional RPC', () => {
       data: { id: 'claim-1', business_id: 'biz-1', claimer_id: 'user-2', status: 'pending' },
       error: null,
     })
-    // getUserListingCapacity: count=1 (at limit), no subscription (maxAllowed=1)
+    // getUserEntitlements: no subscription, count=1 (at limit for maxListings=1)
+    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
     chainResult.mockReturnValueOnce({ count: 1, error: null })
+    // getUserEntitlements: canceled sub check
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
 
     const result = await approveClaim('claim-1')
@@ -218,9 +232,9 @@ describe('approveClaim — transactional RPC', () => {
       data: { id: 'claim-1', business_id: 'biz-1', claimer_id: 'user-2', status: 'pending' },
       error: null,
     })
-    // getUserListingCapacity: business count (chainResult) then subscription (maybeSingle)
-    chainResult.mockReturnValueOnce({ count: 1, error: null })
+    // getUserEntitlements: subscription (maybeSingle) then business count (chainResult)
     maybeSingle.mockResolvedValueOnce({ data: { plan: 'premium', status: 'active' }, error: null })
+    chainResult.mockReturnValueOnce({ count: 1, error: null })
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'DB error' } })
 
     const result = await approveClaim('claim-1')

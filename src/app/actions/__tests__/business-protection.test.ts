@@ -92,9 +92,11 @@ describe('createBusinessDraft protection guards', () => {
   })
 
   it('allows when all guards pass', async () => {
-    // getUserListingCapacity: count=0
+    // getUserEntitlements: no subscription
+    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    // getUserEntitlements: business count = 0
     chainResult.mockReturnValueOnce({ count: 0, error: null })
-    // getUserListingCapacity: no subscription
+    // getUserEntitlements: canceled sub check
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
     // slug check
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })

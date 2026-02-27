@@ -5,6 +5,7 @@ import { ITEMS_PER_PAGE } from '@/lib/constants'
 import { revalidatePath } from 'next/cache'
 import { logAudit } from '@/lib/audit'
 import { getUserEntitlements, syncBusinessBillingStatus, type Entitlements } from '@/lib/entitlements'
+import { getListingEligibility, type ListingEligibility } from '@/lib/search/eligibility'
 import { createNotification } from '@/app/actions/notifications'
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -713,6 +714,7 @@ export interface AdminListingDetail {
   testimonials: any[]
   entitlements: Entitlements | null
   eligibility: Array<{ check_name: string; passed: boolean; detail: string }>
+  listingEligibility: ListingEligibility | null
   pendingChanges: Record<string, unknown> | null
 }
 
@@ -767,6 +769,9 @@ export async function getAdminListingDetail(
     p_business_id: businessId,
   })
 
+  // Get listing eligibility (canonical visibility check)
+  const listingElig = await getListingEligibility(supabase, businessId)
+
   const profile = business.profiles
   const locations = business.business_locations
   const location = Array.isArray(locations) ? locations[0] : locations
@@ -787,6 +792,7 @@ export async function getAdminListingDetail(
     testimonials: business.testimonials ?? [],
     entitlements,
     eligibility: (eligibility ?? []) as Array<{ check_name: string; passed: boolean; detail: string }>,
+    listingEligibility: listingElig,
     pendingChanges: business.pending_changes ?? null,
   }
 }

@@ -27,8 +27,34 @@ const ADMIN_USER_ID = '3211b764-1d33-4e23-8d2b-25668de53f65' // existing admin
 let testBusinessIds: string[] = []
 let testPhotoIds: string[] = []
 let testTestimonialIds: string[] = []
+let testUserIds: string[] = []
 
 // ─── Helpers ────────────────────────────────────────────────────────
+
+async function createTestUser(plan: string): Promise<string> {
+  const email = `${TEST_PREFIX}-${plan}-${Date.now()}@test.local`
+  const { data, error } = await supabase.auth.admin.createUser({
+    email,
+    password: 'test-password-e2e-123',
+    email_confirm: true,
+  })
+  if (error) throw new Error(`Failed to create test user: ${error.message}`)
+  const userId = data.user.id
+  testUserIds.push(userId)
+
+  await supabase.from('user_subscriptions').insert({
+    user_id: userId,
+    plan,
+    status: 'active',
+    stripe_customer_id: `cus_test_${userId.slice(0, 8)}`,
+    stripe_subscription_id: `sub_test_${userId.slice(0, 8)}`,
+    stripe_price_id: `price_test_${plan}`,
+    current_period_end: '2027-01-01T00:00:00Z',
+    cancel_at_period_end: false,
+  })
+
+  return userId
+}
 
 async function createTestBusiness(
   name: string,
@@ -38,10 +64,13 @@ async function createTestBusiness(
 ) {
   const slug = name.toLowerCase().replace(/\s+/g, '-') + '-' + Math.random().toString(36).slice(2, 6)
 
+  // Create a unique test user for this business if plan specified
+  const ownerId = plan ? await createTestUser(plan) : ADMIN_USER_ID
+
   const { data: biz, error: bizError } = await supabase
     .from('businesses')
     .insert({
-      owner_id: ADMIN_USER_ID,
+      owner_id: ownerId,
       name,
       slug,
       description: `${TEST_PREFIX} - Test business for E2E`,
@@ -55,20 +84,6 @@ async function createTestBusiness(
 
   if (bizError) throw new Error(`Failed to create business: ${bizError.message}`)
   testBusinessIds.push(biz.id)
-
-  // Create subscription if plan specified
-  if (plan) {
-    await supabase.from('subscriptions').insert({
-      business_id: biz.id,
-      plan,
-      status: 'active',
-      stripe_customer_id: `cus_test_${biz.id.slice(0, 8)}`,
-      stripe_subscription_id: `sub_test_${biz.id.slice(0, 8)}`,
-      stripe_price_id: `price_test_${plan}`,
-      current_period_end: '2027-01-01T00:00:00Z',
-      cancel_at_period_end: false,
-    })
-  }
 
   // Create location
   await supabase.from('business_locations').insert({
@@ -155,16 +170,21 @@ async function cleanup() {
   if (testTestimonialIds.length > 0) {
     await supabase.from('testimonials').delete().in('id', testTestimonialIds)
   }
-  // Delete test businesses (cascade deletes locations, subscriptions, etc.)
+  // Delete test businesses and related data
   for (const bizId of testBusinessIds) {
     await supabase.from('business_locations').delete().eq('business_id', bizId)
-    await supabase.from('subscriptions').delete().eq('business_id', bizId)
     await supabase.from('verification_jobs').delete().eq('business_id', bizId)
     await supabase.from('businesses').delete().eq('id', bizId)
+  }
+  // Delete test users and their subscriptions
+  for (const userId of testUserIds) {
+    await supabase.from('user_subscriptions').delete().eq('user_id', userId)
+    await supabase.auth.admin.deleteUser(userId)
   }
   testBusinessIds = []
   testPhotoIds = []
   testTestimonialIds = []
+  testUserIds = []
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────
@@ -644,11 +664,11 @@ test.describe('Pending Photo/Testimonial E2E Workflow', () => {
       'free_trial' // Not premium
     )
 
-    // Verify subscription is free_trial
+    // Verify owner's subscription is free_trial
     const { data: sub } = await supabase
-      .from('subscriptions')
+      .from('user_subscriptions')
       .select('plan')
-      .eq('business_id', biz.id)
+      .eq('user_id', biz.owner_id)
       .maybeSingle()
 
     expect(sub?.plan).toBe('free_trial')
@@ -671,11 +691,11 @@ test.describe('Pending Photo/Testimonial E2E Workflow', () => {
     expect(photo.status).toBe('live')
     expect(testimonial.status).toBe('live')
 
-    // Verify subscription
+    // Verify owner's subscription
     const { data: sub } = await supabase
-      .from('subscriptions')
+      .from('user_subscriptions')
       .select('plan')
-      .eq('business_id', biz.id)
+      .eq('user_id', biz.owner_id)
       .maybeSingle()
 
     expect(sub?.plan).toBe('premium_annual')

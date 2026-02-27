@@ -11,7 +11,7 @@ import {
 import { quickBlacklistCheck } from '@/lib/blacklist'
 import { TRIAL_DURATION_DAYS } from '@/lib/ranking'
 import { logAudit } from '@/lib/audit'
-import { getUserListingCapacity } from '@/lib/listing-limits'
+import { getUserEntitlements } from '@/lib/entitlements'
 import { createNotification } from '@/app/actions/notifications'
 import { getSystemFlagsSafe, requireEmailVerified, verifyCaptcha, logAbuseEvent } from '@/lib/protection'
 import { checkRateLimit, claimSubmitLimiter } from '@/lib/rate-limiter'
@@ -140,14 +140,14 @@ export async function claimBusiness(
     return { error: `This business name contains a blocked term and cannot be claimed.` }
   }
 
-  // Check listing capacity based on user's plan tier
-  const capacity = await getUserListingCapacity(supabase, user.id)
-  if (!capacity.canClaimMore) {
+  // Check listing capacity via canonical entitlements
+  const entitlements = await getUserEntitlements(supabase, user.id)
+  if (!entitlements.canClaimMore) {
     return {
       error:
-        capacity.maxAllowed === 1
+        entitlements.maxListings === 1
           ? 'You already have a business listing. Upgrade to Premium for multiple listings.'
-          : `You have reached your limit of ${capacity.maxAllowed} listings.`,
+          : `You have reached your limit of ${entitlements.maxListings} listings.`,
     }
   }
 
@@ -420,8 +420,8 @@ export async function approveClaim(claimId: string, notes?: string) {
     return { error: 'Claim is not pending' }
   }
 
-  const capacity = await getUserListingCapacity(supabase, claim.claimer_id)
-  if (!capacity.canClaimMore) {
+  const claimerEntitlements = await getUserEntitlements(supabase, claim.claimer_id)
+  if (!claimerEntitlements.canClaimMore) {
     return { error: 'Claimer has reached their listing limit. Cannot approve.' }
   }
 

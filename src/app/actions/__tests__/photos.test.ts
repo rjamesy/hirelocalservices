@@ -12,6 +12,10 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }))
 
+vi.mock('@/app/actions/system-settings', () => ({
+  getSettingValue: vi.fn(() => Promise.resolve(10)),
+}))
+
 import { getUploadUrl, addPhoto, deletePhoto, reorderPhotos } from '../photos'
 
 describe('getUploadUrl', () => {
@@ -29,25 +33,32 @@ describe('getUploadUrl', () => {
   })
 
   it('requires premium plan', async () => {
+    // getUserEntitlements: basic plan (canUploadPhotos = false)
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'basic', status: 'active' },
       error: null,
     })
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
     const result = await getUploadUrl('biz-123', 'test.jpg')
     expect(result).toEqual({ error: 'premium_required' })
   })
 
   it('returns error when no subscription', async () => {
+    // getUserEntitlements: no subscription
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
+    maybeSingle.mockResolvedValueOnce({ data: null, error: null }) // canceled check
     const result = await getUploadUrl('biz-123', 'test.jpg')
     expect(result).toEqual({ error: 'premium_required' })
   })
 
   it('enforces max photo limit', async () => {
+    // getUserEntitlements: premium plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium', status: 'active' },
       error: null,
     })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
     // photo count at max
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 10 })
 
@@ -57,10 +68,12 @@ describe('getUploadUrl', () => {
   })
 
   it('returns signed URL for premium user', async () => {
+    // getUserEntitlements: premium plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium', status: 'active' },
       error: null,
     })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
     // photo count OK
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 3 })
 
@@ -71,10 +84,12 @@ describe('getUploadUrl', () => {
   })
 
   it('allows premium_annual plan', async () => {
+    // getUserEntitlements: premium_annual plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium_annual', status: 'active' },
       error: null,
     })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 })
 
     const result = await getUploadUrl('biz-123', 'test.jpg')
@@ -91,10 +106,12 @@ describe('getUploadUrl', () => {
   })
 
   it('excludes pending_delete photos from count', async () => {
+    // getUserEntitlements: premium plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium', status: 'active' },
       error: null,
     })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
     // Count returns 9 (one pending_delete excluded by .neq query)
     chainResult.mockReturnValueOnce({ data: null, error: null, count: 9 })
 
@@ -117,10 +134,12 @@ describe('addPhoto', () => {
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
       error: null,
     })
+    // getUserEntitlements: basic plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'basic', status: 'active' },
       error: null,
     })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
     const result = await addPhoto('biz-123', 'https://url.com/photo.jpg', 0)
     expect(result).toEqual({ error: 'premium_required' })
   })
@@ -130,11 +149,13 @@ describe('addPhoto', () => {
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
       error: null,
     })
+    // getUserEntitlements: premium plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium', status: 'active' },
       error: null,
     })
-    chainResult.mockReturnValueOnce({ data: null, error: null, count: 10 })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 10 }) // photo count
 
     const result = await addPhoto('biz-123', 'https://url.com/photo.jpg', 0)
     expect(result).toHaveProperty('error')
@@ -145,11 +166,13 @@ describe('addPhoto', () => {
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'draft' },
       error: null,
     })
+    // getUserEntitlements: premium plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium', status: 'active' },
       error: null,
     })
-    chainResult.mockReturnValueOnce({ data: null, error: null, count: 3 })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 3 }) // photo count
     single.mockResolvedValueOnce({
       data: { id: 'photo-1', url: 'https://url.com/photo.jpg', sort_order: 0, status: 'live' },
       error: null,
@@ -165,11 +188,13 @@ describe('addPhoto', () => {
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'published' },
       error: null,
     })
+    // getUserEntitlements: premium plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium', status: 'active' },
       error: null,
     })
-    chainResult.mockReturnValueOnce({ data: null, error: null, count: 3 })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 3 }) // photo count
     single.mockResolvedValueOnce({
       data: { id: 'photo-1', url: 'https://url.com/photo.jpg', sort_order: 0, status: 'pending_add' },
       error: null,
@@ -185,11 +210,13 @@ describe('addPhoto', () => {
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'paused' },
       error: null,
     })
+    // getUserEntitlements: premium plan
     maybeSingle.mockResolvedValueOnce({
       data: { plan: 'premium', status: 'active' },
       error: null,
     })
-    chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 })
+    chainResult.mockReturnValueOnce({ count: 0, error: null }) // entitlements: business count
+    chainResult.mockReturnValueOnce({ data: null, error: null, count: 0 }) // photo count
     single.mockResolvedValueOnce({
       data: { id: 'photo-1', url: 'https://url.com/photo.jpg', sort_order: 0, status: 'pending_add' },
       error: null,

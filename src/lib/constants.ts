@@ -146,6 +146,7 @@ export function getValidPriceIds(): string[] {
 
 // ─── Limits ─────────────────────────────────────────────────────────
 
+export const BUSINESS_NAME_MAX = 80
 export const MAX_PHOTOS = 10
 export const MAX_TESTIMONIALS = 20
 export const ITEMS_PER_PAGE = 20

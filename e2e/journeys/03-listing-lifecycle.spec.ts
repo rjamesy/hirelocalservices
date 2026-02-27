@@ -17,7 +17,6 @@ test.describe('Journey 3: Listing Lifecycle', () => {
       const ids = businesses.map(b => b.id)
       await supabaseAdmin.from('business_locations').delete().in('business_id', ids)
       await supabaseAdmin.from('business_categories').delete().in('business_id', ids)
-      await supabaseAdmin.from('subscriptions').delete().in('business_id', ids)
       await supabaseAdmin.from('photos').delete().in('business_id', ids)
       await supabaseAdmin.from('testimonials').delete().in('business_id', ids)
       await supabaseAdmin.from('verification_jobs').delete().in('business_id', ids)

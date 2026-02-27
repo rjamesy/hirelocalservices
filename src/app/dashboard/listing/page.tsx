@@ -10,12 +10,11 @@ import {
   publishChanges,
   getMyBusiness,
   getListingsPageData,
-  getUserPlan,
+  getMyEntitlements,
 } from '@/app/actions/business'
 import { createBusinessSchema, locationSchema } from '@/lib/validations'
-import { AU_STATES, RADIUS_OPTIONS, MAX_PHOTOS, MAX_TESTIMONIALS } from '@/lib/constants'
-import { BUSINESS_NAME_MAX, getDescriptionLimit } from '@/lib/plan-limits'
-import type { PlanTier } from '@/lib/types'
+import { AU_STATES, RADIUS_OPTIONS, MAX_PHOTOS, MAX_TESTIMONIALS, BUSINESS_NAME_MAX } from '@/lib/constants'
+import type { Entitlements } from '@/lib/entitlements'
 import type { QualityResult } from '@/lib/listing-quality'
 import { cn, formatPhone } from '@/lib/utils'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -25,6 +24,8 @@ import TestimonialForm from '@/components/TestimonialForm'
 import TestimonialCard from '@/components/TestimonialCard'
 import { addPhoto, deletePhoto, reorderPhotos, getUploadUrl } from '@/app/actions/photos'
 import { addTestimonial, deleteTestimonial } from '@/app/actions/testimonials'
+import { getPublicProtectionFlags } from '@/app/actions/protection'
+import TurnstileWidget from '@/components/TurnstileWidget'
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -161,6 +162,10 @@ function ListingContent() {
     type: 'success' | 'error'
   } | null>(null)
 
+  // CAPTCHA for publish
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaRequired, setCaptchaRequired] = useState(false)
+
   // Step 1: Business details
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -193,11 +198,11 @@ function ListingContent() {
   const [submittingTestimonial, setSubmittingTestimonial] = useState(false)
   const [deletingTestimonialId, setDeletingTestimonialId] = useState<string | null>(null)
 
-  // Plan-based limits
-  const [userPlan, setUserPlan] = useState<PlanTier | null>(null)
-  const descLimit = getDescriptionLimit(userPlan)
-  const canUploadPhotos = userPlan === 'premium' || userPlan === 'premium_annual'
-  const canAddTestimonials = userPlan === 'premium' || userPlan === 'premium_annual'
+  // Plan-based limits via canonical entitlements
+  const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
+  const descLimit = entitlements?.descriptionLimit ?? 250
+  const canUploadPhotos = entitlements?.canUploadPhotos ?? false
+  const canAddTestimonials = entitlements?.canAddTestimonials ?? false
 
   const isBillingSuspended = business?.billing_status === 'billing_suspended'
 
@@ -217,11 +222,11 @@ function ListingContent() {
           return
         }
         // Fall through to load editor with no business
-        const [categoriesRes, plan] = await Promise.all([
+        const [categoriesRes, ent] = await Promise.all([
           fetch('/api/categories').then((res) => (res.ok ? res.json() : [])),
-          getUserPlan(),
+          getMyEntitlements(),
         ])
-        setUserPlan(plan)
+        setEntitlements(ent)
         if (categoriesRes && Array.isArray(categoriesRes)) setCategories(categoriesRes)
         setLoading(false)
         return
@@ -237,16 +242,16 @@ function ListingContent() {
         return
       }
 
-      // Fetch business, categories, and user plan in parallel
-      const [businessData, categoriesRes, plan] = await Promise.all([
+      // Fetch business, categories, and entitlements in parallel
+      const [businessData, categoriesRes, ent] = await Promise.all([
         getMyBusiness(bid ?? undefined),
         fetch('/api/categories').then((res) =>
           res.ok ? res.json() : []
         ),
-        getUserPlan(),
+        getMyEntitlements(),
       ])
 
-      setUserPlan(plan)
+      setEntitlements(ent)
 
       if (categoriesRes && Array.isArray(categoriesRes)) {
         setCategories(categoriesRes)
@@ -308,6 +313,12 @@ function ListingContent() {
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  useEffect(() => {
+    getPublicProtectionFlags().then((flags) => {
+      setCaptchaRequired(flags.captcha_required)
+    })
+  }, [])
 
   // ─── Step 1: Save business details ───────────────────────────────
 
@@ -686,7 +697,7 @@ function ListingContent() {
 
     setSaving(true)
     try {
-      const result = await publishChanges(business.id)
+      const result = await publishChanges(business.id, captchaToken ?? undefined)
       if ('error' in result && result.error) {
         if (result.error === 'subscription_required') {
           setToast({
@@ -931,7 +942,7 @@ function ListingContent() {
               )}>
                 {description.length}/{descLimit} characters
               </p>
-              {userPlan !== 'premium_annual' && description.length >= descLimit * 0.9 && (
+              {entitlements?.plan !== 'premium_annual' && description.length >= descLimit * 0.9 && (
                 <p className="mt-1 text-xs text-brand-600">
                   Need more space? <a href="/dashboard/billing" className="underline">Upgrade your plan</a> for a higher description limit.
                 </p>
@@ -1620,12 +1631,17 @@ function ListingContent() {
                           : 'Your changes will be validated before going live.'}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      data-testid="listing-publish"
-                      onClick={handlePublish}
-                      disabled={saving}
-                      className="inline-flex items-center justify-center rounded-lg bg-green-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    <div className="flex flex-col items-end gap-3">
+                      <TurnstileWidget
+                        captchaRequired={captchaRequired}
+                        onSuccess={(token) => setCaptchaToken(token)}
+                      />
+                      <button
+                        type="button"
+                        data-testid="listing-publish"
+                        onClick={handlePublish}
+                        disabled={saving || (captchaRequired && !captchaToken)}
+                        className="inline-flex items-center justify-center rounded-lg bg-green-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       {saving ? (
                         <LoadingSpinner />
@@ -1637,7 +1653,8 @@ function ListingContent() {
                           {isDraft ? 'Publish Listing' : 'Publish Changes'}
                         </>
                       )}
-                    </button>
+                      </button>
+                    </div>
                   </div>
                 </div>
               )

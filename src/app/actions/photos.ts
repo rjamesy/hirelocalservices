@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { MAX_PHOTOS } from '@/lib/constants'
 import { extractStoragePath } from '@/lib/photo-utils'
 import { revalidatePath } from 'next/cache'
+import { getUserEntitlements } from '@/lib/entitlements'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -77,14 +78,9 @@ function isPublishedOrPaused(status: string): boolean {
 export async function getUploadUrl(businessId: string, fileName: string) {
   const { supabase, user } = await verifyBusinessOwnership(businessId)
 
-  // Check plan tier — photos require premium (user-level subscription)
-  const { data: sub } = await supabase
-    .from('user_subscriptions')
-    .select('plan, status')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (!sub || !['active', 'past_due'].includes(sub.status) || (sub.plan !== 'premium' && sub.plan !== 'premium_annual')) {
+  // Check plan tier via canonical entitlements — photos require premium
+  const entitlements = await getUserEntitlements(supabase, user.id)
+  if (!entitlements.canUploadPhotos) {
     return { error: 'premium_required' }
   }
 
@@ -135,14 +131,9 @@ export async function addPhoto(
 ) {
   const { supabase, user, business } = await verifyBusinessOwnership(businessId)
 
-  // Check plan tier — photos require premium (user-level subscription)
-  const { data: sub } = await supabase
-    .from('user_subscriptions')
-    .select('plan, status')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (!sub || !['active', 'past_due'].includes(sub.status) || (sub.plan !== 'premium' && sub.plan !== 'premium_annual')) {
+  // Check plan tier via canonical entitlements — photos require premium
+  const entitlements = await getUserEntitlements(supabase, user.id)
+  if (!entitlements.canUploadPhotos) {
     return { error: 'premium_required' }
   }
 

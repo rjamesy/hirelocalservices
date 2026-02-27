@@ -2,16 +2,14 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createBusinessSchema, locationSchema } from '@/lib/validations'
-import { getDescriptionLimit } from '@/lib/plan-limits'
-import type { PlanTier } from '@/lib/types'
 import { slugify } from '@/lib/utils'
 import { quickBlacklistCheck } from '@/lib/blacklist'
 import { revalidatePath } from 'next/cache'
 import { logAudit } from '@/lib/audit'
-import { getUserListingCapacity } from '@/lib/listing-limits'
-import { getSystemFlagsSafe, requireEmailVerified } from '@/lib/protection'
+import { getSystemFlagsSafe, requireEmailVerified, verifyCaptcha, logAbuseEvent } from '@/lib/protection'
 import { checkRateLimit, listingCreateLimiter } from '@/lib/rate-limiter'
-import { getUserEntitlements } from '@/lib/entitlements'
+import { getUserEntitlements, type Entitlements } from '@/lib/entitlements'
+import { getListingEligibility } from '@/lib/search/eligibility'
 import { getListingQuality, type QualityFlags } from '@/lib/listing-quality'
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -80,25 +78,16 @@ export async function createBusinessDraft(formData: FormData) {
     return { error: 'Please verify your email address before creating a listing.' }
   }
 
-  // Check listing capacity based on user's plan tier
-  const capacity = await getUserListingCapacity(supabase, user.id)
-  if (!capacity.canClaimMore) {
+  // Check listing capacity via canonical entitlements
+  const entitlements = await getUserEntitlements(supabase, user.id)
+  if (!entitlements.canClaimMore) {
     return {
       error:
-        capacity.maxAllowed === 1
+        entitlements.maxListings === 1
           ? 'You already have a business listing'
-          : `You have reached your limit of ${capacity.maxAllowed} listings.`,
+          : `You have reached your limit of ${entitlements.maxListings} listings.`,
     }
   }
-
-  // Fetch user plan for tier-specific validation
-  const { data: userSubForPlan } = await supabase
-    .from('user_subscriptions')
-    .select('plan, status')
-    .eq('user_id', user.id)
-    .maybeSingle()
-  const userPlanTier = (userSubForPlan && ['active', 'past_due'].includes(userSubForPlan.status))
-    ? (userSubForPlan.plan as PlanTier) : null
 
   // Validate form data
   const rawData = {
@@ -110,7 +99,7 @@ export async function createBusinessDraft(formData: FormData) {
     abn: formData.get('abn') as string,
   }
 
-  const parsed = createBusinessSchema(getDescriptionLimit(userPlanTier)).safeParse(rawData)
+  const parsed = createBusinessSchema(entitlements.descriptionLimit).safeParse(rawData)
   if (!parsed.success) {
     return { error: parsed.error.flatten().fieldErrors }
   }
@@ -194,14 +183,8 @@ export async function createBusinessDraft(formData: FormData) {
 export async function updateBusiness(businessId: string, formData: FormData) {
   const { supabase, user } = await verifyBusinessOwnership(businessId)
 
-  // Fetch user plan for tier-specific validation
-  const { data: userSubForPlan } = await supabase
-    .from('user_subscriptions')
-    .select('plan, status')
-    .eq('user_id', user.id)
-    .maybeSingle()
-  const userPlanTier = (userSubForPlan && ['active', 'past_due'].includes(userSubForPlan.status))
-    ? (userSubForPlan.plan as PlanTier) : null
+  // Get entitlements for tier-specific validation
+  const entitlements = await getUserEntitlements(supabase, user.id)
 
   const rawData = {
     name: formData.get('name') as string,
@@ -212,7 +195,7 @@ export async function updateBusiness(businessId: string, formData: FormData) {
     abn: formData.get('abn') as string,
   }
 
-  const parsed = createBusinessSchema(getDescriptionLimit(userPlanTier)).safeParse(rawData)
+  const parsed = createBusinessSchema(entitlements.descriptionLimit).safeParse(rawData)
   if (!parsed.success) {
     return { error: parsed.error.flatten().fieldErrors }
   }
@@ -486,7 +469,7 @@ export async function updateBusinessCategories(
   return { success: true }
 }
 
-export async function publishChanges(businessId: string) {
+export async function publishChanges(businessId: string, captchaToken?: string) {
   const { supabase, user } = await verifyBusinessOwnership(businessId)
 
   // ── Protection guard ───────────────────────────────────────────────
@@ -495,14 +478,21 @@ export async function publishChanges(businessId: string) {
     return { error: 'Listing publishing is currently disabled. Please try again later.' }
   }
 
-  // Check user subscription
-  const { data: userSub } = await supabase
-    .from('user_subscriptions')
-    .select('status')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  // ── CAPTCHA verification ──────────────────────────────────────────
+  if (publishFlags.captcha_required) {
+    if (!captchaToken) {
+      return { error: 'Please complete the captcha verification.' }
+    }
+    const captchaResult = await verifyCaptcha(captchaToken)
+    if (!captchaResult.success) {
+      await logAbuseEvent('captcha_failure', null, user.id, { context: 'listing_publish' })
+      return { error: 'Captcha verification failed. Please try again.' }
+    }
+  }
 
-  if (!userSub || !['active', 'past_due'].includes(userSub.status)) {
+  // Check user subscription via canonical entitlements
+  const entitlements = await getUserEntitlements(supabase, user.id)
+  if (!entitlements.canPublish) {
     return { error: 'subscription_required' }
   }
 
@@ -839,14 +829,9 @@ export async function unpauseBusiness(businessId: string) {
     return { error: 'Your listing must be verified before unpausing' }
   }
 
-  // Check user subscription
-  const { data: userSub } = await supabase
-    .from('user_subscriptions')
-    .select('status')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (!userSub || !['active', 'past_due'].includes(userSub.status)) {
+  // Check user subscription via canonical entitlements
+  const entitlements = await getUserEntitlements(supabase, user.id)
+  if (!entitlements.canPublish) {
     return { error: 'subscription_required' }
   }
 
@@ -1062,17 +1047,11 @@ export async function getListingsPageData() {
   return { businesses, canCreateMore, entitlements }
 }
 
-export async function getUserPlan(): Promise<PlanTier | null> {
+export async function getMyEntitlements(): Promise<Entitlements | null> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
-  const { data } = await supabase
-    .from('user_subscriptions')
-    .select('plan, status')
-    .eq('user_id', user.id)
-    .maybeSingle()
-  if (!data || !['active', 'past_due'].includes(data.status)) return null
-  return data.plan as PlanTier
+  return getUserEntitlements(supabase, user.id)
 }
 
 export async function getMyBusiness(selectedId?: string) {
@@ -1208,15 +1187,10 @@ export async function getBusinessBySlug(slug: string) {
     isAdmin = profile?.role === 'admin'
   }
 
-  // Public visibility gate: non-owner, non-admin can only see
-  // published + approved + not deleted + not billing-suspended listings
+  // Public visibility gate: non-owner, non-admin can only see eligible listings
   if (!isOwner && !isAdmin) {
-    if (
-      business.status !== 'published' ||
-      business.verification_status !== 'approved' ||
-      business.deleted_at !== null ||
-      business.billing_status === 'billing_suspended'
-    ) {
+    const eligibility = await getListingEligibility(supabase, business.id)
+    if (!eligibility.visiblePublic) {
       return null
     }
   }
