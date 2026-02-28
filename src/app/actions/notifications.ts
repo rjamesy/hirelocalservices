@@ -96,6 +96,29 @@ export async function markNotificationRead(notificationId: string) {
 }
 
 /**
+ * deleteNotification — permanently remove a notification for current user.
+ */
+export async function deleteNotification(notificationId: string) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) throw new Error('You must be logged in')
+
+  const { error } = await supabase
+    .from('user_notifications')
+    .delete()
+    .eq('id', notificationId)
+    .eq('user_id', user.id)
+
+  if (error) {
+    return { error: 'Failed to delete notification' }
+  }
+
+  return { success: true }
+}
+
+/**
  * getUnreadCount — count of unread notifications for current user.
  */
 export async function getUnreadCount(): Promise<number> {

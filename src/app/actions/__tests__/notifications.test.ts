@@ -12,6 +12,7 @@ import {
   createNotification,
   getUserNotifications,
   markNotificationRead,
+  deleteNotification,
   getUnreadCount,
 } from '../notifications'
 
@@ -117,6 +118,42 @@ describe('markNotificationRead', () => {
     // Verify eq was called with the notification id and user_id
     expect(eq).toHaveBeenCalledWith('id', 'notif-1')
     expect(eq).toHaveBeenCalledWith('user_id', 'user-123')
+  })
+})
+
+// ─── deleteNotification ─────────────────────────────────────────────
+
+describe('deleteNotification', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('requires auth', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: null },
+      error: null,
+    })
+    await expect(deleteNotification('notif-1')).rejects.toThrow('logged in')
+  })
+
+  it('deletes only own notification', async () => {
+    setupAuth()
+
+    chainResult.mockReturnValueOnce({ data: null, error: null })
+
+    const result = await deleteNotification('notif-1')
+    expect(result).toEqual({ success: true })
+    expect(eq).toHaveBeenCalledWith('id', 'notif-1')
+    expect(eq).toHaveBeenCalledWith('user_id', 'user-123')
+  })
+
+  it('returns error on failure', async () => {
+    setupAuth()
+
+    chainResult.mockReturnValueOnce({ data: null, error: { message: 'db error' } })
+
+    const result = await deleteNotification('notif-1')
+    expect(result).toEqual({ error: 'Failed to delete notification' })
   })
 })
 
