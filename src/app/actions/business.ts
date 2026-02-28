@@ -512,6 +512,7 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
     .select(`
       id, name, description, phone, email_contact, website, abn,
       status, slug, pending_changes, verification_status, billing_status,
+      duplicate_user_choice,
       business_locations (lat, lng),
       business_contacts (phone, email)
     `)
@@ -528,6 +529,15 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
 
   if ((biz as any).billing_status === 'billing_suspended') {
     return { error: 'This listing is suspended due to billing. Please upgrade your plan.' }
+  }
+
+  // Duplicate detection guard: require choice when strong match exists (>= 85)
+  if (!(biz as any).duplicate_user_choice) {
+    const dupeResult = await findPotentialDuplicates(businessId)
+    const topScore = dupeResult.candidates[0]?.score ?? 0
+    if (topScore >= 85) {
+      return { error: 'Please review potential duplicate matches before publishing.' }
+    }
   }
 
   // Determine the content to validate: pending_changes merged with main columns
@@ -1014,6 +1024,125 @@ export async function getMyBusinesses() {
       }, qualityFlags),
     }
   })
+}
+
+// ─── Duplicate Detection ─────────────────────────────────────────────
+
+export async function findPotentialDuplicates(businessId: string) {
+  const { supabase } = await verifyBusinessOwnership(businessId)
+
+  // Fetch the user's business with location
+  const { data: biz } = await supabase
+    .from('businesses')
+    .select('id, name, business_locations (suburb, state, postcode, lat, lng)')
+    .eq('id', businessId)
+    .single()
+
+  if (!biz) return { candidates: [] }
+
+  const loc = Array.isArray(biz.business_locations)
+    ? biz.business_locations[0]
+    : biz.business_locations
+  const userSuburb = loc?.suburb ?? null
+  const userPostcode = loc?.postcode ?? null
+
+  // Query nearby candidates from the search index
+  const { data: nearby } = await supabase
+    .from('business_search_index')
+    .select('business_id, name, suburb, state, postcode')
+    .neq('business_id', businessId)
+    .limit(200)
+
+  if (!nearby || nearby.length === 0) return { candidates: [] }
+
+  const { fuzzyNameScore } = await import('@/lib/claim-scoring')
+
+  type ScoredCandidate = {
+    id: string
+    name: string
+    suburb: string | null
+    state: string | null
+    postcode: string | null
+    score: number
+    matchReasons: string[]
+  }
+
+  const scored: ScoredCandidate[] = []
+
+  for (const c of nearby) {
+    const nameScore = fuzzyNameScore(biz.name, c.name) // 0-1
+    const reasons: string[] = []
+    let bonus = 0
+
+    if (nameScore >= 0.5) reasons.push('name_similarity')
+
+    // Suburb + postcode match bonus
+    if (userSuburb && c.suburb && userSuburb.toLowerCase() === c.suburb.toLowerCase()) {
+      bonus += 0.15
+      reasons.push('suburb_match')
+    }
+    if (userPostcode && c.postcode && userPostcode === c.postcode) {
+      bonus += 0.10
+      reasons.push('postcode_match')
+    }
+
+    // Same-area bonus when both suburb and postcode match
+    if (userSuburb && c.suburb && userPostcode && c.postcode
+        && userSuburb.toLowerCase() === c.suburb.toLowerCase()
+        && userPostcode === c.postcode) {
+      bonus += 0.10
+      reasons.push('same_area')
+    }
+
+    const rawScore = nameScore * 0.5 + bonus
+    const finalScore = Math.round(Math.min(rawScore / 0.75, 1.0) * 100) // normalize to 0-100
+
+    if (finalScore >= 70) {
+      scored.push({
+        id: c.business_id,
+        name: c.name,
+        suburb: c.suburb,
+        state: c.state,
+        postcode: c.postcode,
+        score: finalScore,
+        matchReasons: reasons,
+      })
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score)
+  return { candidates: scored.slice(0, 3) }
+}
+
+export async function saveDuplicateChoice(
+  businessId: string,
+  choice: 'matched' | 'not_matched',
+  matchedBusinessId?: string,
+  confidence?: number,
+  candidatesJson?: Record<string, unknown>[]
+) {
+  const { supabase } = await verifyBusinessOwnership(businessId)
+
+  const update: Record<string, unknown> = {
+    duplicate_user_choice: choice,
+    duplicate_candidates_json: candidatesJson ?? null,
+  }
+
+  if (choice === 'matched' && matchedBusinessId) {
+    update.duplicate_of_business_id = matchedBusinessId
+    update.duplicate_confidence = confidence ?? null
+  } else {
+    update.duplicate_of_business_id = null
+    update.duplicate_confidence = null
+  }
+
+  const { error } = await supabase
+    .from('businesses')
+    .update(update)
+    .eq('id', businessId)
+
+  if (error) return { error: 'Failed to save duplicate choice.' }
+  return { success: true }
 }
 
 export async function softDeleteBusiness(businessId: string) {

@@ -11,7 +11,10 @@ import {
   getMyBusiness,
   getListingsPageData,
   getMyEntitlements,
+  findPotentialDuplicates,
+  saveDuplicateChoice,
 } from '@/app/actions/business'
+import type { DuplicateCandidate } from '@/lib/types'
 import { createBusinessSchema, locationSchema } from '@/lib/validations'
 import { AU_STATES, RADIUS_OPTIONS, MAX_PHOTOS, MAX_TESTIMONIALS, BUSINESS_NAME_MAX } from '@/lib/constants'
 import type { Entitlements } from '@/lib/entitlements'
@@ -77,6 +80,9 @@ interface BusinessData {
     status?: string
   }>
   billing_status?: string
+  duplicate_user_choice?: 'matched' | 'not_matched' | 'unknown' | null
+  duplicate_of_business_id?: string | null
+  duplicate_confidence?: number | null
 }
 
 type FieldErrors = Record<string, string[] | undefined>
@@ -169,6 +175,13 @@ function ListingContent() {
   // Publish rejection state
   const [publishError, setPublishError] = useState<string | null>(null)
   const [publishDisabled, setPublishDisabled] = useState(false)
+
+  // Duplicate detection state
+  const [dupeCandidates, setDupeCandidates] = useState<DuplicateCandidate[]>([])
+  const [dupeLoading, setDupeLoading] = useState(false)
+  const [dupeChoice, setDupeChoice] = useState<'matched' | 'not_matched' | null>(null)
+  const [dupeMatchedId, setDupeMatchedId] = useState<string | null>(null)
+  const [dupeSaving, setDupeSaving] = useState(false)
 
   // Step 1: Business details
   const [name, setName] = useState('')
@@ -695,6 +708,49 @@ function ListingContent() {
       setDeletingTestimonialId(null)
     }
   }
+
+  // ─── Duplicate detection on step 6 ───────────────────────────────
+
+  useEffect(() => {
+    if (currentStep !== 6 || !business || isUnderReview) return
+    // Skip if already has a saved choice
+    if (business.duplicate_user_choice) {
+      setDupeChoice(business.duplicate_user_choice === 'matched' ? 'matched' : 'not_matched')
+      setDupeMatchedId(business.duplicate_of_business_id ?? null)
+      return
+    }
+    let cancelled = false
+    setDupeLoading(true)
+    findPotentialDuplicates(business.id).then((result) => {
+      if (cancelled) return
+      setDupeCandidates(result.candidates)
+      setDupeLoading(false)
+    }).catch(() => {
+      if (!cancelled) setDupeLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [currentStep, business, isUnderReview])
+
+  async function handleDupeSelect(choice: 'matched' | 'not_matched', matchedId?: string) {
+    if (!business) return
+    setDupeSaving(true)
+    const matchedCandidate = dupeCandidates.find(c => c.id === matchedId)
+    const result = await saveDuplicateChoice(
+      business.id,
+      choice,
+      matchedId,
+      matchedCandidate?.score,
+      dupeCandidates as unknown as Record<string, unknown>[]
+    )
+    if (!('error' in result)) {
+      setDupeChoice(choice)
+      setDupeMatchedId(matchedId ?? null)
+      setBusiness(prev => prev ? { ...prev, duplicate_user_choice: choice, duplicate_of_business_id: matchedId ?? null } : prev)
+    }
+    setDupeSaving(false)
+  }
+
+  const dupeRequiresChoice = dupeCandidates.some(c => c.score >= 85) && !dupeChoice
 
   // ─── Step navigation ────────────────────────────────────────────
 
@@ -1686,6 +1742,84 @@ function ListingContent() {
               )}
             </div>
 
+            {/* Duplicate detection panel */}
+            {business && !isUnderReview && dupeCandidates.length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <h3 className="text-sm font-semibold text-amber-800 mb-2">
+                  Possible duplicate {dupeCandidates.length === 1 ? 'match' : 'matches'} found
+                </h3>
+                <p className="text-xs text-amber-700 mb-3">
+                  We found existing listings that may be the same business. Please review and select an option.
+                  {dupeCandidates.some(c => c.score >= 85) && !dupeChoice && (
+                    <span className="font-semibold"> A selection is required before publishing.</span>
+                  )}
+                </p>
+                <div className="space-y-2">
+                  {dupeCandidates.map(c => (
+                    <label
+                      key={c.id}
+                      className={cn(
+                        'flex items-start gap-3 rounded-md border p-3 cursor-pointer transition-colors',
+                        dupeChoice === 'matched' && dupeMatchedId === c.id
+                          ? 'border-amber-500 bg-amber-100'
+                          : 'border-gray-200 bg-white hover:bg-gray-50'
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="duplicate-choice"
+                        checked={dupeChoice === 'matched' && dupeMatchedId === c.id}
+                        onChange={() => handleDupeSelect('matched', c.id)}
+                        disabled={dupeSaving}
+                        className="mt-0.5"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900">
+                          This is the same business as: <span className="text-amber-700">{c.name}</span>
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {c.suburb}{c.suburb && c.state ? ', ' : ''}{c.state} {c.postcode}
+                          <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                            {c.score}% match
+                          </span>
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                  <label
+                    className={cn(
+                      'flex items-start gap-3 rounded-md border p-3 cursor-pointer transition-colors',
+                      dupeChoice === 'not_matched'
+                        ? 'border-green-500 bg-green-50'
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="duplicate-choice"
+                      checked={dupeChoice === 'not_matched'}
+                      onChange={() => handleDupeSelect('not_matched')}
+                      disabled={dupeSaving}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Not a match — this is a different business</p>
+                    </div>
+                  </label>
+                </div>
+                {dupeSaving && (
+                  <p className="mt-2 text-xs text-gray-500">Saving...</p>
+                )}
+              </div>
+            )}
+
+            {dupeLoading && (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 flex items-center gap-2">
+                <LoadingSpinner />
+                <span className="text-sm text-gray-500">Checking for duplicate listings...</span>
+              </div>
+            )}
+
             {/* Publish action */}
             {business && (() => {
               const isDraft = business.status === 'draft'
@@ -1733,7 +1867,7 @@ function ListingContent() {
                         type="button"
                         data-testid="listing-publish"
                         onClick={handlePublish}
-                        disabled={saving || publishDisabled || (captchaRequired && !captchaToken)}
+                        disabled={saving || publishDisabled || dupeRequiresChoice || (captchaRequired && !captchaToken)}
                         className="inline-flex items-center justify-center rounded-lg bg-green-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       {saving ? (

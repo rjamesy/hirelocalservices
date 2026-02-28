@@ -38,6 +38,9 @@ type VerificationRow = {
   verification_status: string
   created_at: string
   pending_changes: PendingChanges | null
+  duplicate_user_choice: string | null
+  duplicate_of_business_id: string | null
+  duplicate_confidence: number | null
   verification_jobs: {
     id: string
     deterministic_result: any
@@ -329,6 +332,31 @@ export default function AdminVerificationPage() {
                     </div>
                   )
                 })()}
+
+                {/* Duplicate match panel */}
+                {item.duplicate_user_choice === 'matched' && item.duplicate_of_business_id && (
+                  <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4">
+                    <h4 className="text-sm font-medium text-blue-800 mb-1">
+                      Duplicate Match — User confirmed
+                    </h4>
+                    <p className="text-xs text-gray-700">
+                      User identified this as the same business as seed <code className="text-xs bg-blue-100 px-1 rounded">{item.duplicate_of_business_id}</code>
+                      {item.duplicate_confidence != null && (
+                        <span className="ml-1">({item.duplicate_confidence}% confidence)</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-blue-700 mt-1 font-medium">
+                      Approving will soft-delete the matched seed listing.
+                    </p>
+                  </div>
+                )}
+                {item.duplicate_user_choice === 'not_matched' && (
+                  <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3">
+                    <p className="text-xs text-gray-600">
+                      User reviewed potential duplicates and selected <span className="font-medium">Not a match</span>.
+                    </p>
+                  </div>
+                )}
 
                 {/* Notes + Actions */}
                 <div className="mt-4 flex items-end gap-3">

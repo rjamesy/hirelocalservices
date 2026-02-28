@@ -1091,7 +1091,7 @@ export async function adminForceReverify(businessId: string) {
 
 // ─── Approve/Reject Pending Changes ──────────────────────────────────
 
-export async function adminApprovePendingChanges(businessId: string) {
+export async function adminApprovePendingChanges(businessId: string, notes?: string) {
   const { supabase, user } = await verifyAdmin()
   const { removePhotoFromStorage } = await import('@/app/actions/photos')
 
@@ -1184,8 +1184,8 @@ export async function adminApprovePendingChanges(businessId: string) {
       userId: biz.owner_id,
       type: 'verification_approved',
       title: 'Changes Approved',
-      message: `Your changes to "${biz.name}" have been approved and are now live.`,
-      metadata: { businessId },
+      message: `Your changes to "${biz.name}" have been approved and are now live.${notes ? ` Comment: ${notes}` : ''}`,
+      metadata: { businessId, notes: notes || null },
     })
   }
 
@@ -1200,6 +1200,7 @@ export async function adminApprovePendingChanges(businessId: string) {
         Object.entries(updateData).filter(([k]) => k !== 'verification_status' && k !== 'status' && k !== 'pending_changes')
       ),
       pending_changes: pending,
+      admin_notes: notes || null,
     },
   })
 

@@ -144,7 +144,7 @@ export default function AdminListingDetailPage() {
   // Action form state
   const [suspendReason, setSuspendReason] = useState('')
   const [deleteReason, setDeleteReason] = useState('')
-  const [rejectReason, setRejectReason] = useState('')
+  const [pendingNotes, setPendingNotes] = useState('')
   const [transferOwnerId, setTransferOwnerId] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showReverifyConfirm, setShowReverifyConfirm] = useState(false)
@@ -476,28 +476,27 @@ export default function AdminListingDetailPage() {
           </div>
 
           <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-gray-100 pt-4">
+            <div className="w-full mb-2">
+              <label className="block text-xs text-gray-500 mb-1">Notes / comment (optional)</label>
+              <input
+                type="text"
+                value={pendingNotes}
+                onChange={(e) => setPendingNotes(e.target.value)}
+                placeholder="Add a comment..."
+                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
+            </div>
             <button
-              onClick={() => runAction(() => adminApprovePendingChanges(businessId), 'Pending changes approved successfully.')}
+              onClick={() => runAction(() => adminApprovePendingChanges(businessId, pendingNotes || undefined), 'Pending changes approved successfully.')}
               disabled={actionLoading}
               className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
             >
               {actionLoading ? 'Processing...' : 'Approve Changes'}
             </button>
-            <div className="flex items-end gap-2">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Rejection reason (optional)</label>
-                <input
-                  type="text"
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                  placeholder="Reason for rejection..."
-                  className="block w-64 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
-                />
-              </div>
               <button
                 onClick={() =>
                   runAction(
-                    () => adminRejectPendingChanges(businessId, rejectReason || undefined),
+                    () => adminRejectPendingChanges(businessId, pendingNotes || undefined),
                     'Pending changes rejected.'
                   )
                 }
@@ -507,7 +506,6 @@ export default function AdminListingDetailPage() {
                 {actionLoading ? 'Processing...' : 'Reject Changes'}
               </button>
             </div>
-          </div>
         </div>
       )}
 

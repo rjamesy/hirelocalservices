@@ -41,6 +41,11 @@ vi.mock('@/lib/search/eligibility', () => ({
   getListingEligibility: (...args: any[]) => mockGetListingEligibility(...args),
 }))
 
+const mockFuzzyNameScore = vi.fn(() => 0.9)
+vi.mock('@/lib/claim-scoring', () => ({
+  fuzzyNameScore: (...args: any[]) => mockFuzzyNameScore(...args),
+}))
+
 // Import actions after mocks
 import {
   createBusinessDraft,
@@ -53,6 +58,8 @@ import {
   getMyBusinesses,
   getMyEntitlements,
   getBusinessBySlug,
+  findPotentialDuplicates,
+  saveDuplicateChoice,
 } from '../business'
 
 function makeFormData(data: Record<string, string>): FormData {
@@ -755,5 +762,197 @@ describe('getMyEntitlements', () => {
     expect(result!.isActive).toBe(false)
     expect(result!.canPublish).toBe(false)
     expect(result!.descriptionLimit).toBe(250)
+  })
+})
+
+// ─── Duplicate Detection Tests ──────────────────────────────────────
+
+describe('findPotentialDuplicates', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    })
+  })
+
+  it('requires authentication', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: null },
+      error: { message: 'Not authenticated' },
+    })
+    await expect(findPotentialDuplicates('biz-123')).rejects.toThrow()
+  })
+
+  it('returns empty array when no nearby businesses', async () => {
+    // verifyBusinessOwnership: fetch business
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123' },
+      error: null,
+    })
+    // fetch business with location
+    single.mockResolvedValueOnce({
+      data: {
+        id: 'biz-123',
+        name: 'Test Business',
+        business_locations: { suburb: 'Brisbane', state: 'QLD', postcode: '4000', lat: -27.47, lng: 153.03 },
+      },
+      error: null,
+    })
+    // search index query — no results
+    chainResult.mockReturnValueOnce({ data: [], error: null })
+
+    const result = await findPotentialDuplicates('biz-123')
+    expect(result).toEqual({ candidates: [] })
+  })
+
+  it('returns scored candidates above threshold', async () => {
+    // verifyBusinessOwnership: fetch business
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123' },
+      error: null,
+    })
+    // fetch business with location
+    single.mockResolvedValueOnce({
+      data: {
+        id: 'biz-123',
+        name: 'Test Plumbing',
+        business_locations: { suburb: 'Brisbane', state: 'QLD', postcode: '4000', lat: -27.47, lng: 153.03 },
+      },
+      error: null,
+    })
+    // search index query — one matching candidate
+    mockFuzzyNameScore.mockReturnValue(0.95)
+    chainResult.mockReturnValueOnce({
+      data: [
+        { business_id: 'seed-1', name: 'Test Plumbing Services', suburb: 'Brisbane', state: 'QLD', postcode: '4000' },
+      ],
+      error: null,
+    })
+
+    const result = await findPotentialDuplicates('biz-123')
+    expect(result.candidates.length).toBe(1)
+    expect(result.candidates[0].id).toBe('seed-1')
+    expect(result.candidates[0].score).toBeGreaterThanOrEqual(70)
+    expect(result.candidates[0].matchReasons).toContain('name_similarity')
+  })
+
+  it('filters out candidates below score threshold', async () => {
+    // verifyBusinessOwnership
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123' },
+      error: null,
+    })
+    // business with location
+    single.mockResolvedValueOnce({
+      data: {
+        id: 'biz-123',
+        name: 'Test Business',
+        business_locations: { suburb: 'Brisbane', state: 'QLD', postcode: '4000', lat: -27.47, lng: 153.03 },
+      },
+      error: null,
+    })
+    // Low similarity — should not pass 70 threshold
+    mockFuzzyNameScore.mockReturnValue(0.2)
+    chainResult.mockReturnValueOnce({
+      data: [
+        { business_id: 'seed-1', name: 'Completely Different', suburb: 'Sydney', state: 'NSW', postcode: '2000' },
+      ],
+      error: null,
+    })
+
+    const result = await findPotentialDuplicates('biz-123')
+    expect(result.candidates.length).toBe(0)
+  })
+
+  it('returns at most 3 candidates', async () => {
+    // verifyBusinessOwnership
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123' },
+      error: null,
+    })
+    // business with location
+    single.mockResolvedValueOnce({
+      data: {
+        id: 'biz-123',
+        name: 'Test Plumbing',
+        business_locations: { suburb: 'Brisbane', state: 'QLD', postcode: '4000', lat: -27.47, lng: 153.03 },
+      },
+      error: null,
+    })
+    // High similarity for all 5 candidates
+    mockFuzzyNameScore.mockReturnValue(0.95)
+    chainResult.mockReturnValueOnce({
+      data: [
+        { business_id: 'seed-1', name: 'Test Plumbing A', suburb: 'Brisbane', state: 'QLD', postcode: '4000' },
+        { business_id: 'seed-2', name: 'Test Plumbing B', suburb: 'Brisbane', state: 'QLD', postcode: '4000' },
+        { business_id: 'seed-3', name: 'Test Plumbing C', suburb: 'Brisbane', state: 'QLD', postcode: '4000' },
+        { business_id: 'seed-4', name: 'Test Plumbing D', suburb: 'Brisbane', state: 'QLD', postcode: '4000' },
+        { business_id: 'seed-5', name: 'Test Plumbing E', suburb: 'Brisbane', state: 'QLD', postcode: '4000' },
+      ],
+      error: null,
+    })
+
+    const result = await findPotentialDuplicates('biz-123')
+    expect(result.candidates.length).toBe(3)
+  })
+})
+
+describe('saveDuplicateChoice', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    })
+  })
+
+  it('requires authentication', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: null },
+      error: { message: 'Not authenticated' },
+    })
+    await expect(saveDuplicateChoice('biz-123', 'matched', 'seed-1', 85)).rejects.toThrow()
+  })
+
+  it('saves matched choice with business ID and confidence', async () => {
+    // verifyBusinessOwnership
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123' },
+      error: null,
+    })
+    // update
+    chainResult.mockReturnValueOnce({ error: null })
+
+    const result = await saveDuplicateChoice('biz-123', 'matched', 'seed-1', 92, [
+      { id: 'seed-1', name: 'Test', score: 92 },
+    ])
+    expect(result).toEqual({ success: true })
+  })
+
+  it('saves not_matched choice and clears matched ID', async () => {
+    // verifyBusinessOwnership
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123' },
+      error: null,
+    })
+    // update
+    chainResult.mockReturnValueOnce({ error: null })
+
+    const result = await saveDuplicateChoice('biz-123', 'not_matched')
+    expect(result).toEqual({ success: true })
+  })
+
+  it('returns error on update failure', async () => {
+    // verifyBusinessOwnership
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123' },
+      error: null,
+    })
+    // update fails
+    chainResult.mockReturnValueOnce({ error: { message: 'DB error' } })
+
+    const result = await saveDuplicateChoice('biz-123', 'matched', 'seed-1', 85)
+    expect(result).toEqual({ error: 'Failed to save duplicate choice.' })
   })
 })

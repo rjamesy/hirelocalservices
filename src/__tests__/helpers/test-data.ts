@@ -69,6 +69,11 @@ export const mockBusiness: Business = {
   suspended_reason: null,
   suspended_at: null,
   deleted_at: null,
+  duplicate_user_choice: null,
+  duplicate_of_business_id: null,
+  duplicate_confidence: null,
+  duplicate_candidates_json: null,
+  merged_seed_business_id: null,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-06-01T00:00:00Z',
 }

@@ -131,6 +131,7 @@ export async function getAdminVerificationQueue(page = 1) {
       `
       id, name, slug, description, phone, email_contact, website, abn,
       listing_source, verification_status, created_at, pending_changes,
+      duplicate_user_choice, duplicate_of_business_id, duplicate_confidence,
       verification_jobs (
         id, deterministic_result, ai_result, final_decision, created_at
       ),
@@ -217,7 +218,7 @@ export async function adminApproveVerification(
   // Fetch business with pending_changes
   const { data: biz } = await supabase
     .from('businesses')
-    .select('id, slug, name, description, pending_changes')
+    .select('id, slug, name, description, pending_changes, duplicate_user_choice, duplicate_of_business_id')
     .eq('id', businessId)
     .single()
 
@@ -383,9 +384,60 @@ export async function adminApproveVerification(
       userId: bizOwner.owner_id,
       type: 'verification_approved',
       title: 'Listing Approved',
-      message: `Your listing "${bizOwner.name}" has been approved and is now live.`,
-      metadata: { businessId },
+      message: `Your listing "${bizOwner.name}" has been approved and is now live.${notes ? ` Comment: ${notes}` : ''}`,
+      metadata: { businessId, notes: notes || null },
     })
+  }
+
+  // ── Merge: soft-delete matched seed on approval ────────────────────
+  if ((biz as any).duplicate_user_choice === 'matched' && (biz as any).duplicate_of_business_id) {
+    const seedId = (biz as any).duplicate_of_business_id as string
+
+    // Fetch seed to verify it's actually a seed and not already deleted
+    const { data: seed, error: seedFetchErr } = await supabase
+      .from('businesses')
+      .select('id, is_seed, deleted_at, slug')
+      .eq('id', seedId)
+      .single()
+
+    if (seedFetchErr || !seed) {
+      return { error: `Approval succeeded but seed merge failed: seed ${seedId} not found.` }
+    }
+
+    if (!seed.is_seed) {
+      // Not a seed — skip merge, log for admin visibility
+      console.warn(`[adminApproveVerification] Skipping merge: ${seedId} is not a seed listing`)
+    } else if (seed.deleted_at) {
+      // Already deleted — skip silently (another approval may have handled it)
+    } else {
+      // Soft-delete the seed using canonical pattern
+      const now = new Date().toISOString()
+      const { error: seedDeleteErr } = await supabase
+        .from('businesses')
+        .update({ status: 'deleted', deleted_at: now, suspended_reason: `Merged into ${businessId}` })
+        .eq('id', seedId)
+
+      if (seedDeleteErr) {
+        return { error: `Approval succeeded but seed soft-delete failed: ${seedDeleteErr.message}` }
+      }
+
+      const { error: indexErr } = await supabase.rpc('refresh_search_index', { p_business_id: seedId })
+      if (indexErr) {
+        console.error(`[adminApproveVerification] refresh_search_index failed for seed ${seedId}:`, indexErr)
+      }
+
+      // Record which seed was merged on the approved listing
+      const { error: mergeErr } = await supabase
+        .from('businesses')
+        .update({ merged_seed_business_id: seedId })
+        .eq('id', businessId)
+
+      if (mergeErr) {
+        return { error: `Seed deleted but merge record failed: ${mergeErr.message}` }
+      }
+
+      if (seed.slug) revalidatePath(`/business/${seed.slug}`)
+    }
   }
 
   revalidatePath('/admin/verification')

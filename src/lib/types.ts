@@ -51,8 +51,23 @@ export type Business = {
   suspended_at: string | null
   seed_confidence: number | null
   deleted_at: string | null
+  duplicate_user_choice: 'matched' | 'not_matched' | 'unknown' | null
+  duplicate_of_business_id: string | null
+  duplicate_confidence: number | null
+  duplicate_candidates_json: Record<string, unknown>[] | null
+  merged_seed_business_id: string | null
   created_at: string
   updated_at: string
+}
+
+export type DuplicateCandidate = {
+  id: string
+  name: string
+  suburb: string | null
+  state: string | null
+  postcode: string | null
+  score: number
+  matchReasons: string[]
 }
 
 export type BusinessContact = {
@@ -503,7 +518,7 @@ export type Database = {
       }
       businesses: {
         Row: Business
-        Insert: Omit<Business, 'id' | 'created_at' | 'updated_at' | 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'seed_confidence' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at' | 'suspended_reason' | 'suspended_at' | 'deleted_at'> & Partial<Pick<Business, 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'seed_confidence' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at' | 'suspended_reason' | 'suspended_at' | 'deleted_at'>>
+        Insert: Omit<Business, 'id' | 'created_at' | 'updated_at' | 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'seed_confidence' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at' | 'suspended_reason' | 'suspended_at' | 'deleted_at' | 'duplicate_user_choice' | 'duplicate_of_business_id' | 'duplicate_confidence' | 'duplicate_candidates_json' | 'merged_seed_business_id'> & Partial<Pick<Business, 'is_seed' | 'claim_status' | 'seed_source' | 'seed_source_id' | 'seed_confidence' | 'verification_status' | 'listing_source' | 'pending_changes' | 'billing_status' | 'trial_ends_at' | 'suspended_reason' | 'suspended_at' | 'deleted_at' | 'duplicate_user_choice' | 'duplicate_of_business_id' | 'duplicate_confidence' | 'duplicate_candidates_json' | 'merged_seed_business_id'>>
         Update: Partial<Omit<Business, 'id' | 'created_at'>>
         Relationships: [
           {
