@@ -62,7 +62,7 @@ function PhotosContent() {
   const [loading, setLoading] = useState(true)
   const [businessId, setBusinessId] = useState<string | null>(null)
   const [photos, setPhotos] = useState<Photo[]>([])
-  const [uploading, setUploading] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState<'uploading' | 'validating' | null>(null)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [reordering, setReordering] = useState(false)
@@ -143,7 +143,7 @@ function PhotosContent() {
       return
     }
 
-    setUploading(true)
+    setUploadStatus('uploading')
     setUploadProgress(0)
     try {
       // Get a signed upload URL from the server
@@ -175,6 +175,8 @@ function PhotosContent() {
         return
       }
 
+      setUploadStatus('validating')
+
       // Build the public URL from the storage path
       const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/photos/${uploadResult.data.path}`
 
@@ -195,7 +197,7 @@ function PhotosContent() {
     } catch {
       setToast({ message: 'An unexpected error occurred during upload.', type: 'error' })
     } finally {
-      setUploading(false)
+      setUploadStatus(null)
     }
   }
 
@@ -374,7 +376,7 @@ function PhotosContent() {
         <div className="mt-6">
           <PhotoUploader
             onUpload={handleUpload}
-            uploading={uploading}
+            uploadStatus={uploadStatus}
             uploadProgress={uploadProgress}
             maxPhotos={MAX_PHOTOS}
             currentCount={photos.length}

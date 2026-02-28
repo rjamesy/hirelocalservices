@@ -131,7 +131,7 @@ export async function addPhoto(
 ) {
   const { supabase, user, business } = await verifyBusinessOwnership(businessId)
 
-  if ((business as any).verification_status === 'pending') {
+  if ((business as any).verification_status === 'pending' && business.status !== 'draft') {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
@@ -162,6 +162,10 @@ export async function addPhoto(
   const { moderateImages } = await import('@/lib/verification')
   const [imageResult] = await moderateImages([url])
   if (!imageResult.safe || imageResult.adult_content >= 0.5 || imageResult.violence >= 0.5) {
+    if (imageResult.error_type === 'verification_unavailable') {
+      // Don't delete the photo — it may be fine, verification just failed
+      return { error: 'Image verification is temporarily unavailable. Please try again in a moment.' }
+    }
     await removePhotoFromStorage(url)
     return { error: 'This image violates our content guidelines and cannot be uploaded.' }
   }
@@ -218,7 +222,7 @@ export async function deletePhoto(photoId: string) {
     return { error: 'You do not have permission to delete this photo' }
   }
 
-  if ((business as any).verification_status === 'pending') {
+  if ((business as any).verification_status === 'pending' && business.status !== 'draft') {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
@@ -269,7 +273,7 @@ export async function reorderPhotos(
 ) {
   const { supabase, business } = await verifyBusinessOwnership(businessId)
 
-  if ((business as any).verification_status === 'pending') {
+  if ((business as any).verification_status === 'pending' && business.status !== 'draft') {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 

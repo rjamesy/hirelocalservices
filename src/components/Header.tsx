@@ -11,6 +11,7 @@ export default function Header() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
   const [user, setUser] = useState<User | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
@@ -29,6 +30,12 @@ export default function Header() {
       subscription.unsubscribe();
     };
   }, [supabase.auth]);
+
+  useEffect(() => {
+    if (!user) { setIsAdmin(false); return; }
+    supabase.from('profiles').select('role').eq('id', user.id).single()
+      .then(({ data }) => setIsAdmin(data?.role === 'admin'));
+  }, [user, supabase]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -87,6 +94,14 @@ export default function Header() {
                 >
                   Dashboard
                 </Link>
+                {isAdmin && (
+                  <Link
+                    href="/admin"
+                    className="text-sm font-medium text-gray-700 hover:text-brand-600 transition-colors"
+                  >
+                    Admin
+                  </Link>
+                )}
                 <div className="relative">
                   <button
                     onClick={() => setDropdownOpen(!dropdownOpen)}
@@ -133,6 +148,15 @@ export default function Header() {
                         >
                           Settings
                         </Link>
+                        {isAdmin && (
+                          <Link
+                            href="/admin"
+                            className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            onClick={() => setDropdownOpen(false)}
+                          >
+                            Admin
+                          </Link>
+                        )}
                         <button
                           onClick={handleSignOut}
                           className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
@@ -227,6 +251,15 @@ export default function Header() {
                 >
                   Dashboard
                 </Link>
+                {isAdmin && (
+                  <Link
+                    href="/admin"
+                    className="block rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Admin
+                  </Link>
+                )}
                 <div className="border-t border-gray-100 pt-2 mt-2">
                   <div className="px-3 py-1 text-xs text-gray-500">
                     {user.email}

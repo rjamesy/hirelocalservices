@@ -166,6 +166,10 @@ function ListingContent() {
   const [captchaToken, setCaptchaToken] = useState<string | null>(null)
   const [captchaRequired, setCaptchaRequired] = useState(false)
 
+  // Publish rejection state
+  const [publishError, setPublishError] = useState<string | null>(null)
+  const [publishDisabled, setPublishDisabled] = useState(false)
+
   // Step 1: Business details
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -189,7 +193,7 @@ function ListingContent() {
 
   // Step 4: Photos
   const [photos, setPhotos] = useState<{ id: string; url: string; sort_order: number; status?: string }[]>([])
-  const [uploading, setUploading] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState<'uploading' | 'validating' | null>(null)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null)
   const [reordering, setReordering] = useState(false)
@@ -206,7 +210,7 @@ function ListingContent() {
   const canAddTestimonials = entitlements?.canAddTestimonials ?? false
 
   const isBillingSuspended = business?.billing_status === 'billing_suspended'
-  const isUnderReview = business?.verification_status === 'pending'
+  const isUnderReview = business?.verification_status === 'pending' && business?.status !== 'draft'
 
   // ─── Fetch data on mount ─────────────────────────────────────────
 
@@ -300,7 +304,7 @@ function ListingContent() {
         }
 
         // Lock to preview step if under review
-        if (biz.verification_status === 'pending') {
+        if (biz.verification_status === 'pending' && biz.status !== 'draft') {
           setCurrentStep(6)
         } else if (stepParam) {
           // Deep-link to a specific step if ?step= param is present
@@ -391,6 +395,8 @@ function ListingContent() {
         message: isLive ? 'Draft saved. Publish when ready.' : 'Business details saved.',
         type: 'success',
       })
+      setPublishError(null)
+      setPublishDisabled(false)
       return true
     } catch {
       setToast({ message: 'An unexpected error occurred.', type: 'error' })
@@ -446,6 +452,8 @@ function ListingContent() {
       }
 
       setToast({ message: 'Categories saved.', type: 'success' })
+      setPublishError(null)
+      setPublishDisabled(false)
       return true
     } catch {
       setToast({ message: 'An unexpected error occurred.', type: 'error' })
@@ -496,6 +504,8 @@ function ListingContent() {
       }
 
       setToast({ message: 'Location saved.', type: 'success' })
+      setPublishError(null)
+      setPublishDisabled(false)
       return true
     } catch {
       setToast({ message: 'An unexpected error occurred.', type: 'error' })
@@ -526,7 +536,7 @@ function ListingContent() {
       return
     }
 
-    setUploading(true)
+    setUploadStatus('uploading')
     setUploadProgress(0)
     try {
       const uploadResult = await getUploadUrl(business.id, file.name)
@@ -556,6 +566,8 @@ function ListingContent() {
         return
       }
 
+      setUploadStatus('validating')
+
       const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/photos/${uploadResult.data.path}`
       const newSortOrder = photos.length > 0 ? Math.max(...photos.map((p) => p.sort_order)) + 1 : 0
 
@@ -574,7 +586,7 @@ function ListingContent() {
     } catch {
       setToast({ message: 'An unexpected error occurred during upload.', type: 'error' })
     } finally {
-      setUploading(false)
+      setUploadStatus(null)
     }
   }
 
@@ -702,6 +714,7 @@ function ListingContent() {
   function handleBack() {
     if (isUnderReview) return
     if (currentStep > 1) {
+      if (currentStep === 6) { setPublishError(null); setPublishDisabled(false) }
       setCurrentStep((prev) => prev - 1)
     }
   }
@@ -709,7 +722,7 @@ function ListingContent() {
   // ─── Publish ─────────────────────────────────────────────────────
 
   async function handlePublish() {
-    if (!business) return
+    if (!business || publishDisabled) return
     if (isBillingSuspended) {
       setToast({
         message: 'Your billing is suspended. Please upgrade your plan first.',
@@ -730,10 +743,8 @@ function ListingContent() {
           setTimeout(() => router.push('/dashboard/billing'), 2000)
           return
         }
-        setToast({
-          message: typeof result.error === 'string' ? result.error : 'Failed to publish.',
-          type: 'error',
-        })
+        setPublishError(typeof result.error === 'string' ? result.error : 'Failed to publish.')
+        setPublishDisabled(true)
         return
       }
 
@@ -743,11 +754,18 @@ function ListingContent() {
       } else {
         // AI validation sent to review or rejected by safety
         const isRejected = result.verification_status === 'rejected'
-        setToast({
-          message: result.message || 'Your changes are being reviewed. Your live listing is unchanged.',
-          type: isRejected ? 'error' : 'success',
-        })
-        setBusiness((prev) => prev ? { ...prev, verification_status: result.verification_status || 'pending' } : prev)
+        if (isRejected) {
+          setPublishError(result.message || 'Your listing was rejected. Please fix the issues and try again.')
+          setPublishDisabled(true)
+          setBusiness((prev) => prev ? { ...prev, verification_status: 'rejected' } : prev)
+        } else {
+          // pending — show success toast
+          setToast({
+            message: result.message || 'Your changes are being reviewed. Your live listing is unchanged.',
+            type: 'success',
+          })
+          setBusiness((prev) => prev ? { ...prev, verification_status: result.verification_status || 'pending' } : prev)
+        }
       }
     } catch {
       setToast({ message: 'An unexpected error occurred.', type: 'error' })
@@ -881,7 +899,10 @@ function ListingContent() {
                     // Block step navigation when under review
                     if (isUnderReview) return
                     // Only allow jumping to completed steps or current
-                    if (step.id <= currentStep) setCurrentStep(step.id)
+                    if (step.id <= currentStep) {
+                      if (currentStep === 6 && step.id < 6) { setPublishError(null); setPublishDisabled(false) }
+                      setCurrentStep(step.id)
+                    }
                   }}
                   className={cn(
                     'relative flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors',
@@ -1316,7 +1337,7 @@ function ListingContent() {
                 {visiblePhotos.length < MAX_PHOTOS && (
                   <PhotoUploader
                     onUpload={handlePhotoUpload}
-                    uploading={uploading}
+                    uploadStatus={uploadStatus}
                     uploadProgress={uploadProgress}
                     maxPhotos={MAX_PHOTOS}
                     currentCount={visiblePhotos.length}
@@ -1712,11 +1733,13 @@ function ListingContent() {
                         type="button"
                         data-testid="listing-publish"
                         onClick={handlePublish}
-                        disabled={saving || (captchaRequired && !captchaToken)}
+                        disabled={saving || publishDisabled || (captchaRequired && !captchaToken)}
                         className="inline-flex items-center justify-center rounded-lg bg-green-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       {saving ? (
                         <LoadingSpinner />
+                      ) : publishDisabled ? (
+                        <>Publish Blocked</>
                       ) : (
                         <>
                           <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -1726,6 +1749,15 @@ function ListingContent() {
                         </>
                       )}
                       </button>
+                      {publishError && (
+                        <div
+                          id="publish-error"
+                          className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                          role="alert"
+                        >
+                          {publishError}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1787,10 +1819,10 @@ function ListingContent() {
           ) : isUnderReview ? (
             <button
               type="button"
-              disabled
-              className="inline-flex items-center rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-400 cursor-not-allowed"
+              onClick={() => router.push('/dashboard/listing')}
+              className="inline-flex items-center rounded-lg bg-brand-600 px-6 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
             >
-              Under Review
+              Done
             </button>
           ) : (
             <button
@@ -1802,6 +1834,12 @@ function ListingContent() {
             </button>
           )}
         </div>
+
+        {isUnderReview && currentStep < 6 && (
+          <p className="mt-2 text-center text-sm text-amber-600">
+            This listing is under review and cannot be edited.
+          </p>
+        )}
       </div>
 
       {/* Toast notification */}

@@ -34,8 +34,6 @@ export default function BusinessCard({
   photo_url,
 }: BusinessCardProps) {
   const safeDescription = description || '';
-  const truncatedDescription =
-    safeDescription.length > 150 ? safeDescription.slice(0, 150) + '...' : safeDescription;
 
   return (
     <div data-testid="business-card" className="group relative rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-200 overflow-hidden">
@@ -46,7 +44,7 @@ export default function BusinessCard({
       <div className="flex flex-col sm:flex-row">
         {/* Photo — only render when photo_url exists */}
         {photo_url && (
-          <div className="relative h-48 sm:h-auto sm:w-48 lg:w-56 flex-shrink-0 bg-gray-100">
+          <div className="relative h-48 sm:h-auto sm:w-40 lg:w-48 flex-shrink-0 bg-gray-100">
             <Image
               src={photo_url}
               alt={name}
@@ -58,11 +56,11 @@ export default function BusinessCard({
         )}
 
         {/* Content */}
-        <div className="flex flex-1 flex-col p-4 sm:p-5">
+        <div className="flex flex-1 min-w-0 flex-col p-4 sm:p-5">
           <div className="flex-1">
             {/* Header */}
             <div className="flex items-start justify-between gap-2">
-              <h3 data-testid="business-card-name" className="text-lg font-semibold text-gray-900 group-hover:text-brand-600 transition-colors line-clamp-1">
+              <h3 data-testid="business-card-name" className="text-lg font-semibold text-gray-900 group-hover:text-brand-600 transition-colors leading-tight line-clamp-2">
                 {name}
               </h3>
             </div>
@@ -97,7 +95,7 @@ export default function BusinessCard({
 
             {/* Description */}
             <p className="mt-2 text-sm text-gray-600 line-clamp-2">
-              {truncatedDescription}
+              {safeDescription}
             </p>
 
             {/* Location */}
@@ -120,7 +118,7 @@ export default function BusinessCard({
                   d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"
                 />
               </svg>
-              <span>
+              <span className="truncate">
                 {suburb || 'Unknown'}{suburb && state ? ', ' : ''}{state || ''}
                 {distance_m != null && (
                   <span className="ml-1 text-gray-400">
@@ -132,10 +130,10 @@ export default function BusinessCard({
           </div>
 
           {/* Action Buttons */}
-          <div className="mt-4 flex items-center gap-2 relative z-20">
+          <div className="mt-4 flex flex-wrap items-center gap-2 relative z-20">
             <Link
               href={`/business/${slug}`}
-              className="inline-flex items-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
+              className="inline-flex items-center justify-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors min-w-[120px]"
             >
               View Business
             </Link>

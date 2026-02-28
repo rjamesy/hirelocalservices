@@ -292,13 +292,16 @@ export interface ImageModerationResult {
   safe: boolean
   adult_content: number    // 0.0-1.0
   violence: number         // 0.0-1.0
-  spam_watermark: number   // 0.0-1.0
+  self_harm: number        // 0.0-1.0
   reason: string | null
+  error_type?: 'content_blocked' | 'verification_unavailable'
 }
 
 /**
  * Moderate a batch of image URLs using OpenAI Vision API.
- * Returns per-image results. Fails gracefully (approves) if API unavailable.
+ * Downloads images from Supabase storage, converts to base64, and sends
+ * inline to OpenAI to avoid URL-fetch timeouts.
+ * Returns per-image results with error_type for caller disambiguation.
  */
 export async function moderateImages(
   imageUrls: string[]
@@ -307,23 +310,43 @@ export async function moderateImages(
 
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
-    // No API key: fail closed — flag for manual review
     return imageUrls.map(() => ({
       safe: false,
       adult_content: 0,
       violence: 0,
-      spam_watermark: 0,
-      reason: 'Image moderation unavailable — flagged for manual review',
+      self_harm: 0,
+      reason: 'Image verification temporarily unavailable. Please try again.',
+      error_type: 'verification_unavailable' as const,
     }))
   }
 
   const results: ImageModerationResult[] = []
 
-  // Process images individually to get per-image results
   for (const url of imageUrls) {
     try {
+      // 1. Download image bytes from public URL (our server can reach Supabase; OpenAI's can't)
+      const dlResponse = await fetch(url)
+      if (!dlResponse.ok) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[moderateImages] Download failed', { url, status: dlResponse.status })
+        }
+        results.push({
+          safe: false, adult_content: 0, violence: 0, self_harm: 0,
+          reason: 'Image verification temporarily unavailable. Please try again.',
+          error_type: 'verification_unavailable',
+        })
+        continue
+      }
+
+      // 2. Convert to base64
+      const buffer = Buffer.from(await dlResponse.arrayBuffer())
+      const base64 = buffer.toString('base64')
+      const mime = dlResponse.headers.get('content-type') || 'image/jpeg'
+      const dataUrl = `data:${mime};base64,${base64}`
+
+      // 3. Send to OpenAI with base64 inline
       const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 10000)
+      const timeout = setTimeout(() => controller.abort(), 15000)
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -339,20 +362,25 @@ export async function moderateImages(
               content: [
                 {
                   type: 'text',
-                  text: `You are an image moderation system for an Australian local services directory (plumbers, electricians, cleaners, builders, etc.).
+                  text: `You are a content safety moderator. Evaluate this image ONLY for safety policy violations:
+- Nudity or sexual content (especially involving minors)
+- Explicit pornographic content
+- Graphic violence or gore
+- Self-harm or suicide
+- Illegal or abusive content
 
-Analyze this image and return a JSON object with:
-- adult_content: 0.0-1.0 (nudity, sexually explicit, pornographic content)
-- violence: 0.0-1.0 (graphic violence, gore, disturbing content)
-- spam_watermark: 0.0-1.0 (stock photo watermarks, spam text overlays, unrelated memes)
-- safe: boolean (true if appropriate for a business listing photo gallery)
-- reason: string or null (brief explanation if not safe)
+Do NOT consider relevance, quality, professionalism, or suitability for any purpose.
 
-Business listing photos should show: the business, completed work, team, equipment, premises, or before/after results.`,
+Return a JSON object with:
+- adult_content: 0.0-1.0 (nudity, sexual content, pornographic material)
+- violence: 0.0-1.0 (graphic violence, gore, disturbing imagery)
+- self_harm: 0.0-1.0 (self-harm, suicide imagery)
+- safe: boolean (true unless a safety violation is present)
+- reason: string or null (brief explanation only if safe=false due to safety violation)`,
                 },
                 {
                   type: 'image_url',
-                  image_url: { url },
+                  image_url: { url: dataUrl },
                 },
               ],
             },
@@ -367,29 +395,62 @@ Business listing photos should show: the business, completed work, team, equipme
       clearTimeout(timeout)
 
       if (!response.ok) {
-        // API error: fail closed
-        results.push({ safe: false, adult_content: 0, violence: 0, spam_watermark: 0, reason: 'Image moderation API error — flagged for manual review' })
+        const errBody = await response.text().catch(() => '<unreadable>')
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[moderateImages] API error', { status: response.status, body: errBody, url })
+        }
+        results.push({
+          safe: false, adult_content: 0, violence: 0, self_harm: 0,
+          reason: 'Image verification temporarily unavailable. Please try again.',
+          error_type: 'verification_unavailable',
+        })
         continue
       }
 
       const data = await response.json()
       const content = data.choices?.[0]?.message?.content
       if (!content) {
-        results.push({ safe: false, adult_content: 0, violence: 0, spam_watermark: 0, reason: 'Image moderation returned no result — flagged for manual review' })
+        results.push({
+          safe: false, adult_content: 0, violence: 0, self_harm: 0,
+          reason: 'Image verification temporarily unavailable. Please try again.',
+          error_type: 'verification_unavailable',
+        })
         continue
       }
 
       const parsed = JSON.parse(content)
-      results.push({
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[moderateImages] Full response', { url, parsed })
+      }
+
+      const result: ImageModerationResult = {
         safe: Boolean(parsed.safe),
         adult_content: Number(parsed.adult_content) || 0,
         violence: Number(parsed.violence) || 0,
-        spam_watermark: Number(parsed.spam_watermark) || 0,
+        self_harm: Number(parsed.self_harm) || 0,
         reason: parsed.reason ? String(parsed.reason) : null,
+      }
+      // Sanity check: model says unsafe but all scores near zero → relevance rejection, override
+      if (!result.safe && result.adult_content < 0.3 && result.violence < 0.3 && result.self_harm < 0.3) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[moderateImages] Overriding relevance-based rejection', { url, parsed })
+        }
+        result.safe = true
+        result.reason = null
+      }
+      if (!result.safe) {
+        result.error_type = 'content_blocked'
+      }
+      results.push(result)
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[moderateImages] Exception', { url, error: err instanceof Error ? err.message : err })
+      }
+      results.push({
+        safe: false, adult_content: 0, violence: 0, self_harm: 0,
+        reason: 'Image verification temporarily unavailable. Please try again.',
+        error_type: 'verification_unavailable',
       })
-    } catch {
-      // Fail closed: flag for manual review on error
-      results.push({ safe: false, adult_content: 0, violence: 0, spam_watermark: 0, reason: 'Image moderation error — flagged for manual review' })
     }
   }
 

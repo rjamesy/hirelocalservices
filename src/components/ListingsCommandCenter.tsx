@@ -123,7 +123,7 @@ export default function ListingsCommandCenter({
   }
 
   async function handleDelete(id: string, b: BusinessItem) {
-    const msg = b.verification_status === 'pending'
+    const msg = b.verification_status === 'pending' && b.status !== 'draft'
       ? 'This listing is under review. Deleting it will cancel the review. Are you sure?'
       : 'Are you sure you want to delete this listing? This action can be reversed by contacting support.'
     const confirmed = window.confirm(msg)
@@ -251,7 +251,7 @@ export default function ListingsCommandCenter({
             const isRejected = q?.flag === 'rejected'
 
             // Action rules
-            const isUnderReview = b.verification_status === 'pending'
+            const isUnderReview = b.verification_status === 'pending' && b.status !== 'draft'
             const showEdit = !isSuspended && !isUnderReview
             const showPause = isPublished && !isRejected && !isUnderReview
             const showResume = isPaused && !isRejected && !isUnderReview

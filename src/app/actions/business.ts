@@ -196,7 +196,7 @@ export async function updateBusiness(businessId: string, formData: FormData) {
     .eq('id', businessId)
     .single()
 
-  if (currentBiz?.verification_status === 'pending') {
+  if (currentBiz?.verification_status === 'pending' && currentBiz?.status !== 'draft') {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
@@ -291,10 +291,10 @@ export async function updateBusinessLocation(
   // Guard: block edits while under review
   const { data: locBiz } = await supabase
     .from('businesses')
-    .select('verification_status')
+    .select('verification_status, status')
     .eq('id', businessId)
     .single()
-  if (locBiz?.verification_status === 'pending') {
+  if (locBiz?.verification_status === 'pending' && locBiz?.status !== 'draft') {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
@@ -429,10 +429,10 @@ export async function updateBusinessCategories(
   // Guard: block edits while under review
   const { data: catBiz } = await supabase
     .from('businesses')
-    .select('verification_status')
+    .select('verification_status, status')
     .eq('id', businessId)
     .single()
-  if (catBiz?.verification_status === 'pending') {
+  if (catBiz?.verification_status === 'pending' && catBiz?.status !== 'draft') {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
@@ -444,47 +444,34 @@ export async function updateBusinessCategories(
     return { error: 'You can select up to 3 additional categories' }
   }
 
-  // Delete existing categories
-  const { error: deleteError } = await supabase
-    .from('business_categories')
-    .delete()
-    .eq('business_id', businessId)
+  // Atomic RPC: delete + insert in single DB transaction
+  const { error } = await supabase.rpc('upsert_business_categories', {
+    p_business_id: businessId,
+    p_primary_id: primaryCategoryId,
+    p_secondary_ids: secondaryCategoryIds,
+  })
 
-  if (deleteError) {
-    return { error: 'Failed to update categories. Please try again.' }
-  }
-
-  // Insert primary category first
-  const { error: primaryError } = await supabase
-    .from('business_categories')
-    .insert({
-      business_id: businessId,
-      category_id: primaryCategoryId,
-      is_primary: true,
-    })
-
-  if (primaryError) {
-    return { error: primaryError.message.includes('group category')
-      ? 'Cannot select a category group. Choose a specific service.'
-      : 'Failed to save primary category. Please try again.' }
-  }
-
-  // Insert secondary categories
-  if (secondaryCategoryIds.length > 0) {
-    const rows = secondaryCategoryIds.map((categoryId) => ({
-      business_id: businessId,
-      category_id: categoryId,
-      is_primary: false,
-    }))
-
-    const { error: secondaryError } = await supabase
-      .from('business_categories')
-      .insert(rows)
-
-    if (secondaryError) {
-      return { error: secondaryError.message.includes('same group')
-        ? 'Secondary categories must be in the same group as the primary category.'
-        : 'Failed to save secondary categories. Please try again.' }
+  if (error) {
+    const msg = error.message || ''
+    if (msg.includes('group category')) {
+      return { error: 'Cannot select a category group. Choose a specific service.' }
+    }
+    if (msg.includes('same group')) {
+      return { error: 'Secondary categories must be in the same group as the primary category.' }
+    }
+    if (msg.includes('Primary category must be set')) {
+      return { error: 'Primary category must be set before adding secondary categories.' }
+    }
+    if (msg.includes('permission')) {
+      return { error: 'You do not have permission to modify this business.' }
+    }
+    if (msg.includes('up to 3')) {
+      return { error: 'You can select up to 3 additional categories.' }
+    }
+    return {
+      error: process.env.NODE_ENV === 'development'
+        ? `Failed to save categories: ${msg}`
+        : 'Failed to save categories. Please try again.',
     }
   }
 
@@ -535,7 +522,7 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
     return { error: 'Business not found' }
   }
 
-  if (biz.verification_status === 'pending') {
+  if (biz.verification_status === 'pending' && biz.status !== 'draft') {
     return { error: 'This listing is currently under review and cannot be resubmitted.' }
   }
 
@@ -628,6 +615,10 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
     for (let i = 0; i < imageResults.length; i++) {
       const result = imageResults[i]
       if (!result.safe || result.adult_content >= 0.5 || result.violence >= 0.5) {
+        if (result.error_type === 'verification_unavailable') {
+          // Transient failure — don't reject, ask user to retry
+          return { error: 'Image verification is temporarily unavailable. Please try again in a moment.' }
+        }
         imageModDecision = 'rejected'
         imageModReason = result.reason || `Photo ${i + 1} flagged: adult=${result.adult_content.toFixed(2)}, violence=${result.violence.toFixed(2)}`
         break

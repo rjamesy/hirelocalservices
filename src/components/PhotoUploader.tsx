@@ -4,8 +4,8 @@ import { useCallback, useRef, useState } from 'react';
 
 export interface PhotoUploaderProps {
   onUpload: (file: File) => Promise<void>;
-  uploading: boolean;
-  uploadProgress?: number; // 0-100
+  uploadStatus: 'uploading' | 'validating' | null;
+  uploadProgress?: number;
   maxPhotos: number;
   currentCount: number;
 }
@@ -15,13 +15,14 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export default function PhotoUploader({
   onUpload,
-  uploading,
+  uploadStatus,
   uploadProgress,
   maxPhotos,
   currentCount,
 }: PhotoUploaderProps) {
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploading = uploadStatus !== null;
 
   const slotsRemaining = maxPhotos - currentCount;
   const canUploadMore = slotsRemaining > 0 && !uploading;
@@ -77,7 +78,7 @@ export default function PhotoUploader({
         }
       `}
     >
-      {uploading && uploadProgress !== undefined ? (
+      {uploadStatus === 'uploading' && uploadProgress !== undefined ? (
         <div className="w-full max-w-xs mx-auto">
           <div className="flex items-center justify-center gap-2 mb-2">
             <svg className="h-5 w-5 animate-spin text-brand-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -94,6 +95,14 @@ export default function PhotoUploader({
               style={{ width: `${uploadProgress}%` }}
             />
           </div>
+        </div>
+      ) : uploadStatus === 'validating' ? (
+        <div className="flex items-center justify-center gap-2">
+          <svg className="h-5 w-5 animate-spin text-brand-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <p className="text-sm font-medium text-gray-700">Checking image safety...</p>
         </div>
       ) : (
         <>

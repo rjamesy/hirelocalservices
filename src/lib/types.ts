@@ -851,6 +851,14 @@ export type Database = {
         }
         Returns: SearchResult[]
       }
+      upsert_business_categories: {
+        Args: {
+          p_business_id: string
+          p_primary_id: string
+          p_secondary_ids?: string[]
+        }
+        Returns: undefined
+      }
       upsert_business_location: {
         Args: {
           p_business_id: string

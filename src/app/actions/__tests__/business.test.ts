@@ -228,6 +228,43 @@ describe('updateBusiness', () => {
     })
     await expect(updateBusiness('biz-123', fd)).rejects.toThrow('permission')
   })
+
+  it('allows editing a draft with verification_status=pending', async () => {
+    // single #2: fetch current biz status — draft + pending should NOT block
+    single.mockResolvedValueOnce({
+      data: { status: 'draft', slug: 'test', billing_status: 'active', verification_status: 'pending' },
+      error: null,
+    })
+    // single #3: update result
+    single.mockResolvedValueOnce({
+      data: { ...mockBusiness, status: 'draft', name: 'Updated' },
+      error: null,
+    })
+
+    const fd = makeFormData({
+      name: 'Updated Business',
+      description: 'A valid updated description for testing.',
+      phone: '', email_contact: '', website: '', abn: '',
+    })
+    const result = await updateBusiness('biz-123', fd)
+    expect(result).toHaveProperty('data')
+  })
+
+  it('blocks editing a published listing with verification_status=pending', async () => {
+    // single #2: fetch current biz status — published + pending SHOULD block
+    single.mockResolvedValueOnce({
+      data: { status: 'published', slug: 'test', billing_status: 'active', verification_status: 'pending' },
+      error: null,
+    })
+
+    const fd = makeFormData({
+      name: 'Updated Business',
+      description: 'A valid updated description for testing.',
+      phone: '', email_contact: '', website: '', abn: '',
+    })
+    const result = await updateBusiness('biz-123', fd)
+    expect(result).toEqual({ error: 'This listing is currently under review and cannot be edited.' })
+  })
 })
 
 describe('updateBusinessLocation', () => {
@@ -330,26 +367,110 @@ describe('updateBusinessCategories', () => {
       data: { user: mockUser },
       error: null,
     })
+    // verifyBusinessOwnership
     single.mockResolvedValueOnce({
       data: { id: 'biz-123', owner_id: 'user-123' },
       error: null,
     })
+    // verification_status + status guard query
+    single.mockResolvedValueOnce({
+      data: { verification_status: 'approved', status: 'draft' },
+      error: null,
+    })
   })
 
-  it('rejects empty category array', async () => {
-    const result = await updateBusinessCategories('biz-123', [])
-    expect(result).toEqual({ error: 'Select at least one category' })
+  it('rejects empty primary category', async () => {
+    const result = await updateBusinessCategories('biz-123', '', [])
+    expect(result).toEqual({ error: 'Select a primary category' })
   })
 
-  it('rejects more than 5 categories', async () => {
-    const result = await updateBusinessCategories('biz-123', ['1', '2', '3', '4', '5', '6'])
-    expect(result).toEqual({ error: 'You can select up to 5 categories' })
+  it('rejects more than 3 secondary categories', async () => {
+    const result = await updateBusinessCategories('biz-123', 'cat-1', ['a', 'b', 'c', 'd'])
+    expect(result).toEqual({ error: 'You can select up to 3 additional categories' })
   })
 
-  it('deletes and re-inserts categories', async () => {
-    const result = await updateBusinessCategories('biz-123', ['cat-1', 'cat-2'])
+  it('calls RPC and returns success', async () => {
+    mockSupabase.rpc.mockResolvedValueOnce({ data: null, error: null })
+
+    const result = await updateBusinessCategories('biz-123', 'cat-1', ['cat-2'])
     expect(result).toEqual({ success: true })
-    expect(mockSupabase.from).toHaveBeenCalledWith('business_categories')
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('upsert_business_categories', {
+      p_business_id: 'biz-123',
+      p_primary_id: 'cat-1',
+      p_secondary_ids: ['cat-2'],
+    })
+  })
+
+  it('maps trigger error for group category', async () => {
+    mockSupabase.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'Cannot assign a group category directly; choose a child category' },
+    })
+
+    const result = await updateBusinessCategories('biz-123', 'group-id', [])
+    expect(result).toEqual({ error: 'Cannot select a category group. Choose a specific service.' })
+  })
+
+  it('maps trigger error for cross-group secondary', async () => {
+    mockSupabase.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'Secondary categories must be within the same group as the primary category' },
+    })
+
+    const result = await updateBusinessCategories('biz-123', 'cat-1', ['cross-group'])
+    expect(result).toEqual({ error: 'Secondary categories must be in the same group as the primary category.' })
+  })
+
+  it('allows editing when draft has verification_status=pending', async () => {
+    vi.resetAllMocks()
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    })
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123' },
+      error: null,
+    })
+    // draft + pending = should NOT block
+    single.mockResolvedValueOnce({
+      data: { verification_status: 'pending', status: 'draft' },
+      error: null,
+    })
+    mockSupabase.rpc.mockResolvedValueOnce({ data: null, error: null })
+
+    const result = await updateBusinessCategories('biz-123', 'cat-1', [])
+    expect(result).toEqual({ success: true })
+  })
+
+  it('blocks editing when published listing has verification_status=pending', async () => {
+    vi.resetAllMocks()
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    })
+    single.mockResolvedValueOnce({
+      data: { id: 'biz-123', owner_id: 'user-123' },
+      error: null,
+    })
+    // published + pending = SHOULD block
+    single.mockResolvedValueOnce({
+      data: { verification_status: 'pending', status: 'published' },
+      error: null,
+    })
+
+    const result = await updateBusinessCategories('biz-123', 'cat-1', [])
+    expect(result).toEqual({ error: 'This listing is currently under review and cannot be edited.' })
+  })
+
+  it('returns fallback error on unknown RPC failure', async () => {
+    mockSupabase.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'connection refused' },
+    })
+
+    const result = await updateBusinessCategories('biz-123', 'cat-1', [])
+    expect(result).toHaveProperty('error')
+    expect((result as { error: string }).error).toContain('Failed to save categories')
   })
 })
 

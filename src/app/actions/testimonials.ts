@@ -57,7 +57,7 @@ export async function addTestimonial(
 ) {
   const { supabase, user, business } = await verifyBusinessOwnership(businessId)
 
-  if ((business as any).verification_status === 'pending') {
+  if ((business as any).verification_status === 'pending' && business.status !== 'draft') {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
@@ -149,7 +149,7 @@ export async function deleteTestimonial(testimonialId: string) {
     return { error: 'You do not have permission to delete this testimonial' }
   }
 
-  if ((business as any).verification_status === 'pending') {
+  if ((business as any).verification_status === 'pending' && business.status !== 'draft') {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 

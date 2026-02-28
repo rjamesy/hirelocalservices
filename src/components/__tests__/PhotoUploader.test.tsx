@@ -4,7 +4,7 @@ import PhotoUploader from '../PhotoUploader'
 
 const defaultProps = {
   onUpload: vi.fn(),
-  uploading: false,
+  uploadStatus: null as 'uploading' | 'validating' | null,
   maxPhotos: 10,
   currentCount: 3,
 }
@@ -49,25 +49,25 @@ describe('PhotoUploader', () => {
   })
 
   it('shows upload progress when uploading with progress', () => {
-    render(<PhotoUploader {...defaultProps} uploading={true} uploadProgress={45} />)
+    render(<PhotoUploader {...defaultProps} uploadStatus="uploading" uploadProgress={45} />)
     expect(screen.getByText(/Uploading... 45%/)).toBeInTheDocument()
   })
 
   it('shows progress bar at correct width', () => {
-    const { container } = render(<PhotoUploader {...defaultProps} uploading={true} uploadProgress={60} />)
+    const { container } = render(<PhotoUploader {...defaultProps} uploadStatus="uploading" uploadProgress={60} />)
     const progressBar = container.querySelector('[style*="width"]') as HTMLElement
     expect(progressBar).toBeInTheDocument()
     expect(progressBar.style.width).toBe('60%')
   })
 
   it('applies opacity class when uploading', () => {
-    const { container } = render(<PhotoUploader {...defaultProps} uploading={true} />)
+    const { container } = render(<PhotoUploader {...defaultProps} uploadStatus="uploading" />)
     const wrapper = container.firstChild as HTMLElement
     expect(wrapper.className).toContain('opacity-50')
   })
 
   it('disables file input when uploading', () => {
-    const { container } = render(<PhotoUploader {...defaultProps} uploading={true} />)
+    const { container } = render(<PhotoUploader {...defaultProps} uploadStatus="uploading" />)
     const input = container.querySelector('input[type="file"]')
     expect(input).toBeDisabled()
   })
@@ -82,6 +82,11 @@ describe('PhotoUploader', () => {
     fireEvent.change(input)
 
     expect(onUpload).toHaveBeenCalledWith(file)
+  })
+
+  it('shows checking image safety message when validating', () => {
+    render(<PhotoUploader {...defaultProps} uploadStatus="validating" />)
+    expect(screen.getByText(/Checking image safety/)).toBeInTheDocument()
   })
 
   it('handles drag over', () => {
