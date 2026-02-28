@@ -98,7 +98,7 @@ export default async function HomePage() {
       {/* Hero Section */}
       <section data-testid="hero-section" className="relative bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 text-white">
         <div className="absolute inset-0 opacity-10 bg-[length:40px_40px] bg-[image:linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)]" />
-        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20 sm:py-28 lg:py-36">
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20">
           <div className="mx-auto max-w-3xl text-center">
             <h1 data-testid="hero-heading" className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight">
               Welcome to HireLocalServices — Australia&apos;s Local Business Directory
