@@ -240,6 +240,7 @@ export async function getAdminAccountDetail(
       is_seed,
       business_locations (suburb, state),
       business_categories (
+        is_primary,
         categories (name)
       )
     `)

@@ -176,7 +176,8 @@ function ListingContent() {
   const [step1Errors, setStep1Errors] = useState<FieldErrors>({})
 
   // Step 2: Categories
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
+  const [primaryCategory, setPrimaryCategory] = useState<string | null>(null)
+  const [secondaryCategories, setSecondaryCategories] = useState<string[]>([])
   const [step2Error, setStep2Error] = useState<string | null>(null)
 
   // Step 3: Location
@@ -205,6 +206,7 @@ function ListingContent() {
   const canAddTestimonials = entitlements?.canAddTestimonials ?? false
 
   const isBillingSuspended = business?.billing_status === 'billing_suspended'
+  const isUnderReview = business?.verification_status === 'pending'
 
   // ─── Fetch data on mount ─────────────────────────────────────────
 
@@ -272,8 +274,10 @@ function ListingContent() {
 
         // Pre-fill step 2
         if (biz.categories) {
-          setSelectedCategories(
-            biz.categories.map((c) => c.category_id)
+          const primary = biz.categories.find((c: any) => c.is_primary)
+          if (primary) setPrimaryCategory(primary.category_id)
+          setSecondaryCategories(
+            biz.categories.filter((c: any) => !c.is_primary).map((c: any) => c.category_id)
           )
         }
 
@@ -295,8 +299,11 @@ function ListingContent() {
           setTestimonials(biz.testimonials as typeof testimonials)
         }
 
-        // Deep-link to a specific step if ?step= param is present
-        if (stepParam) {
+        // Lock to preview step if under review
+        if (biz.verification_status === 'pending') {
+          setCurrentStep(6)
+        } else if (stepParam) {
+          // Deep-link to a specific step if ?step= param is present
           const stepNum = parseInt(stepParam, 10)
           if (stepNum >= 1 && stepNum <= 6) {
             setCurrentStep(stepNum)
@@ -398,18 +405,30 @@ function ListingContent() {
   async function saveStep2() {
     setStep2Error(null)
 
-    if (selectedCategories.length === 0) {
-      setStep2Error('Select at least one category.')
+    const scrollToStep2Error = () => {
+      requestAnimationFrame(() => {
+        document.getElementById('step2-footer-error')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        })
+      })
+    }
+
+    if (!primaryCategory) {
+      setStep2Error('Select a primary category.')
+      scrollToStep2Error()
       return false
     }
 
-    if (selectedCategories.length > 5) {
-      setStep2Error('You can select up to 5 categories.')
+    if (secondaryCategories.length > 3) {
+      setStep2Error('You can select up to 3 additional categories.')
+      scrollToStep2Error()
       return false
     }
 
     if (!business) {
       setStep2Error('Please save your business details first.')
+      scrollToStep2Error()
       return false
     }
 
@@ -417,10 +436,12 @@ function ListingContent() {
     try {
       const result = await updateBusinessCategories(
         business.id,
-        selectedCategories
+        primaryCategory,
+        secondaryCategories
       )
       if (result.error) {
         setStep2Error(typeof result.error === 'string' ? result.error : 'Failed to save categories.')
+        scrollToStep2Error()
         return false
       }
 
@@ -666,6 +687,7 @@ function ListingContent() {
   // ─── Step navigation ────────────────────────────────────────────
 
   async function handleNext() {
+    if (isUnderReview) return
     let success = false
     if (currentStep === 1) success = await saveStep1()
     else if (currentStep === 2) success = await saveStep2()
@@ -678,6 +700,7 @@ function ListingContent() {
   }
 
   function handleBack() {
+    if (isUnderReview) return
     if (currentStep > 1) {
       setCurrentStep((prev) => prev - 1)
     }
@@ -718,12 +741,13 @@ function ListingContent() {
         setToast({ message: 'Your listing is now live!', type: 'success' })
         router.push('/dashboard')
       } else {
-        // AI validation sent to review
+        // AI validation sent to review or rejected by safety
+        const isRejected = result.verification_status === 'rejected'
         setToast({
           message: result.message || 'Your changes are being reviewed. Your live listing is unchanged.',
-          type: 'success',
+          type: isRejected ? 'error' : 'success',
         })
-        setBusiness((prev) => prev ? { ...prev, verification_status: 'pending' } : prev)
+        setBusiness((prev) => prev ? { ...prev, verification_status: result.verification_status || 'pending' } : prev)
       }
     } catch {
       setToast({ message: 'An unexpected error occurred.', type: 'error' })
@@ -732,16 +756,28 @@ function ListingContent() {
     }
   }
 
-  // ─── Category toggle ────────────────────────────────────────────
+  // ─── Category selection ─────────────────────────────────────────
 
-  function toggleCategory(categoryId: string) {
-    setSelectedCategories((prev) => {
+  function selectPrimary(categoryId: string) {
+    setPrimaryCategory(categoryId)
+    // Clear secondaries — new primary may be in a different group
+    setSecondaryCategories([])
+  }
+
+  function toggleSecondary(categoryId: string) {
+    setSecondaryCategories((prev) => {
       if (prev.includes(categoryId)) {
         return prev.filter((id) => id !== categoryId)
       }
-      if (prev.length >= 5) return prev
+      if (prev.length >= 3) return prev
       return [...prev, categoryId]
     })
+  }
+
+  function getPrimaryGroupId(): string | null {
+    if (!primaryCategory) return null
+    const cat = categories.find((c) => c.id === primaryCategory)
+    return cat?.parent_id ?? null
   }
 
   // ─── Group categories by parent ──────────────────────────────────
@@ -842,6 +878,8 @@ function ListingContent() {
                 <button
                   type="button"
                   onClick={() => {
+                    // Block step navigation when under review
+                    if (isUnderReview) return
                     // Only allow jumping to completed steps or current
                     if (step.id <= currentStep) setCurrentStep(step.id)
                   }}
@@ -1038,18 +1076,9 @@ function ListingContent() {
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Categories</h2>
               <p className="mt-1 text-sm text-gray-500">
-                Select up to 5 categories that best describe your services.
-              </p>
-              <p className="mt-1 text-sm font-medium text-gray-700">
-                {selectedCategories.length}/5 selected
+                Choose your primary service, then optionally add related services from the same group.
               </p>
             </div>
-
-            {step2Error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-                <p className="text-sm text-red-700">{step2Error}</p>
-              </div>
-            )}
 
             {categories.length === 0 ? (
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center">
@@ -1059,70 +1088,102 @@ function ListingContent() {
               </div>
             ) : (
               <div className="space-y-6">
-                {getGroupedCategories().map((group) => (
-                  <div key={group.id}>
-                    <h3 className="text-sm font-semibold text-gray-800 mb-2">
-                      {group.name}
-                    </h3>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {/* If parent has children, show children. Otherwise show parent itself. */}
-                      {group.children.length > 0 ? (
-                        group.children.map((child) => (
+                {/* ── Primary category selection ── */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-1">
+                    Primary service <span className="text-red-500">*</span>
+                  </h3>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Select the main service your business provides.
+                  </p>
+                  <div className="space-y-4">
+                    {getGroupedCategories().map((group) => (
+                      group.children.length > 0 && (
+                        <div key={group.id}>
+                          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                            {group.name}
+                          </h4>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            {group.children.map((child) => (
+                              <label
+                                key={child.id}
+                                className={cn(
+                                  'flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors',
+                                  primaryCategory === child.id
+                                    ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500'
+                                    : 'border-gray-200 hover:bg-gray-50'
+                                )}
+                              >
+                                <input
+                                  type="radio"
+                                  name="primaryCategory"
+                                  checked={primaryCategory === child.id}
+                                  onChange={() => selectPrimary(child.id)}
+                                  className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-500"
+                                />
+                                <span className="text-sm text-gray-700">{child.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── Secondary categories (same group only) ── */}
+                {primaryCategory && (() => {
+                  const groupId = getPrimaryGroupId()
+                  const group = getGroupedCategories().find((g) => g.id === groupId)
+                  const siblings = group?.children.filter((c) => c.id !== primaryCategory) ?? []
+
+                  if (siblings.length === 0) return null
+
+                  return (
+                    <div className="border-t border-gray-200 pt-6">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-1">
+                        Additional services
+                      </h3>
+                      <p className="text-xs text-gray-500 mb-3">
+                        Optionally select related services from {group?.name} (max 3).
+                        {secondaryCategories.length > 0 && (
+                          <span className="ml-1 font-medium text-gray-700">
+                            {secondaryCategories.length}/3 selected
+                          </span>
+                        )}
+                      </p>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {siblings.map((child) => (
                           <label
                             key={child.id}
                             className={cn(
                               'flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors',
-                              selectedCategories.includes(child.id)
+                              secondaryCategories.includes(child.id)
                                 ? 'border-brand-300 bg-brand-50'
                                 : 'border-gray-200 hover:bg-gray-50',
-                              !selectedCategories.includes(child.id) &&
-                                selectedCategories.length >= 5
+                              !secondaryCategories.includes(child.id) &&
+                                secondaryCategories.length >= 3
                                 ? 'opacity-50 cursor-not-allowed'
                                 : ''
                             )}
                           >
                             <input
                               type="checkbox"
-                              checked={selectedCategories.includes(child.id)}
-                              onChange={() => toggleCategory(child.id)}
+                              checked={secondaryCategories.includes(child.id)}
+                              onChange={() => toggleSecondary(child.id)}
                               disabled={
-                                !selectedCategories.includes(child.id) &&
-                                selectedCategories.length >= 5
+                                !secondaryCategories.includes(child.id) &&
+                                secondaryCategories.length >= 3
                               }
                               className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                             />
                             <span className="text-sm text-gray-700">{child.name}</span>
                           </label>
-                        ))
-                      ) : (
-                        <label
-                          className={cn(
-                            'flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors',
-                            selectedCategories.includes(group.id)
-                              ? 'border-brand-300 bg-brand-50'
-                              : 'border-gray-200 hover:bg-gray-50',
-                            !selectedCategories.includes(group.id) &&
-                              selectedCategories.length >= 5
-                              ? 'opacity-50 cursor-not-allowed'
-                              : ''
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedCategories.includes(group.id)}
-                            onChange={() => toggleCategory(group.id)}
-                            disabled={
-                              !selectedCategories.includes(group.id) &&
-                              selectedCategories.length >= 5
-                            }
-                            className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                          />
-                          <span className="text-sm text-gray-700">{group.name}</span>
-                        </label>
-                      )}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })()}
               </div>
             )}
           </div>
@@ -1573,11 +1634,22 @@ function ListingContent() {
               </div>
 
               {/* Categories */}
-              {selectedCategories.length > 0 && (
+              {primaryCategory && (
                 <div className="border-t border-gray-100 p-6">
                   <h4 className="text-sm font-semibold text-gray-700 mb-2">Categories</h4>
                   <div className="flex flex-wrap gap-2">
-                    {selectedCategories.map((catId) => {
+                    {(() => {
+                      const cat = categories.find((c) => c.id === primaryCategory)
+                      return cat ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-brand-100 px-3 py-1 text-xs font-medium text-brand-800">
+                          {cat.name}
+                          <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
+                            Primary
+                          </span>
+                        </span>
+                      ) : null
+                    })()}
+                    {secondaryCategories.map((catId) => {
                       const cat = categories.find((c) => c.id === catId)
                       return cat ? (
                         <span
@@ -1662,16 +1734,27 @@ function ListingContent() {
           </div>
         )}
 
+        {/* ── Inline error above footer ────────────────────────── */}
+        {step2Error && currentStep === 2 && (
+          <div
+            id="step2-footer-error"
+            className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            role="alert"
+          >
+            {step2Error}
+          </div>
+        )}
+
         {/* ── Navigation buttons ───────────────────────────────── */}
         <div className="mt-8 flex items-center justify-between border-t border-gray-200 pt-6">
           <button
             type="button"
             data-testid="listing-back"
             onClick={handleBack}
-            disabled={currentStep === 1}
+            disabled={currentStep === 1 || isUnderReview}
             className={cn(
               'inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium transition-colors',
-              currentStep === 1
+              currentStep === 1 || isUnderReview
                 ? 'text-gray-300 cursor-not-allowed'
                 : 'text-gray-700 hover:bg-gray-100'
             )}
@@ -1687,7 +1770,7 @@ function ListingContent() {
               type="button"
               data-testid="listing-next"
               onClick={handleNext}
-              disabled={saving}
+              disabled={saving || isUnderReview}
               className="inline-flex items-center rounded-lg bg-brand-600 px-6 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {saving ? (
@@ -1700,6 +1783,14 @@ function ListingContent() {
                   </svg>
                 </>
               )}
+            </button>
+          ) : isUnderReview ? (
+            <button
+              type="button"
+              disabled
+              className="inline-flex items-center rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-400 cursor-not-allowed"
+            >
+              Under Review
             </button>
           ) : (
             <button

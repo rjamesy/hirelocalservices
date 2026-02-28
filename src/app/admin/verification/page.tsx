@@ -4,6 +4,17 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getAdminVerificationQueue, adminApproveVerification, adminRejectVerification } from '@/app/actions/verification'
 import { adminSuspendBusiness } from '@/app/actions/admin'
+import { EXPLICIT_TERMS } from '@/lib/verification'
+
+// Pre-compiled patterns for client-side safety check
+const EXPLICIT_PATTERNS = EXPLICIT_TERMS.map(
+  (term) => new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+)
+
+function checkTextSafety(texts: string[]): boolean {
+  const combined = texts.filter(Boolean).join(' ')
+  return EXPLICIT_PATTERNS.some((pattern) => pattern.test(combined))
+}
 
 type PendingChanges = {
   name?: string
@@ -129,6 +140,18 @@ export default function AdminVerificationPage() {
             const det = job?.deterministic_result
             const ai = job?.ai_result
 
+            // Content safety checks
+            const imageModResult = ai?.image_moderation
+            const imageFailed = imageModResult?.decision === 'rejected'
+            const textFailed = checkTextSafety([
+              item.name,
+              item.description || '',
+              item.pending_changes?.name || '',
+              item.pending_changes?.description || '',
+              ...(item.testimonials ?? []).map(t => `${t.author_name} ${t.text}`),
+            ])
+            const safetyFailed = imageFailed || textFailed
+
             return (
               <div key={item.id} className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
                 <div className="flex items-start justify-between">
@@ -186,6 +209,26 @@ export default function AdminVerificationPage() {
                 {ai?.summary && (
                   <p className="mt-3 text-sm text-gray-600 italic">{ai.summary}</p>
                 )}
+
+                {/* Content Safety Checks */}
+                <div className={`mt-4 rounded-md border p-4 ${safetyFailed ? 'border-red-300 bg-red-50' : 'border-green-200 bg-green-50'}`}>
+                  <h4 className={`text-sm font-semibold mb-2 ${safetyFailed ? 'text-red-800' : 'text-green-800'}`}>
+                    Content Safety Checks
+                  </h4>
+                  <div className="flex gap-6 text-sm">
+                    <span className={imageFailed ? 'text-red-700 font-bold' : 'text-green-700'}>
+                      Image Safety: {imageFailed ? 'FAIL' : 'PASS'}
+                    </span>
+                    <span className={textFailed ? 'text-red-700 font-bold' : 'text-green-700'}>
+                      Text Safety: {textFailed ? 'FAIL' : 'PASS'}
+                    </span>
+                  </div>
+                  {safetyFailed && (
+                    <p className="mt-2 text-xs text-red-700 font-medium">
+                      Approve is disabled. This listing contains flagged content.
+                    </p>
+                  )}
+                </div>
 
                 {/* Pending changes diff */}
                 {item.pending_changes && (
@@ -304,8 +347,11 @@ export default function AdminVerificationPage() {
                     <button
                       data-testid="admin-approve-btn"
                       onClick={() => handleApprove(item.id)}
-                      disabled={actionLoading === item.id}
-                      className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+                      disabled={actionLoading === item.id || safetyFailed}
+                      className={`rounded-md px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50 ${
+                        safetyFailed ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
+                      }`}
+                      title={safetyFailed ? 'Cannot approve: content safety failed' : ''}
                     >
                       Approve
                     </button>

@@ -33,6 +33,39 @@ export const BLOCKED_CATEGORIES = [
   'liquor store', 'tobacconist', 'vape shop',
 ]
 
+// ─── Explicit Content Keyword Blocklist (high-confidence only) ──────
+// Fast pre-filter using word-boundary matching. Primary safety comes
+// from AI moderation; this catches obvious explicit content instantly.
+
+export const EXPLICIT_TERMS = [
+  'porn', 'pornography', 'nude', 'nudes',
+  'sexvideo', 'onlyfans',
+  'camgirl', 'webcam sex',
+  'brothel', 'sexual services',
+  'blowjob', 'handjob', 'anal sex',
+  'threesome', 'orgy', 'gangbang',
+  'dominatrix', 'bdsm',
+  'xxx',
+]
+
+// Pre-compiled regex patterns for word-boundary matching
+const EXPLICIT_PATTERNS = EXPLICIT_TERMS.map(
+  (term) => new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+)
+
+/**
+ * Check if text contains explicit/adult content terms (word-boundary match).
+ * Returns the first matched term or null if clean.
+ */
+export function checkExplicitContent(text: string): { flagged: boolean; term: string | null } {
+  for (let i = 0; i < EXPLICIT_PATTERNS.length; i++) {
+    if (EXPLICIT_PATTERNS[i].test(text)) {
+      return { flagged: true, term: EXPLICIT_TERMS[i] }
+    }
+  }
+  return { flagged: false, term: null }
+}
+
 /**
  * Check if a business name or description contains blocked category terms.
  * Returns the matched term or null if clean.
@@ -274,13 +307,13 @@ export async function moderateImages(
 
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
-    // No API key: approve all images (graceful degradation)
+    // No API key: fail closed — flag for manual review
     return imageUrls.map(() => ({
-      safe: true,
+      safe: false,
       adult_content: 0,
       violence: 0,
       spam_watermark: 0,
-      reason: null,
+      reason: 'Image moderation unavailable — flagged for manual review',
     }))
   }
 
@@ -334,15 +367,15 @@ Business listing photos should show: the business, completed work, team, equipme
       clearTimeout(timeout)
 
       if (!response.ok) {
-        // API error: approve by default
-        results.push({ safe: true, adult_content: 0, violence: 0, spam_watermark: 0, reason: null })
+        // API error: fail closed
+        results.push({ safe: false, adult_content: 0, violence: 0, spam_watermark: 0, reason: 'Image moderation API error — flagged for manual review' })
         continue
       }
 
       const data = await response.json()
       const content = data.choices?.[0]?.message?.content
       if (!content) {
-        results.push({ safe: true, adult_content: 0, violence: 0, spam_watermark: 0, reason: null })
+        results.push({ safe: false, adult_content: 0, violence: 0, spam_watermark: 0, reason: 'Image moderation returned no result — flagged for manual review' })
         continue
       }
 
@@ -355,8 +388,8 @@ Business listing photos should show: the business, completed work, team, equipme
         reason: parsed.reason ? String(parsed.reason) : null,
       })
     } catch {
-      // Graceful degradation: approve on error
-      results.push({ safe: true, adult_content: 0, violence: 0, spam_watermark: 0, reason: null })
+      // Fail closed: flag for manual review on error
+      results.push({ safe: false, adult_content: 0, violence: 0, spam_watermark: 0, reason: 'Image moderation error — flagged for manual review' })
     }
   }
 
@@ -392,8 +425,8 @@ export function makeVerificationDecision(
     return 'rejected'
   }
 
-  // AI-informed rejection: spam or toxic
-  if (ai.spam_likelihood >= 0.7 || ai.toxicity >= 0.5) {
+  // AI-informed rejection: spam or toxic (strict threshold for toxicity)
+  if (ai.spam_likelihood >= 0.7 || ai.toxicity >= 0.3) {
     return 'rejected'
   }
   if (ai.real_business < 0.3) {
@@ -407,4 +440,57 @@ export function makeVerificationDecision(
 
   // Edge cases: keep pending for admin review
   return 'pending'
+}
+
+// ─── Combined Safety Check (reusable for admin approval guard) ──────
+
+export interface SafetyResult {
+  safe: boolean
+  imageSafe: boolean
+  textSafe: boolean
+  failedImageUrls: string[]
+  flaggedTerms: string[]
+}
+
+/**
+ * Run combined text + image safety checks.
+ * Keyword blocklist runs synchronously (instant). Image moderation calls OpenAI.
+ */
+export async function runSafetyChecks(
+  texts: string[],
+  imageUrls: string[]
+): Promise<SafetyResult> {
+  // 1. Keyword check all texts
+  const flaggedTerms: string[] = []
+  for (const text of texts) {
+    const result = checkExplicitContent(text)
+    if (result.flagged && result.term) flaggedTerms.push(result.term)
+  }
+  // Also check BLOCKED_CATEGORIES on combined text
+  const combinedText = texts.join(' ')
+  const blockedTerm = checkBlockedCategory(combinedText, null)
+  if (blockedTerm) flaggedTerms.push(blockedTerm)
+
+  const textSafe = flaggedTerms.length === 0
+
+  // 2. Image moderation
+  const failedImageUrls: string[] = []
+  if (imageUrls.length > 0) {
+    const imageResults = await moderateImages(imageUrls)
+    for (let i = 0; i < imageResults.length; i++) {
+      const r = imageResults[i]
+      if (!r.safe || r.adult_content >= 0.5 || r.violence >= 0.5) {
+        failedImageUrls.push(imageUrls[i])
+      }
+    }
+  }
+  const imageSafe = failedImageUrls.length === 0
+
+  return {
+    safe: textSafe && imageSafe,
+    imageSafe,
+    textSafe,
+    failedImageUrls,
+    flaggedTerms: Array.from(new Set(flaggedTerms)),
+  }
 }

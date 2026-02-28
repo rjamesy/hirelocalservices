@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getSettings, updateSetting } from '@/app/actions/system-settings'
 import { getBlacklistEntries, addBlacklistEntry, removeBlacklistEntry } from '@/app/actions/blacklist'
-import { resetAllData } from '@/app/actions/data-reset'
+import { resetAllData, validateResetState, toggleResetFlag, isProductionEnvironment, getResetFlag } from '@/app/actions/data-reset'
 import {
   getAdminProtectionData,
   updateProtectionFlag,
@@ -213,6 +213,15 @@ export default function AdminSystemPage() {
   const [resetPhrase, setResetPhrase] = useState('')
   const [resetConfirm, setResetConfirm] = useState(false)
   const [resetting, setResetting] = useState(false)
+  const [resetEnabled, setResetEnabled] = useState(false)
+  const [resetEnabledLoading, setResetEnabledLoading] = useState(true)
+  const [isProduction, setIsProduction] = useState(false)
+  const [productionPhrase, setProductionPhrase] = useState('')
+  const [resetResult, setResetResult] = useState<any>(null)
+  const [dryRunResult, setDryRunResult] = useState<any>(null)
+  const [dryRunning, setDryRunning] = useState(false)
+  const [validationResult, setValidationResult] = useState<any>(null)
+  const [validating, setValidating] = useState(false)
 
   // Protection state
   const [protectionFlags, setProtectionFlags] = useState<SystemFlags | null>(null)
@@ -262,11 +271,24 @@ export default function AdminSystemPage() {
     setAlertsLoading(false)
   }
 
+  async function loadResetState() {
+    setResetEnabledLoading(true)
+    try {
+      const [flagResult, prodResult] = await Promise.all([getResetFlag(), isProductionEnvironment()])
+      setResetEnabled(flagResult.enabled)
+      setIsProduction(prodResult.isProduction)
+    } catch (e) {
+      console.error('Failed to load reset state:', e)
+    }
+    setResetEnabledLoading(false)
+  }
+
   useEffect(() => {
     loadSettings()
     loadBlacklist()
     loadProtection()
     loadAlerts()
+    loadResetState()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -309,15 +331,63 @@ export default function AdminSystemPage() {
   async function handleReset() {
     setResetting(true)
     setMessage(null)
-    const result = await resetAllData(resetPhrase, resetConfirm)
+    setResetResult(null)
+    const result = await resetAllData(
+      resetPhrase,
+      resetConfirm,
+      false,
+      isProduction ? productionPhrase : undefined
+    )
     if ('error' in result && result.error) {
       setMessage({ type: 'error', text: result.error })
     } else {
-      setMessage({ type: 'success', text: 'All data has been reset successfully.' })
+      setResetResult(result.data)
+      setMessage({ type: 'success', text: 'Operational data reset completed successfully.' })
       setResetPhrase('')
       setResetConfirm(false)
+      setProductionPhrase('')
+      setResetEnabled(false)
     }
     setResetting(false)
+  }
+
+  async function handleDryRun() {
+    setDryRunning(true)
+    setMessage(null)
+    setDryRunResult(null)
+    const result = await resetAllData('RESET ALL OPERATIONAL DATA', false, true)
+    if ('error' in result && result.error) {
+      setMessage({ type: 'error', text: result.error })
+    } else {
+      setDryRunResult(result.data)
+    }
+    setDryRunning(false)
+  }
+
+  async function handleValidate() {
+    setValidating(true)
+    setValidationResult(null)
+    const result = await validateResetState()
+    setValidationResult(result)
+    setValidating(false)
+  }
+
+  async function handleToggleResetFlag(enabled: boolean) {
+    const result = await toggleResetFlag(enabled)
+    if (result.error) {
+      setMessage({ type: 'error', text: result.error })
+    } else {
+      setResetEnabled(enabled)
+      setMessage({ type: 'success', text: enabled ? 'Operational reset enabled.' : 'Operational reset disabled.' })
+      if (!enabled) {
+        setResetResult(null)
+        setDryRunResult(null)
+        setValidationResult(null)
+        setResetPhrase('')
+        setResetConfirm(false)
+        setProductionPhrase('')
+      }
+    }
   }
 
   const tabs: { key: Tab; label: string }[] = [
@@ -1135,49 +1205,235 @@ export default function AdminSystemPage() {
 
         {tab === 'reset' && (
           <div className="space-y-6">
-            <h2 className="text-lg font-semibold text-red-600">Data Reset</h2>
-            <div className="rounded-md bg-red-50 border border-red-200 p-4">
-              <p className="text-sm text-red-800 font-medium mb-2">
-                This action will permanently delete all business data.
-              </p>
-              <div className="text-sm text-red-700 space-y-1">
-                <p><strong>Will be deleted:</strong> businesses, photos, testimonials, categories links, verification jobs, claims, contacts, search index, locations, subscriptions, reports, metrics</p>
-                <p><strong>Will NOT be deleted:</strong> profiles, categories, postcodes, system_settings, blacklist, audit_log</p>
-              </div>
-            </div>
+            <h2 className="text-lg font-semibold text-red-600">Operational Data Reset</h2>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Type &quot;danger reset data&quot; to confirm
-              </label>
-              <input
-                type="text"
-                value={resetPhrase}
-                onChange={(e) => setResetPhrase(e.target.value)}
-                placeholder="danger reset data"
-                className="w-64 rounded-md border border-gray-300 px-3 py-2 text-sm"
-              />
-            </div>
+            {resetEnabledLoading ? (
+              <p className="text-sm text-gray-500">Loading reset state...</p>
+            ) : (
+              <>
+                {/* Enable toggle */}
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={resetEnabled}
+                      onChange={(e) => handleToggleResetFlag(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-red-600"
+                    />
+                    <span className="text-sm font-semibold text-gray-700">Allow Operational Reset</span>
+                  </label>
+                  {isProduction && (
+                    <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-bold text-red-800 uppercase tracking-wide">
+                      Production
+                    </span>
+                  )}
+                </div>
 
-            <label className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={resetConfirm}
-                onChange={(e) => setResetConfirm(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-red-600"
-              />
-              <span className="text-sm font-medium text-gray-700">
-                I understand this action is irreversible
-              </span>
-            </label>
+                {resetEnabled && (
+                  <>
+                    {/* Warning with table lists */}
+                    <div className="rounded-md bg-red-50 border border-red-200 p-4">
+                      <p className="text-sm text-red-800 font-medium mb-3">
+                        This will permanently TRUNCATE all operational data in a single transaction.
+                      </p>
+                      <div className="text-xs text-red-700 space-y-2">
+                        <div>
+                          <p className="font-semibold mb-1">26 tables TRUNCATED:</p>
+                          <p className="font-mono leading-relaxed">
+                            abuse_events, admin_reviews, business_categories, business_claims,
+                            business_contacts, business_locations, business_metrics,
+                            business_search_index, businesses, otp_verifications,
+                            payment_events, photos, reports, seed_ai_runs, seed_blacklist,
+                            seed_candidates, seed_place_details, seed_publish_runs,
+                            seed_query_runs, seed_seen_places, subscriptions, system_alerts,
+                            testimonials, user_notifications, user_subscriptions, verification_jobs
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-semibold mb-1">8 tables PRESERVED:</p>
+                          <p className="font-mono leading-relaxed">
+                            audit_log, blacklist, categories, postcodes, profiles,
+                            spatial_ref_sys, system_flags, system_settings
+                          </p>
+                        </div>
+                      </div>
+                    </div>
 
-            <button
-              onClick={handleReset}
-              disabled={resetting || resetPhrase.trim().toLowerCase() !== 'danger reset data' || !resetConfirm}
-              className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-            >
-              {resetting ? 'Resetting...' : 'Reset All Data'}
-            </button>
+                    {/* Dry Run */}
+                    <div className="space-y-3">
+                      <button
+                        onClick={handleDryRun}
+                        disabled={dryRunning}
+                        className="rounded-md bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                      >
+                        {dryRunning ? 'Running dry run...' : 'Dry Run (preview only)'}
+                      </button>
+
+                      {dryRunResult && (
+                        <div className="rounded-md bg-amber-50 border border-amber-200 p-4 space-y-3">
+                          <p className="text-sm font-semibold text-amber-800">Dry Run Result (no data deleted)</p>
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            {Object.entries(dryRunResult.rows_to_remove || {})
+                              .sort(([,a], [,b]) => (b as number) - (a as number))
+                              .map(([table, count]) => (
+                                <div key={table} className="rounded border border-amber-200 bg-white px-2 py-1.5">
+                                  <p className="text-xs text-gray-500 truncate">{table}</p>
+                                  <p className="text-sm font-bold text-gray-900">{String(count)}</p>
+                                </div>
+                              ))}
+                          </div>
+                          <p className="text-sm font-medium text-amber-800">
+                            Total rows to remove: {dryRunResult.total_rows_to_remove?.toLocaleString() ?? 0}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    <hr className="border-gray-200" />
+
+                    {/* Phrase input */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Type &quot;RESET ALL OPERATIONAL DATA&quot; to confirm
+                      </label>
+                      <input
+                        type="text"
+                        value={resetPhrase}
+                        onChange={(e) => setResetPhrase(e.target.value)}
+                        placeholder="RESET ALL OPERATIONAL DATA"
+                        className="w-80 rounded-md border border-gray-300 px-3 py-2 text-sm font-mono"
+                      />
+                    </div>
+
+                    {/* Production second phrase */}
+                    {isProduction && (
+                      <div>
+                        <label className="block text-sm font-medium text-red-700 mb-1">
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-800">PRODUCTION</span>
+                            Type &quot;CONFIRM PRODUCTION RESET&quot;
+                          </span>
+                        </label>
+                        <input
+                          type="text"
+                          value={productionPhrase}
+                          onChange={(e) => setProductionPhrase(e.target.value)}
+                          placeholder="CONFIRM PRODUCTION RESET"
+                          className="w-80 rounded-md border border-red-300 px-3 py-2 text-sm font-mono bg-red-50"
+                        />
+                      </div>
+                    )}
+
+                    {/* Checkbox */}
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={resetConfirm}
+                        onChange={(e) => setResetConfirm(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-red-600"
+                      />
+                      <span className="text-sm font-medium text-gray-700">
+                        I understand this is irreversible
+                      </span>
+                    </label>
+
+                    {/* Execute button */}
+                    <button
+                      onClick={handleReset}
+                      disabled={
+                        resetting
+                        || resetPhrase !== 'RESET ALL OPERATIONAL DATA'
+                        || !resetConfirm
+                        || (isProduction && productionPhrase !== 'CONFIRM PRODUCTION RESET')
+                      }
+                      className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+                    >
+                      {resetting ? 'Executing Reset...' : 'Execute Reset'}
+                    </button>
+
+                    {/* Reset Result */}
+                    {resetResult && (
+                      <div className="rounded-md bg-green-50 border border-green-200 p-4 space-y-3">
+                        <p className="text-sm font-semibold text-green-800">Reset Complete</p>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {Object.entries(resetResult.rows_removed || {})
+                            .sort(([,a], [,b]) => (b as number) - (a as number))
+                            .map(([table, count]) => (
+                              <div key={table} className="rounded border border-green-200 bg-white px-2 py-1.5">
+                                <p className="text-xs text-gray-500 truncate">{table}</p>
+                                <p className="text-sm font-bold text-gray-900">{String(count)}</p>
+                              </div>
+                            ))}
+                        </div>
+                        <p className="text-sm font-medium text-green-800">
+                          Total rows removed: {resetResult.total_rows_removed?.toLocaleString() ?? 0}
+                        </p>
+
+                        {/* Validation checks */}
+                        {resetResult.validation && (
+                          <div className="space-y-1.5 pt-2 border-t border-green-200">
+                            <p className="text-xs font-semibold text-green-800">Post-Reset Validation</p>
+                            {Object.entries(resetResult.validation)
+                              .filter(([k]) => k !== 'all_passed')
+                              .map(([key, value]) => (
+                                <div key={key} className="flex items-center gap-2 text-xs">
+                                  <span className={key.includes('categories') || key.includes('postcodes')
+                                    ? (Number(value) > 0 ? 'text-green-600' : 'text-red-600')
+                                    : (Number(value) === 0 ? 'text-green-600' : 'text-red-600')
+                                  }>
+                                    {key.includes('categories') || key.includes('postcodes')
+                                      ? (Number(value) > 0 ? '\u2713' : '\u2717')
+                                      : (Number(value) === 0 ? '\u2713' : '\u2717')
+                                    }
+                                  </span>
+                                  <span className="text-gray-600">{key}: {String(value)}</span>
+                                </div>
+                              ))}
+                            <p className={`text-xs font-semibold ${resetResult.validation.all_passed ? 'text-green-700' : 'text-red-700'}`}>
+                              {resetResult.validation.all_passed ? 'All checks passed' : 'Some checks failed'}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <hr className="border-gray-200" />
+
+                    {/* Validate Only */}
+                    <div className="space-y-3">
+                      <button
+                        onClick={handleValidate}
+                        disabled={validating}
+                        className="rounded-md bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                      >
+                        {validating ? 'Validating...' : 'Validate Only'}
+                      </button>
+
+                      {validationResult && (
+                        <div className={`rounded-md border p-4 space-y-2 ${
+                          validationResult.allPassed
+                            ? 'bg-green-50 border-green-200'
+                            : 'bg-red-50 border-red-200'
+                        }`}>
+                          <p className={`text-sm font-semibold ${validationResult.allPassed ? 'text-green-800' : 'text-red-800'}`}>
+                            Validation {validationResult.allPassed ? 'Passed' : 'Failed'}
+                          </p>
+                          {validationResult.checks?.map((check: any, i: number) => (
+                            <div key={i} className="flex items-center gap-2 text-xs">
+                              <span className={check.passed ? 'text-green-600' : 'text-red-600'}>
+                                {check.passed ? '\u2713' : '\u2717'}
+                              </span>
+                              <span className="text-gray-700">{check.label}</span>
+                              <span className="text-gray-500">expected {check.expected}, actual {check.actual}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </div>
         )}
 

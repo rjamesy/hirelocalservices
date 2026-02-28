@@ -1,7 +1,6 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -21,69 +20,125 @@ async function requireAdmin() {
   return { supabase, user }
 }
 
-export async function resetAllData(confirmPhrase: string, secondConfirm: boolean) {
-  const { supabase, user } = await requireAdmin()
+export async function resetAllData(
+  confirmPhrase: string,
+  secondConfirm: boolean,
+  dryRun: boolean = false,
+  productionConfirm?: string
+) {
+  const { supabase } = await requireAdmin()
 
-  // Safety check 1: confirm phrase
-  if (confirmPhrase.trim().toLowerCase() !== 'danger reset data') {
-    return { error: 'Confirmation phrase does not match. Type "danger reset data" exactly.' }
+  // Client-side phrase validation
+  if (confirmPhrase !== 'RESET ALL OPERATIONAL DATA') {
+    return { error: 'Confirmation phrase does not match. Type "RESET ALL OPERATIONAL DATA" exactly.' }
   }
 
-  // Safety check 2: second confirm
-  if (!secondConfirm) {
-    return { error: 'You must check the second confirmation checkbox.' }
+  if (!secondConfirm && !dryRun) {
+    return { error: 'You must check the confirmation checkbox.' }
   }
 
-  const admin = createAdminClient()
+  const { data, error } = await supabase.rpc('admin_reset_operational_data', {
+    confirm_phrase: confirmPhrase,
+    dry_run: dryRun,
+    production_confirm: productionConfirm || null,
+  })
 
-  // Delete order (FK-safe):
-  // business_metrics → photos → testimonials → business_categories →
-  // verification_jobs → business_claims → business_contacts →
-  // business_search_index → business_locations → subscriptions →
-  // reports → businesses
-  const tables = [
-    'business_metrics',
-    'photos',
-    'testimonials',
-    'business_categories',
-    'verification_jobs',
-    'business_claims',
-    'business_contacts',
-    'business_search_index',
-    'business_locations',
-    'subscriptions',
-    'user_subscriptions',
-    'user_notifications',
-    'abuse_events',
-    'reports',
-    'businesses',
+  if (error) {
+    return { error: error.message }
+  }
+
+  return { success: true, data }
+}
+
+export async function validateResetState() {
+  const { supabase } = await requireAdmin()
+
+  const checks: { label: string; expected: string; actual: number; passed: boolean }[] = []
+
+  const queries = [
+    { table: 'categories', label: 'Categories (reference)', expectGt0: true },
+    { table: 'postcodes', label: 'Postcodes (reference)', expectGt0: true },
+    { table: 'businesses', label: 'Businesses (operational)', expectGt0: false },
+    { table: 'business_claims', label: 'Business Claims', expectGt0: false },
+    { table: 'user_subscriptions', label: 'User Subscriptions', expectGt0: false },
+    { table: 'seed_candidates', label: 'Seed Candidates', expectGt0: false },
+    { table: 'seed_query_runs', label: 'Seed Query Runs', expectGt0: false },
+    { table: 'seed_publish_runs', label: 'Seed Publish Runs', expectGt0: false },
   ] as const
 
-  for (const table of tables) {
-    const { error } = await admin.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000')
+  for (const q of queries) {
+    const { count, error } = await supabase
+      .from(q.table as any)
+      .select('*', { count: 'exact', head: true })
+
+    const actual = count ?? 0
+    const passed = q.expectGt0 ? actual > 0 : actual === 0
+    checks.push({
+      label: q.label,
+      expected: q.expectGt0 ? '> 0' : '= 0',
+      actual,
+      passed,
+    })
+
     if (error) {
-      // business_search_index uses business_id as PK, not id
-      if (table === 'business_search_index') {
-        const { error: err2 } = await admin.from(table).delete().neq('business_id', '00000000-0000-0000-0000-000000000000')
-        if (err2) {
-          return { error: `Failed to clear ${table}: ${err2.message}` }
-        }
-      } else {
-        return { error: `Failed to clear ${table}: ${error.message}` }
+      checks[checks.length - 1] = {
+        label: q.label,
+        expected: q.expectGt0 ? '> 0' : '= 0',
+        actual: -1,
+        passed: false,
       }
     }
   }
 
-  // Log audit event
-  try {
-    await supabase.rpc('insert_audit_log', {
-      p_action: 'reset_executed',
-      p_actor_id: user.id,
-      p_details: { tables_cleared: tables },
-    })
-  } catch {
-    // Non-blocking
+  return {
+    checks,
+    allPassed: checks.every((c) => c.passed),
+  }
+}
+
+export async function toggleResetFlag(enabled: boolean) {
+  const { supabase } = await requireAdmin()
+
+  const { error } = await supabase
+    .from('system_flags')
+    .update({ allow_operational_reset: enabled } as any)
+    .eq('id', 1)
+
+  if (error) {
+    return { error: error.message }
   }
 
   return { success: true }
+}
+
+export async function isProductionEnvironment() {
+  const { supabase } = await requireAdmin()
+
+  const { data, error } = await supabase
+    .from('system_flags')
+    .select('production_environment' as any)
+    .limit(1)
+    .single()
+
+  if (error) {
+    return { isProduction: false, error: error.message }
+  }
+
+  return { isProduction: Boolean((data as any)?.production_environment) }
+}
+
+export async function getResetFlag() {
+  const { supabase } = await requireAdmin()
+
+  const { data, error } = await supabase
+    .from('system_flags')
+    .select('allow_operational_reset' as any)
+    .limit(1)
+    .single()
+
+  if (error) {
+    return { enabled: false, error: error.message }
+  }
+
+  return { enabled: Boolean((data as any)?.allow_operational_reset) }
 }

@@ -20,6 +20,8 @@ const SAFE_DEFAULTS: SystemFlags = {
   seed_require_phone: false,
   circuit_breaker_triggered_at: null,
   circuit_breaker_cooldown_minutes: 15,
+  allow_operational_reset: false,
+  production_environment: false,
   created_at: '',
   updated_at: '',
 }

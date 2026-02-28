@@ -411,12 +411,19 @@ export default function AdminListingDetailPage() {
             <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 mt-4">Categories</h3>
             {categories.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
-                {categories.map((c) => (
+                {categories.map((c: any) => (
                   <span
                     key={c.category_id}
-                    className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700"
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      c.is_primary ? 'bg-brand-100 text-brand-800' : 'bg-brand-50 text-brand-700'
+                    }`}
                   >
                     {c.categories?.name || c.category_id}
+                    {c.is_primary && (
+                      <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
+                        Primary
+                      </span>
+                    )}
                   </span>
                 ))}
               </div>

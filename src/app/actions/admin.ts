@@ -584,7 +584,7 @@ export async function getAdminListingsEnhanced(
       billing_status, verification_status, created_at, deleted_at,
       profiles!businesses_owner_id_fkey (email),
       business_locations (suburb, state, postcode),
-      business_categories (category_id)
+      business_categories (category_id, is_primary)
     `,
       { count: 'exact' }
     )
@@ -732,6 +732,7 @@ export async function getAdminListingDetail(
       business_contacts (*),
       business_categories (
         category_id,
+        is_primary,
         categories (id, name, slug)
       ),
       photos (*),

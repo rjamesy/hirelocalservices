@@ -251,9 +251,10 @@ export default function ListingsCommandCenter({
             const isRejected = q?.flag === 'rejected'
 
             // Action rules
-            const showEdit = !isSuspended
-            const showPause = isPublished && !isRejected
-            const showResume = isPaused && !isRejected
+            const isUnderReview = b.verification_status === 'pending'
+            const showEdit = !isSuspended && !isUnderReview
+            const showPause = isPublished && !isRejected && !isUnderReview
+            const showResume = isPaused && !isRejected && !isUnderReview
             const showDelete = true
 
             return (
@@ -304,6 +305,11 @@ export default function ListingsCommandCenter({
                     >
                       Contact support for assistance
                     </a>
+                  )}
+                  {isUnderReview && (
+                    <p className="mt-1 text-xs text-amber-600">
+                      This listing is being reviewed and cannot be edited.
+                    </p>
                   )}
                 </div>
 

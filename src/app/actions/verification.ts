@@ -217,9 +217,48 @@ export async function adminApproveVerification(
   // Fetch business with pending_changes
   const { data: biz } = await supabase
     .from('businesses')
-    .select('id, slug, pending_changes')
+    .select('id, slug, name, description, pending_changes')
     .eq('id', businessId)
     .single()
+
+  if (!biz) {
+    return { error: 'Business not found' }
+  }
+
+  // ─── Safety gate: re-run checks before approval ──────────────────
+  const { runSafetyChecks } = await import('@/lib/verification')
+
+  const safetyTexts: string[] = [biz.name || '']
+  if (biz.description) safetyTexts.push(biz.description)
+  const pending = (biz.pending_changes ?? {}) as Record<string, unknown>
+  if (pending.name) safetyTexts.push(String(pending.name))
+  if (pending.description) safetyTexts.push(String(pending.description))
+
+  // Check testimonials
+  const { data: safetyTestimonials } = await supabase
+    .from('testimonials')
+    .select('text, author_name')
+    .eq('business_id', businessId)
+    .neq('status', 'pending_delete')
+  for (const t of safetyTestimonials ?? []) {
+    safetyTexts.push(`${t.author_name} ${t.text}`)
+  }
+
+  // Check photos
+  const { data: safetyPhotos } = await supabase
+    .from('photos')
+    .select('url')
+    .eq('business_id', businessId)
+    .neq('status', 'pending_delete')
+  const safetyImageUrls = (safetyPhotos ?? []).map((p: { url: string }) => p.url)
+
+  const safety = await runSafetyChecks(safetyTexts, safetyImageUrls)
+  if (!safety.safe) {
+    const reasons: string[] = []
+    if (!safety.textSafe) reasons.push('Text flagged')
+    if (!safety.imageSafe) reasons.push('Image flagged')
+    return { error: `Cannot approve: content safety check failed. ${reasons.join('. ')}.` }
+  }
 
   // If there are pending_changes, apply them to main columns
   if (biz?.pending_changes) {
@@ -364,10 +403,27 @@ export async function adminRejectVerification(
   const { removePhotoFromStorage } = await import('@/app/actions/photos')
 
   // Set rejected — keep pending_changes intact so user can edit and re-submit
-  await supabase
+  const { error: rejectError } = await supabase
     .from('businesses')
     .update({ verification_status: 'rejected' })
     .eq('id', businessId)
+
+  if (rejectError) {
+    console.error('[adminRejectVerification] Failed to update verification_status:', rejectError)
+    return { error: `Failed to reject listing: ${rejectError.message}` }
+  }
+
+  // Write-then-read sanity check: verify the DB actually has 'rejected'
+  const { data: verifyRow } = await supabase
+    .from('businesses')
+    .select('verification_status')
+    .eq('id', businessId)
+    .single()
+
+  if (verifyRow?.verification_status !== 'rejected') {
+    console.error('[adminRejectVerification] Write did not stick. DB has:', verifyRow?.verification_status)
+    return { error: `Rejection failed: DB still has verification_status='${verifyRow?.verification_status}'. Check RLS policies.` }
+  }
 
   // ─── Revert pending photos/testimonials on rejection ──────────
   // pending_add → delete from DB + storage (they were never live)

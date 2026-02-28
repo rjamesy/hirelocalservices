@@ -118,6 +118,7 @@ export async function insertSeedBusiness(
     await supabase.from('business_categories').insert({
       business_id: businessId,
       category_id: categoryId,
+      is_primary: true,
     })
 
     return { id: businessId, error: null, skipped: false }

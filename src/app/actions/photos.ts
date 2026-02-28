@@ -27,7 +27,7 @@ async function verifyBusinessOwnership(businessId: string) {
 
   const { data: business, error } = await supabase
     .from('businesses')
-    .select('id, owner_id, slug, status')
+    .select('id, owner_id, slug, status, verification_status')
     .eq('id', businessId)
     .single()
 
@@ -131,6 +131,10 @@ export async function addPhoto(
 ) {
   const { supabase, user, business } = await verifyBusinessOwnership(businessId)
 
+  if ((business as any).verification_status === 'pending') {
+    return { error: 'This listing is currently under review and cannot be edited.' }
+  }
+
   // Check plan tier via canonical entitlements — photos require premium
   const entitlements = await getUserEntitlements(supabase, user.id)
   if (!entitlements.canUploadPhotos) {
@@ -152,6 +156,14 @@ export async function addPhoto(
     return {
       error: `You can have a maximum of ${MAX_PHOTOS} photos.`,
     }
+  }
+
+  // Image moderation: block explicit content at upload time
+  const { moderateImages } = await import('@/lib/verification')
+  const [imageResult] = await moderateImages([url])
+  if (!imageResult.safe || imageResult.adult_content >= 0.5 || imageResult.violence >= 0.5) {
+    await removePhotoFromStorage(url)
+    return { error: 'This image violates our content guidelines and cannot be uploaded.' }
   }
 
   // Determine status: pending_add for published/paused, live for drafts
@@ -194,7 +206,7 @@ export async function deletePhoto(photoId: string) {
   // Verify ownership of the parent business
   const { data: business, error: bizError } = await supabase
     .from('businesses')
-    .select('id, owner_id, slug, status')
+    .select('id, owner_id, slug, status, verification_status')
     .eq('id', photo.business_id)
     .single()
 
@@ -204,6 +216,10 @@ export async function deletePhoto(photoId: string) {
 
   if (business.owner_id !== user.id) {
     return { error: 'You do not have permission to delete this photo' }
+  }
+
+  if ((business as any).verification_status === 'pending') {
+    return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
   // If business is published/paused and photo is 'live':
@@ -252,6 +268,10 @@ export async function reorderPhotos(
   photoIds: string[]
 ) {
   const { supabase, business } = await verifyBusinessOwnership(businessId)
+
+  if ((business as any).verification_status === 'pending') {
+    return { error: 'This listing is currently under review and cannot be edited.' }
+  }
 
   // Update sort_order for each photo
   const updates = photoIds.map((photoId, index) =>

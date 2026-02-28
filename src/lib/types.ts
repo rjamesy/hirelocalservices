@@ -155,6 +155,7 @@ export type Category = {
 export type BusinessCategory = {
   business_id: string
   category_id: string
+  is_primary: boolean
 }
 
 export type PhotoStatus = 'live' | 'pending_add' | 'pending_delete'
@@ -390,6 +391,8 @@ export type SystemFlags = {
   seed_require_phone: boolean
   circuit_breaker_triggered_at: string | null
   circuit_breaker_cooldown_minutes: number
+  allow_operational_reset: boolean
+  production_environment: boolean
   created_at: string
   updated_at: string
 }
@@ -957,6 +960,14 @@ export type Database = {
       get_moderation_metrics: {
         Args: {
           p_days?: number
+        }
+        Returns: unknown
+      }
+      admin_reset_operational_data: {
+        Args: {
+          confirm_phrase: string
+          dry_run?: boolean
+          production_confirm?: string | null
         }
         Returns: unknown
       }

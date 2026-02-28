@@ -53,6 +53,11 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // ── Dashboard/Admin routes: set header so root layout can skip banners ──
+  if (pathname.startsWith('/dashboard') || pathname.startsWith('/admin')) {
+    supabaseResponse.headers.set('x-is-dashboard', 'true')
+  }
+
   // ── Protect /dashboard/* routes ───────────────────────────────────
   if (pathname.startsWith('/dashboard')) {
     if (!user) {

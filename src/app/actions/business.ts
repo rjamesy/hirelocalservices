@@ -154,17 +154,6 @@ export async function createBusinessDraft(formData: FormData) {
     website: parsed.data.website || null,
   })
 
-  // Run verification inline (best-effort, don't block creation)
-  try {
-    const { runVerification } = await import('@/app/actions/verification')
-    await Promise.race([
-      runVerification(business.id, 'create'),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-    ])
-  } catch {
-    // Verification failure shouldn't block business creation
-  }
-
   await logAudit(supabase, {
     action: 'listing_created',
     entityType: 'listing',
@@ -203,9 +192,13 @@ export async function updateBusiness(businessId: string, formData: FormData) {
   // Fetch current business status
   const { data: currentBiz } = await supabase
     .from('businesses')
-    .select('status, slug, billing_status')
+    .select('status, slug, billing_status, verification_status')
     .eq('id', businessId)
     .single()
+
+  if (currentBiz?.verification_status === 'pending') {
+    return { error: 'This listing is currently under review and cannot be edited.' }
+  }
 
   if (currentBiz?.billing_status === 'billing_suspended') {
     return { error: 'This listing is suspended due to billing. Please upgrade your plan.' }
@@ -276,17 +269,6 @@ export async function updateBusiness(businessId: string, formData: FormData) {
       website: parsed.data.website || null,
     }, { onConflict: 'business_id' })
 
-  // Re-run verification for drafts (best-effort)
-  try {
-    const { runVerification } = await import('@/app/actions/verification')
-    await Promise.race([
-      runVerification(businessId, 'update'),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-    ])
-  } catch {
-    // Verification failure shouldn't block update
-  }
-
   await logAudit(supabase, {
     action: 'listing_updated',
     entityType: 'listing',
@@ -305,6 +287,16 @@ export async function updateBusinessLocation(
   formData: FormData
 ) {
   const { supabase } = await verifyBusinessOwnership(businessId)
+
+  // Guard: block edits while under review
+  const { data: locBiz } = await supabase
+    .from('businesses')
+    .select('verification_status')
+    .eq('id', businessId)
+    .single()
+  if (locBiz?.verification_status === 'pending') {
+    return { error: 'This listing is currently under review and cannot be edited.' }
+  }
 
   const rawData = {
     address_text: (formData.get('address_text') as string) || undefined,
@@ -429,16 +421,27 @@ export async function updateBusinessLocation(
 
 export async function updateBusinessCategories(
   businessId: string,
-  categoryIds: string[]
+  primaryCategoryId: string,
+  secondaryCategoryIds: string[]
 ) {
   const { supabase } = await verifyBusinessOwnership(businessId)
 
-  if (categoryIds.length === 0) {
-    return { error: 'Select at least one category' }
+  // Guard: block edits while under review
+  const { data: catBiz } = await supabase
+    .from('businesses')
+    .select('verification_status')
+    .eq('id', businessId)
+    .single()
+  if (catBiz?.verification_status === 'pending') {
+    return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
-  if (categoryIds.length > 5) {
-    return { error: 'You can select up to 5 categories' }
+  if (!primaryCategoryId) {
+    return { error: 'Select a primary category' }
+  }
+
+  if (secondaryCategoryIds.length > 3) {
+    return { error: 'You can select up to 3 additional categories' }
   }
 
   // Delete existing categories
@@ -451,18 +454,38 @@ export async function updateBusinessCategories(
     return { error: 'Failed to update categories. Please try again.' }
   }
 
-  // Insert new categories
-  const rows = categoryIds.map((categoryId) => ({
-    business_id: businessId,
-    category_id: categoryId,
-  }))
-
-  const { error: insertError } = await supabase
+  // Insert primary category first
+  const { error: primaryError } = await supabase
     .from('business_categories')
-    .insert(rows)
+    .insert({
+      business_id: businessId,
+      category_id: primaryCategoryId,
+      is_primary: true,
+    })
 
-  if (insertError) {
-    return { error: 'Failed to save categories. Please try again.' }
+  if (primaryError) {
+    return { error: primaryError.message.includes('group category')
+      ? 'Cannot select a category group. Choose a specific service.'
+      : 'Failed to save primary category. Please try again.' }
+  }
+
+  // Insert secondary categories
+  if (secondaryCategoryIds.length > 0) {
+    const rows = secondaryCategoryIds.map((categoryId) => ({
+      business_id: businessId,
+      category_id: categoryId,
+      is_primary: false,
+    }))
+
+    const { error: secondaryError } = await supabase
+      .from('business_categories')
+      .insert(rows)
+
+    if (secondaryError) {
+      return { error: secondaryError.message.includes('same group')
+        ? 'Secondary categories must be in the same group as the primary category.'
+        : 'Failed to save secondary categories. Please try again.' }
+    }
   }
 
   revalidatePath('/dashboard')
@@ -510,6 +533,10 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
 
   if (!biz) {
     return { error: 'Business not found' }
+  }
+
+  if (biz.verification_status === 'pending') {
+    return { error: 'This listing is currently under review and cannot be resubmitted.' }
   }
 
   if ((biz as any).billing_status === 'billing_suspended') {
@@ -610,7 +637,31 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
 
   // If images are rejected, override decision
   // If listings_require_approval is true, override to pending regardless of AI result
-  let finalDecision = imageModDecision === 'rejected' ? 'rejected' : decision
+  // ─── Text safety: keyword pre-filter on all content ──────────────
+  const { checkExplicitContent } = await import('@/lib/verification')
+
+  let textSafetyFail = false
+
+  // Check business name/description
+  const pubNameCheck = checkExplicitContent(contentToValidate.name)
+  const pubDescCheck = checkExplicitContent(contentToValidate.description || '')
+  if (pubNameCheck.flagged || pubDescCheck.flagged) textSafetyFail = true
+
+  // Check all testimonials (pending_add + live)
+  if (!textSafetyFail) {
+    const { data: allTestimonials } = await supabase
+      .from('testimonials')
+      .select('text, author_name')
+      .eq('business_id', businessId)
+      .neq('status', 'pending_delete')
+
+    for (const t of allTestimonials ?? []) {
+      const check = checkExplicitContent(`${t.author_name} ${t.text}`)
+      if (check.flagged) { textSafetyFail = true; break }
+    }
+  }
+
+  let finalDecision = (imageModDecision === 'rejected' || textSafetyFail) ? 'rejected' : decision
   if (publishFlags.listings_require_approval && finalDecision === 'approved') {
     finalDecision = 'pending'
   }
@@ -753,6 +804,7 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
   return {
     success: true,
     published: false,
+    verification_status: finalDecision,
     message: finalDecision === 'rejected'
       ? imageModReason
         ? `Your listing was rejected: ${imageModReason}`
@@ -919,7 +971,7 @@ export async function getMyBusinesses() {
       description, phone, email_contact, website,
       verification_status, pending_changes, deleted_at, suspended_reason,
       business_locations(id, postcode, suburb, state),
-      business_categories(category_id)
+      business_categories(category_id, is_primary)
     `)
     .eq('owner_id', user.id)
     .eq('is_seed', false)
@@ -1074,6 +1126,7 @@ export async function getMyBusiness(selectedId?: string) {
         business_locations (*),
         business_categories (
           category_id,
+          is_primary,
           categories (*)
         ),
         photos (*),
@@ -1187,7 +1240,12 @@ export async function getBusinessBySlug(slug: string) {
     isAdmin = profile?.role === 'admin'
   }
 
-  // Public visibility gate: non-owner, non-admin can only see eligible listings
+  // Hard gate: unapproved listings are invisible to anonymous users
+  if (business.verification_status !== 'approved' && !isOwner && !isAdmin) {
+    return null
+  }
+
+  // Additional visibility checks for non-owner, non-admin (billing, deleted, suspended)
   if (!isOwner && !isAdmin) {
     const eligibility = await getListingEligibility(supabase, business.id)
     if (!eligibility.visiblePublic) {

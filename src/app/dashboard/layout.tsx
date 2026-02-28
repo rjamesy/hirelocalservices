@@ -64,7 +64,7 @@ export default async function DashboardLayout({
         navItems={navItems.map(({ href, label }) => ({ href, label }))}
       >
         {/* Desktop sidebar - rendered server-side */}
-        <aside className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
+        <aside className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-64 lg:flex-col">
           <div className="flex min-h-0 flex-1 flex-col border-r border-gray-200 bg-white">
             {/* Sidebar header */}
             <div className="flex h-16 items-center justify-between border-b border-gray-200 px-4">

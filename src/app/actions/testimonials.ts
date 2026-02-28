@@ -27,7 +27,7 @@ async function verifyBusinessOwnership(businessId: string) {
 
   const { data: business, error } = await supabase
     .from('businesses')
-    .select('id, owner_id, slug, status')
+    .select('id, owner_id, slug, status, verification_status')
     .eq('id', businessId)
     .single()
 
@@ -56,6 +56,10 @@ export async function addTestimonial(
   formData: FormData
 ) {
   const { supabase, user, business } = await verifyBusinessOwnership(businessId)
+
+  if ((business as any).verification_status === 'pending') {
+    return { error: 'This listing is currently under review and cannot be edited.' }
+  }
 
   // Check plan tier via canonical entitlements — testimonials require premium
   const entitlements = await getUserEntitlements(supabase, user.id)
@@ -133,7 +137,7 @@ export async function deleteTestimonial(testimonialId: string) {
   // Verify ownership of the parent business
   const { data: business, error: bizError } = await supabase
     .from('businesses')
-    .select('id, owner_id, slug, status')
+    .select('id, owner_id, slug, status, verification_status')
     .eq('id', testimonial.business_id)
     .single()
 
@@ -143,6 +147,10 @@ export async function deleteTestimonial(testimonialId: string) {
 
   if (business.owner_id !== user.id) {
     return { error: 'You do not have permission to delete this testimonial' }
+  }
+
+  if ((business as any).verification_status === 'pending') {
+    return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
   // If business is published/paused and testimonial is 'live':

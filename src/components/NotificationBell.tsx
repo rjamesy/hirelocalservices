@@ -71,7 +71,7 @@ export default function NotificationBell() {
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
 
           {/* Dropdown */}
-          <div className="absolute right-0 top-full mt-2 z-50 w-80 rounded-lg border border-gray-200 bg-white shadow-lg">
+          <div className="absolute right-0 top-full mt-2 z-50 w-56 rounded-lg border border-gray-200 bg-white shadow-lg">
             <div className="border-b border-gray-200 px-4 py-3">
               <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
             </div>

@@ -121,6 +121,7 @@ export function parseAddress(place: PlaceResult): ParsedAddress {
 
   if (place.addressComponents) {
     for (const comp of place.addressComponents) {
+      if (!comp.types) continue
       if (comp.types.includes('street_number') || comp.types.includes('route')) {
         result.streetAddress = result.streetAddress
           ? `${result.streetAddress} ${comp.longText}`

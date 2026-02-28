@@ -83,6 +83,95 @@ export async function searchPlaces(
 }
 
 /**
+ * Convert a circle (center + radius) to a bounding box rectangle.
+ * The Google Places Text Search API only supports locationRestriction
+ * with a rectangle, not a circle.
+ */
+function circleToBoundingBox(lat: number, lng: number, radiusMeters: number) {
+  const earthRadius = 6371000 // meters
+  const dLat = (radiusMeters / earthRadius) * (180 / Math.PI)
+  const dLng = (radiusMeters / (earthRadius * Math.cos((lat * Math.PI) / 180))) * (180 / Math.PI)
+  return {
+    low: { latitude: lat - dLat, longitude: lng - dLng },
+    high: { latitude: lat + dLat, longitude: lng + dLng },
+  }
+}
+
+/**
+ * Search with locationRestriction (bounding box) instead of locationBias.
+ * Results are strictly within the specified area.
+ */
+export async function searchPlacesRestricted(
+  query: string,
+  lat: number,
+  lng: number,
+  radiusMeters: number = 25000
+): Promise<PlaceResult[]> {
+  const apiKey = getApiKey()
+  const rect = circleToBoundingBox(lat, lng, radiusMeters)
+
+  const body = {
+    textQuery: query,
+    locationRestriction: {
+      rectangle: rect,
+    },
+    languageCode: 'en',
+    regionCode: 'AU',
+    maxResultCount: 20,
+  }
+
+  const fieldMask = [
+    'places.id',
+    'places.displayName',
+    'places.formattedAddress',
+    'places.nationalPhoneNumber',
+    'places.internationalPhoneNumber',
+    'places.websiteUri',
+    'places.googleMapsUri',
+    'places.regularOpeningHours',
+    'places.rating',
+    'places.userRatingCount',
+    'places.types',
+    'places.location',
+    'places.addressComponents',
+  ].join(',')
+
+  await delay(DELAY_MS)
+
+  const resp = await fetch(`${API_BASE}:searchText`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': fieldMask,
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!resp.ok) {
+    const text = await resp.text()
+    throw new Error(`Google Places API error ${resp.status}: ${text}`)
+  }
+
+  const data = await resp.json()
+  return (data.places ?? []) as PlaceResult[]
+}
+
+/**
+ * Wrapper that tracks API call count for cost estimation.
+ */
+export async function searchPlacesTracked(
+  query: string,
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+  apiCallCounter: { count: number }
+): Promise<PlaceResult[]> {
+  apiCallCounter.count++
+  return searchPlacesRestricted(query, lat, lng, radiusMeters)
+}
+
+/**
  * Get detailed information about a specific place.
  */
 export async function getPlaceDetails(placeId: string): Promise<PlaceResult | null> {
