@@ -7,6 +7,7 @@ import { logAudit } from '@/lib/audit'
 import { getUserEntitlements, syncBusinessBillingStatus, type Entitlements } from '@/lib/entitlements'
 import { getListingEligibility, type ListingEligibility } from '@/lib/search/eligibility'
 import { createNotification } from '@/app/actions/notifications'
+import * as pwService from '@/lib/pw-service'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -234,6 +235,11 @@ export async function adminSuspendBusiness(businessId: string, reason?: string) 
     })
   }
 
+  // ── P/W dual-write: set P visibility to suspended ────────────────
+  await pwService.dualWrite('adminSuspendBusiness', () =>
+    pwService.setVisibility(businessId, 'suspended')
+  )
+
   revalidatePath('/admin')
   revalidatePath(`/business/${business.slug}`)
   return { success: true }
@@ -283,6 +289,11 @@ export async function adminUnsuspendBusiness(businessId: string) {
       new_status: 'published',
     },
   })
+
+  // ── P/W dual-write: set P visibility to live ────────────────────
+  await pwService.dualWrite('adminUnsuspendBusiness', () =>
+    pwService.setVisibility(businessId, 'live')
+  )
 
   revalidatePath('/admin')
   revalidatePath(`/business/${business.slug}`)
@@ -1204,6 +1215,11 @@ export async function adminApprovePendingChanges(businessId: string, notes?: str
     },
   })
 
+  // ── P/W dual-write: approve W → create P snapshot ────────────────
+  await pwService.dualWrite('adminApprovePendingChanges', () =>
+    pwService.approveWorking(businessId, user.id, notes)
+  )
+
   revalidatePath('/admin')
   if (biz.slug) revalidatePath(`/business/${biz.slug}`)
   return { success: true }
@@ -1297,6 +1313,11 @@ export async function adminRejectPendingChanges(businessId: string, reason?: str
       reason,
     },
   })
+
+  // ── P/W dual-write: reject W ────────────────────────────────────
+  await pwService.dualWrite('adminRejectPendingChanges', () =>
+    pwService.rejectWorking(businessId, user.id, reason)
+  )
 
   revalidatePath('/admin')
   return { success: true }

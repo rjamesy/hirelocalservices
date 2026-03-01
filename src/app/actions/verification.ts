@@ -9,6 +9,7 @@ import {
   makeVerificationDecision,
 } from '@/lib/verification'
 import { createNotification } from '@/app/actions/notifications'
+import * as pwService from '@/lib/pw-service'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -389,6 +390,11 @@ export async function adminApproveVerification(
     })
   }
 
+  // ── P/W dual-write: approve W → create P snapshot ──────────────────
+  await pwService.dualWrite('adminApproveVerification', () =>
+    pwService.approveWorking(businessId, user.id, notes)
+  )
+
   // ── Merge: soft-delete matched seed on approval ────────────────────
   if ((biz as any).duplicate_user_choice === 'matched' && (biz as any).duplicate_of_business_id) {
     const seedId = (biz as any).duplicate_of_business_id as string
@@ -561,6 +567,11 @@ export async function adminRejectVerification(
       metadata: { businessId, notes },
     })
   }
+
+  // ── P/W dual-write: reject W ──────────────────────────────────────
+  await pwService.dualWrite('adminRejectVerification', () =>
+    pwService.rejectWorking(businessId, user.id, notes)
+  )
 
   revalidatePath('/admin/verification')
   revalidatePath('/admin')

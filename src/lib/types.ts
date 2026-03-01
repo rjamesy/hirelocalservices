@@ -446,6 +446,75 @@ export type PaymentEvent = {
   created_at: string
 }
 
+// ─── P/W Architecture Types ─────────────────────────────────────────
+
+export type PublishedListingVisibility = 'live' | 'paused' | 'suspended'
+export type WorkingListingReviewStatus = 'draft' | 'pending' | 'changes_required'
+export type WorkingListingChangeType = 'new' | 'edit'
+
+export type PublishedListing = {
+  id: string
+  business_id: string
+  amendment: number
+  is_current: boolean
+  visibility_status: PublishedListingVisibility
+  name: string
+  slug: string
+  description: string | null
+  phone: string | null
+  email_contact: string | null
+  website: string | null
+  abn: string | null
+  address_text: string | null
+  suburb: string | null
+  state: string | null
+  postcode: string | null
+  lat: number | null
+  lng: number | null
+  service_radius_km: number | null
+  category_ids: string[]
+  category_names: string[]
+  primary_category_id: string | null
+  photos_snapshot: Record<string, unknown>[]
+  testimonials_snapshot: Record<string, unknown>[]
+  approved_by: string | null
+  approval_comment: string | null
+  verification_job_id: string | null
+  approved_at: string
+  created_at: string
+}
+
+export type WorkingListing = {
+  id: string
+  business_id: string
+  name: string
+  description: string | null
+  phone: string | null
+  email_contact: string | null
+  website: string | null
+  abn: string | null
+  address_text: string | null
+  suburb: string | null
+  state: string | null
+  postcode: string | null
+  lat: number | null
+  lng: number | null
+  service_radius_km: number
+  primary_category_id: string | null
+  secondary_category_ids: string[]
+  review_status: WorkingListingReviewStatus
+  change_type: WorkingListingChangeType
+  rejection_reason: string | null
+  rejection_count: number
+  verification_job_id: string | null
+  submitted_at: string | null
+  reviewed_at: string | null
+  reviewed_by: string | null
+  archived_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 // ─── Enums ──────────────────────────────────────────────────────────
 
 export type AustralianState =
@@ -854,6 +923,34 @@ export type Database = {
         Insert: Omit<OTPVerification, 'id' | 'created_at' | 'verified_at' | 'attempts'> & Partial<Pick<OTPVerification, 'verified_at' | 'attempts'>>
         Update: Partial<Pick<OTPVerification, 'verified_at' | 'attempts'>>
         Relationships: []
+      }
+      published_listings: {
+        Row: PublishedListing
+        Insert: Omit<PublishedListing, 'id' | 'created_at' | 'approved_at'> & Partial<Pick<PublishedListing, 'approved_at'>>
+        Update: Partial<Pick<PublishedListing, 'is_current' | 'visibility_status'>>
+        Relationships: [
+          {
+            foreignKeyName: 'published_listings_business_id_fkey'
+            columns: ['business_id']
+            isOneToOne: false
+            referencedRelation: 'businesses'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      working_listings: {
+        Row: WorkingListing
+        Insert: Omit<WorkingListing, 'id' | 'created_at' | 'updated_at' | 'rejection_count' | 'archived_at' | 'submitted_at' | 'reviewed_at' | 'reviewed_by' | 'rejection_reason' | 'verification_job_id'> & Partial<Pick<WorkingListing, 'rejection_count' | 'archived_at' | 'submitted_at' | 'reviewed_at' | 'reviewed_by' | 'rejection_reason' | 'verification_job_id'>>
+        Update: Partial<Omit<WorkingListing, 'id' | 'created_at'>>
+        Relationships: [
+          {
+            foreignKeyName: 'working_listings_business_id_fkey'
+            columns: ['business_id']
+            isOneToOne: false
+            referencedRelation: 'businesses'
+            referencedColumns: ['id']
+          },
+        ]
       }
     }
     Views: {

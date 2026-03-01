@@ -11,6 +11,7 @@ import { checkRateLimit, listingCreateLimiter } from '@/lib/rate-limiter'
 import { getUserEntitlements, type Entitlements } from '@/lib/entitlements'
 import { getListingEligibility } from '@/lib/search/eligibility'
 import { getListingQuality, type QualityFlags } from '@/lib/listing-quality'
+import * as pwService from '@/lib/pw-service'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -165,6 +166,18 @@ export async function createBusinessDraft(formData: FormData) {
     },
   })
 
+  // ── P/W dual-write: create W(draft, new) ────────────────────────
+  await pwService.dualWrite('createBusinessDraft', () =>
+    pwService.createWorking(business.id, 'new', {
+      name: parsed.data.name,
+      description: parsed.data.description || null,
+      phone: parsed.data.phone || null,
+      email_contact: parsed.data.email_contact || null,
+      website: parsed.data.website || null,
+      abn: parsed.data.abn || null,
+    })
+  )
+
   revalidatePath('/dashboard')
   return { data: business }
 }
@@ -236,6 +249,18 @@ export async function updateBusiness(businessId: string, formData: FormData) {
       details: { listing_name: parsed.data.name, draft_save: true },
     })
 
+    // ── P/W dual-write: update W text fields (live listing edit) ────
+    await pwService.dualWrite('updateBusiness:live', () =>
+      pwService.updateWorking(businessId, {
+        name: parsed.data.name,
+        description: parsed.data.description || null,
+        phone: parsed.data.phone || null,
+        email_contact: parsed.data.email_contact || null,
+        website: parsed.data.website || null,
+        abn: parsed.data.abn || null,
+      })
+    )
+
     revalidatePath('/dashboard')
     return { data: business }
   }
@@ -276,6 +301,18 @@ export async function updateBusiness(businessId: string, formData: FormData) {
     actorId: user.id,
     details: { listing_name: parsed.data.name },
   })
+
+  // ── P/W dual-write: update W text fields (draft) ─────────────────
+  await pwService.dualWrite('updateBusiness:draft', () =>
+    pwService.updateWorking(businessId, {
+      name: parsed.data.name,
+      description: parsed.data.description || null,
+      phone: parsed.data.phone || null,
+      email_contact: parsed.data.email_contact || null,
+      website: parsed.data.website || null,
+      abn: parsed.data.abn || null,
+    })
+  )
 
   revalidatePath('/dashboard')
   revalidatePath(`/business/${business.slug}`)
@@ -415,6 +452,19 @@ export async function updateBusinessLocation(
     }
   }
 
+  // ── P/W dual-write: update W location fields ─────────────────────
+  await pwService.dualWrite('updateBusinessLocation', () =>
+    pwService.updateWorking(businessId, {
+      address_text: parsed.data.address_text || null,
+      suburb: parsed.data.suburb,
+      state: parsed.data.state,
+      postcode: parsed.data.postcode,
+      lat,
+      lng,
+      service_radius_km: parsed.data.service_radius_km,
+    })
+  )
+
   revalidatePath('/dashboard')
   return { success: true }
 }
@@ -474,6 +524,14 @@ export async function updateBusinessCategories(
         : 'Failed to save categories. Please try again.',
     }
   }
+
+  // ── P/W dual-write: update W category fields ────────────────────
+  await pwService.dualWrite('updateBusinessCategories', () =>
+    pwService.updateWorking(businessId, {
+      primary_category_id: primaryCategoryId,
+      secondary_category_ids: secondaryCategoryIds,
+    })
+  )
 
   revalidatePath('/dashboard')
   return { success: true }
@@ -749,6 +807,11 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
       details: { listing_name: contentToValidate.name, published: true },
     })
 
+    // ── P/W dual-write: approve W → create P snapshot ──────────────
+    await pwService.dualWrite('publishChanges:approved', () =>
+      pwService.approveWorking(businessId)
+    )
+
     revalidatePath('/dashboard')
     revalidatePath(`/business/${biz.slug}`)
     return { success: true, published: true }
@@ -799,6 +862,18 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
     .from('businesses')
     .update({ verification_status: finalDecision === 'rejected' ? 'rejected' : 'pending' })
     .eq('id', businessId)
+
+  // ── P/W dual-write: submit or reject W ────────────────────────────
+  if (finalDecision === 'rejected') {
+    await pwService.dualWrite('publishChanges:rejected', () =>
+      pwService.rejectWorking(businessId, undefined,
+        imageModReason || 'AI validation rejected')
+    )
+  } else {
+    await pwService.dualWrite('publishChanges:pending', () =>
+      pwService.submitWorking(businessId)
+    )
+  }
 
   revalidatePath('/dashboard')
   revalidatePath('/admin/verification')
@@ -854,6 +929,11 @@ export async function pauseBusiness(businessId: string) {
     details: { status_change: 'published -> paused' },
   })
 
+  // ── P/W dual-write: set P visibility to paused ──────────────────
+  await pwService.dualWrite('pauseBusiness', () =>
+    pwService.setVisibility(businessId, 'paused')
+  )
+
   revalidatePath('/dashboard')
   return { success: true }
 }
@@ -907,6 +987,11 @@ export async function unpauseBusiness(businessId: string) {
     actorId: user.id,
     details: { status_change: 'paused -> published' },
   })
+
+  // ── P/W dual-write: set P visibility to live ────────────────────
+  await pwService.dualWrite('unpauseBusiness', () =>
+    pwService.setVisibility(businessId, 'live')
+  )
 
   revalidatePath('/dashboard')
   return { success: true }
@@ -1197,6 +1282,11 @@ export async function softDeleteBusiness(businessId: string) {
       after_state: { status: 'deleted', deleted_at: now },
     },
   })
+
+  // ── P/W dual-write: archive active W ─────────────────────────────
+  await pwService.dualWrite('softDeleteBusiness', () =>
+    pwService.archiveWorking(businessId)
+  )
 
   revalidatePath('/dashboard')
   if (business.slug) revalidatePath(`/business/${business.slug}`)
