@@ -5,6 +5,7 @@ import { testimonialSchema } from '@/lib/validations'
 import { MAX_TESTIMONIALS } from '@/lib/constants'
 import { revalidatePath } from 'next/cache'
 import { getUserEntitlements } from '@/lib/entitlements'
+import * as pwService from '@/lib/pw-service'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -27,7 +28,7 @@ async function verifyBusinessOwnership(businessId: string) {
 
   const { data: business, error } = await supabase
     .from('businesses')
-    .select('id, owner_id, slug, status, verification_status')
+    .select('id, owner_id, slug')
     .eq('id', businessId)
     .single()
 
@@ -57,7 +58,8 @@ export async function addTestimonial(
 ) {
   const { supabase, user, business } = await verifyBusinessOwnership(businessId)
 
-  if ((business as any).verification_status === 'pending' && business.status !== 'draft') {
+  const guard = await pwService.getEditGuard(businessId)
+  if (guard.underReview) {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
@@ -96,8 +98,8 @@ export async function addTestimonial(
     return { error: parsed.error.flatten().fieldErrors }
   }
 
-  // Determine status: pending_add for published/paused, live for drafts
-  const testimonialStatus = isPublishedOrPaused(business.status) ? 'pending_add' : 'live'
+  // Determine status: pending_add for live listings, live for drafts
+  const testimonialStatus = guard.isLive ? 'pending_add' : 'live'
 
   const { data: testimonial, error } = await supabase
     .from('testimonials')
@@ -137,7 +139,7 @@ export async function deleteTestimonial(testimonialId: string) {
   // Verify ownership of the parent business
   const { data: business, error: bizError } = await supabase
     .from('businesses')
-    .select('id, owner_id, slug, status, verification_status')
+    .select('id, owner_id, slug')
     .eq('id', testimonial.business_id)
     .single()
 
@@ -149,18 +151,19 @@ export async function deleteTestimonial(testimonialId: string) {
     return { error: 'You do not have permission to delete this testimonial' }
   }
 
-  if ((business as any).verification_status === 'pending' && business.status !== 'draft') {
+  const guard = await pwService.getEditGuard(testimonial.business_id)
+  if (guard.underReview) {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
-  // If business is published/paused and testimonial is 'live':
+  // If listing is live and testimonial is 'live':
   //   → Mark as pending_delete
   // If testimonial is 'pending_add' (not yet approved):
   //   → Delete immediately
-  // If business is draft:
+  // If listing is draft:
   //   → Delete immediately
 
-  if (isPublishedOrPaused(business.status) && testimonial.status === 'live') {
+  if (guard.isLive && testimonial.status === 'live') {
     const { error: updateError } = await supabase
       .from('testimonials')
       .update({ status: 'pending_delete' })

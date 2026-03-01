@@ -16,6 +16,15 @@ vi.mock('@/app/actions/system-settings', () => ({
   getSettingValue: vi.fn(() => Promise.resolve(10)),
 }))
 
+const mockGetEditGuard = vi.fn()
+vi.mock('@/lib/pw-service', () => ({
+  getEditGuard: (...args: any[]) => mockGetEditGuard(...args),
+}))
+
+vi.mock('@/lib/verification', () => ({
+  moderateImages: vi.fn(() => Promise.resolve([{ safe: true, adult_content: 0, violence: 0 }])),
+}))
+
 import { getUploadUrl, addPhoto, deletePhoto, reorderPhotos } from '../photos'
 
 describe('getUploadUrl', () => {
@@ -127,6 +136,7 @@ describe('addPhoto', () => {
       data: { user: mockUser },
       error: null,
     })
+    mockGetEditGuard.mockResolvedValue({ underReview: false, verificationOk: false, isLive: false, visibilityStatus: null })
   })
 
   it('requires premium plan', async () => {
@@ -184,6 +194,7 @@ describe('addPhoto', () => {
   })
 
   it('inserts photo with pending_add status for published business', async () => {
+    mockGetEditGuard.mockResolvedValueOnce({ underReview: false, verificationOk: true, isLive: true, visibilityStatus: 'live' })
     single.mockResolvedValueOnce({
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'published' },
       error: null,
@@ -206,6 +217,7 @@ describe('addPhoto', () => {
   })
 
   it('inserts photo with pending_add status for paused business', async () => {
+    mockGetEditGuard.mockResolvedValueOnce({ underReview: false, verificationOk: true, isLive: true, visibilityStatus: 'paused' })
     single.mockResolvedValueOnce({
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'paused' },
       error: null,
@@ -235,6 +247,7 @@ describe('deletePhoto', () => {
       data: { user: mockUser },
       error: null,
     })
+    mockGetEditGuard.mockResolvedValue({ underReview: false, verificationOk: false, isLive: false, visibilityStatus: null })
   })
 
   it('returns error for non-existent photo', async () => {
@@ -275,6 +288,7 @@ describe('deletePhoto', () => {
   })
 
   it('marks live photo as pending_delete on published business', async () => {
+    mockGetEditGuard.mockResolvedValueOnce({ underReview: false, verificationOk: true, isLive: true, visibilityStatus: 'live' })
     single.mockResolvedValueOnce({
       data: { id: 'photo-1', business_id: 'biz-123', url: 'https://example.supabase.co/storage/v1/object/public/photos/biz-123/1234-test.jpg', status: 'live' },
       error: null,
@@ -291,6 +305,7 @@ describe('deletePhoto', () => {
   })
 
   it('marks live photo as pending_delete on paused business', async () => {
+    mockGetEditGuard.mockResolvedValueOnce({ underReview: false, verificationOk: true, isLive: true, visibilityStatus: 'paused' })
     single.mockResolvedValueOnce({
       data: { id: 'photo-1', business_id: 'biz-123', url: 'https://example.supabase.co/storage/v1/object/public/photos/biz-123/1234-test.jpg', status: 'live' },
       error: null,
@@ -306,6 +321,7 @@ describe('deletePhoto', () => {
   })
 
   it('immediately deletes pending_add photo on published business', async () => {
+    mockGetEditGuard.mockResolvedValueOnce({ underReview: false, verificationOk: true, isLive: true, visibilityStatus: 'live' })
     single.mockResolvedValueOnce({
       data: { id: 'photo-1', business_id: 'biz-123', url: 'https://example.supabase.co/storage/v1/object/public/photos/biz-123/1234-test.jpg', status: 'pending_add' },
       error: null,
@@ -343,6 +359,7 @@ describe('reorderPhotos', () => {
       data: { user: mockUser },
       error: null,
     })
+    mockGetEditGuard.mockResolvedValue({ underReview: false, verificationOk: false, isLive: false, visibilityStatus: null })
     single.mockResolvedValueOnce({
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'published' },
       error: null,

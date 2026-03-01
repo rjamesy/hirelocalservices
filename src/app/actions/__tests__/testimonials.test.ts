@@ -16,6 +16,11 @@ vi.mock('@/app/actions/system-settings', () => ({
   getSettingValue: vi.fn(() => Promise.resolve(10)),
 }))
 
+const mockGetEditGuard = vi.fn()
+vi.mock('@/lib/pw-service', () => ({
+  getEditGuard: (...args: any[]) => mockGetEditGuard(...args),
+}))
+
 import { addTestimonial, deleteTestimonial } from '../testimonials'
 
 function makeFormData(data: Record<string, string>): FormData {
@@ -33,6 +38,7 @@ describe('addTestimonial', () => {
       data: { user: mockUser },
       error: null,
     })
+    mockGetEditGuard.mockResolvedValue({ underReview: false, verificationOk: false, isLive: false, visibilityStatus: null })
   })
 
   it('requires authentication', async () => {
@@ -122,6 +128,7 @@ describe('addTestimonial', () => {
   })
 
   it('inserts testimonial with pending_add status for published business', async () => {
+    mockGetEditGuard.mockResolvedValueOnce({ underReview: false, verificationOk: true, isLive: true, visibilityStatus: 'live' })
     single.mockResolvedValueOnce({
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'published' },
       error: null,
@@ -145,6 +152,7 @@ describe('addTestimonial', () => {
   })
 
   it('inserts testimonial with pending_add status for paused business', async () => {
+    mockGetEditGuard.mockResolvedValueOnce({ underReview: false, verificationOk: true, isLive: true, visibilityStatus: 'paused' })
     single.mockResolvedValueOnce({
       data: { id: 'biz-123', owner_id: 'user-123', slug: 'test-biz', status: 'paused' },
       error: null,
@@ -216,6 +224,7 @@ describe('deleteTestimonial', () => {
       data: { user: mockUser },
       error: null,
     })
+    mockGetEditGuard.mockResolvedValue({ underReview: false, verificationOk: false, isLive: false, visibilityStatus: null })
   })
 
   it('returns error for non-existent testimonial', async () => {
@@ -253,6 +262,7 @@ describe('deleteTestimonial', () => {
   })
 
   it('marks live testimonial as pending_delete on published business', async () => {
+    mockGetEditGuard.mockResolvedValueOnce({ underReview: false, verificationOk: true, isLive: true, visibilityStatus: 'live' })
     single.mockResolvedValueOnce({
       data: { id: 'test-1', business_id: 'biz-123', status: 'live' },
       error: null,
@@ -267,6 +277,7 @@ describe('deleteTestimonial', () => {
   })
 
   it('marks live testimonial as pending_delete on paused business', async () => {
+    mockGetEditGuard.mockResolvedValueOnce({ underReview: false, verificationOk: true, isLive: true, visibilityStatus: 'paused' })
     single.mockResolvedValueOnce({
       data: { id: 'test-1', business_id: 'biz-123', status: 'live' },
       error: null,
@@ -281,6 +292,7 @@ describe('deleteTestimonial', () => {
   })
 
   it('immediately deletes pending_add testimonial on published business', async () => {
+    mockGetEditGuard.mockResolvedValueOnce({ underReview: false, verificationOk: true, isLive: true, visibilityStatus: 'live' })
     single.mockResolvedValueOnce({
       data: { id: 'test-1', business_id: 'biz-123', status: 'pending_add' },
       error: null,
@@ -310,6 +322,7 @@ describe('deleteTestimonial', () => {
   })
 
   it('handles update failure for pending_delete', async () => {
+    mockGetEditGuard.mockResolvedValueOnce({ underReview: false, verificationOk: true, isLive: true, visibilityStatus: 'live' })
     single.mockResolvedValueOnce({
       data: { id: 'test-1', business_id: 'biz-123', status: 'live' },
       error: null,

@@ -574,3 +574,41 @@ export function deriveStatus(
     reviewStatus,
   }
 }
+
+// ─── Edit Guard ──────────────────────────────────────────────────────
+
+/**
+ * Centralized guard for owner-facing edit operations.
+ *
+ * Fetches W + P in parallel and returns:
+ * - underReview: W exists with review_status='pending' → block all edits
+ * - verificationOk: P exists AND no W with pending/changes_required → for unpause
+ * - isLive: P exists with visibility_status 'live' or 'paused' → pending_add vs live
+ * - visibilityStatus: raw P.visibility_status → for pause/unpause guards
+ */
+export async function getEditGuard(businessId: string): Promise<{
+  underReview: boolean
+  verificationOk: boolean
+  isLive: boolean
+  visibilityStatus: 'live' | 'paused' | 'suspended' | null
+}> {
+  const [w, p] = await Promise.all([
+    getActiveWorkingTyped(businessId),
+    getCurrentPublishedTyped(businessId),
+  ])
+
+  // Invariant: a pending W should always have submitted_at
+  if (w && w.review_status === 'pending' && !w.submitted_at) {
+    console.error('[getEditGuard] Invariant violation: pending W without submitted_at', { businessId })
+  }
+
+  return {
+    underReview: w?.review_status === 'pending',
+    verificationOk:
+      !!p &&
+      (!w || w.review_status === 'draft') &&
+      w?.review_status !== 'changes_required',
+    isLive: !!p && (p.visibility_status === 'live' || p.visibility_status === 'paused'),
+    visibilityStatus: p?.visibility_status ?? null,
+  }
+}

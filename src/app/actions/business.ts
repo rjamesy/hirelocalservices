@@ -202,22 +202,24 @@ export async function updateBusiness(businessId: string, formData: FormData) {
     return { error: parsed.error.flatten().fieldErrors }
   }
 
-  // Fetch current business status
-  const { data: currentBiz } = await supabase
-    .from('businesses')
-    .select('status, slug, billing_status, verification_status')
-    .eq('id', businessId)
-    .single()
-
-  if (currentBiz?.verification_status === 'pending' && currentBiz?.status !== 'draft') {
+  // Guard: block edits while under review
+  const guard = await pwService.getEditGuard(businessId)
+  if (guard.underReview) {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
+
+  // Fetch slug + billing status (still needed from businesses)
+  const { data: currentBiz } = await supabase
+    .from('businesses')
+    .select('slug, billing_status')
+    .eq('id', businessId)
+    .single()
 
   if (currentBiz?.billing_status === 'billing_suspended') {
     return { error: 'This listing is suspended due to billing. Please upgrade your plan.' }
   }
 
-  const isLive = currentBiz?.status === 'published' || currentBiz?.status === 'paused'
+  const isLive = guard.isLive
 
   if (isLive) {
     // Published/paused: write to pending_changes only — live version unchanged
@@ -326,12 +328,8 @@ export async function updateBusinessLocation(
   const { supabase } = await verifyBusinessOwnership(businessId)
 
   // Guard: block edits while under review
-  const { data: locBiz } = await supabase
-    .from('businesses')
-    .select('verification_status, status')
-    .eq('id', businessId)
-    .single()
-  if (locBiz?.verification_status === 'pending' && locBiz?.status !== 'draft') {
+  const guard = await pwService.getEditGuard(businessId)
+  if (guard.underReview) {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
@@ -477,12 +475,8 @@ export async function updateBusinessCategories(
   const { supabase } = await verifyBusinessOwnership(businessId)
 
   // Guard: block edits while under review
-  const { data: catBiz } = await supabase
-    .from('businesses')
-    .select('verification_status, status')
-    .eq('id', businessId)
-    .single()
-  if (catBiz?.verification_status === 'pending' && catBiz?.status !== 'draft') {
+  const guard = await pwService.getEditGuard(businessId)
+  if (guard.underReview) {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
@@ -564,12 +558,18 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
     return { error: 'subscription_required' }
   }
 
+  // Guard: block resubmission while under review
+  const guard = await pwService.getEditGuard(businessId)
+  if (guard.underReview) {
+    return { error: 'This listing is currently under review and cannot be resubmitted.' }
+  }
+
   // Fetch current business
   const { data: biz } = await supabase
     .from('businesses')
     .select(`
       id, name, description, phone, email_contact, website, abn,
-      status, slug, pending_changes, verification_status, billing_status,
+      slug, pending_changes, billing_status,
       duplicate_user_choice,
       business_locations (lat, lng),
       business_contacts (phone, email)
@@ -579,10 +579,6 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
 
   if (!biz) {
     return { error: 'Business not found' }
-  }
-
-  if (biz.verification_status === 'pending' && biz.status !== 'draft') {
-    return { error: 'This listing is currently under review and cannot be resubmitted.' }
   }
 
   if ((biz as any).billing_status === 'billing_suspended') {
@@ -899,13 +895,8 @@ export async function pauseBusiness(businessId: string) {
     return { error: err instanceof Error ? err.message : 'Permission denied' }
   }
 
-  const { data: biz } = await supabase
-    .from('businesses')
-    .select('status')
-    .eq('id', businessId)
-    .single()
-
-  if (!biz || biz.status !== 'published') {
+  const guard = await pwService.getEditGuard(businessId)
+  if (guard.visibilityStatus !== 'live') {
     return { error: 'Only published listings can be paused' }
   }
 
@@ -948,17 +939,12 @@ export async function unpauseBusiness(businessId: string) {
     return { error: err instanceof Error ? err.message : 'Permission denied' }
   }
 
-  const { data: biz } = await supabase
-    .from('businesses')
-    .select('status, verification_status')
-    .eq('id', businessId)
-    .single()
-
-  if (!biz || biz.status !== 'paused') {
+  const guard = await pwService.getEditGuard(businessId)
+  if (guard.visibilityStatus !== 'paused') {
     return { error: 'Only paused listings can be unpaused' }
   }
 
-  if (biz.verification_status !== 'approved') {
+  if (!guard.verificationOk) {
     return { error: 'Your listing must be verified before unpausing' }
   }
 

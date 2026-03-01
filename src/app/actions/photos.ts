@@ -5,6 +5,7 @@ import { MAX_PHOTOS } from '@/lib/constants'
 import { extractStoragePath } from '@/lib/photo-utils'
 import { revalidatePath } from 'next/cache'
 import { getUserEntitlements } from '@/lib/entitlements'
+import * as pwService from '@/lib/pw-service'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -27,7 +28,7 @@ async function verifyBusinessOwnership(businessId: string) {
 
   const { data: business, error } = await supabase
     .from('businesses')
-    .select('id, owner_id, slug, status, verification_status')
+    .select('id, owner_id, slug')
     .eq('id', businessId)
     .single()
 
@@ -131,7 +132,8 @@ export async function addPhoto(
 ) {
   const { supabase, user, business } = await verifyBusinessOwnership(businessId)
 
-  if ((business as any).verification_status === 'pending' && business.status !== 'draft') {
+  const guard = await pwService.getEditGuard(businessId)
+  if (guard.underReview) {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
@@ -170,8 +172,8 @@ export async function addPhoto(
     return { error: 'This image violates our content guidelines and cannot be uploaded.' }
   }
 
-  // Determine status: pending_add for published/paused, live for drafts
-  const photoStatus = isPublishedOrPaused(business.status) ? 'pending_add' : 'live'
+  // Determine status: pending_add for live listings, live for drafts
+  const photoStatus = guard.isLive ? 'pending_add' : 'live'
 
   const { data: photo, error } = await supabase
     .from('photos')
@@ -210,7 +212,7 @@ export async function deletePhoto(photoId: string) {
   // Verify ownership of the parent business
   const { data: business, error: bizError } = await supabase
     .from('businesses')
-    .select('id, owner_id, slug, status, verification_status')
+    .select('id, owner_id, slug')
     .eq('id', photo.business_id)
     .single()
 
@@ -222,18 +224,19 @@ export async function deletePhoto(photoId: string) {
     return { error: 'You do not have permission to delete this photo' }
   }
 
-  if ((business as any).verification_status === 'pending' && business.status !== 'draft') {
+  const guard = await pwService.getEditGuard(photo.business_id)
+  if (guard.underReview) {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
-  // If business is published/paused and photo is 'live':
+  // If listing is live and photo is 'live':
   //   → Mark as pending_delete (will be cleaned up on approval)
   // If photo is 'pending_add' (not yet approved):
   //   → Delete immediately from DB + storage (it was never live)
-  // If business is draft:
+  // If listing is draft:
   //   → Delete immediately from DB + storage
 
-  if (isPublishedOrPaused(business.status) && photo.status === 'live') {
+  if (guard.isLive && photo.status === 'live') {
     // Mark for pending deletion
     const { error: updateError } = await supabase
       .from('photos')
@@ -273,7 +276,8 @@ export async function reorderPhotos(
 ) {
   const { supabase, business } = await verifyBusinessOwnership(businessId)
 
-  if ((business as any).verification_status === 'pending' && business.status !== 'draft') {
+  const guard = await pwService.getEditGuard(businessId)
+  if (guard.underReview) {
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 

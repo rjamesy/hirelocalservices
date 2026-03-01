@@ -49,11 +49,13 @@ vi.mock('@/lib/claim-scoring', () => ({
 const mockGetCurrentPublishedTyped = vi.fn()
 const mockGetActiveWorkingTyped = vi.fn()
 const mockDeriveStatus = vi.fn()
+const mockGetEditGuard = vi.fn()
 vi.mock('@/lib/pw-service', () => ({
   getCurrentPublishedTyped: (...args: any[]) => mockGetCurrentPublishedTyped(...args),
   getActiveWorkingTyped: (...args: any[]) => mockGetActiveWorkingTyped(...args),
   getListingState: vi.fn(),
   deriveStatus: (...args: any[]) => mockDeriveStatus(...args),
+  getEditGuard: (...args: any[]) => mockGetEditGuard(...args),
   dualWrite: vi.fn(async (_label: string, fn: () => Promise<void>) => { try { await fn() } catch {} }),
   createWorking: vi.fn(),
   updateWorking: vi.fn(),
@@ -200,9 +202,10 @@ describe('updateBusiness', () => {
       data: { user: mockUser },
       error: null,
     })
-    // verifyBusinessOwnership (now includes billing_status in select)
+    mockGetEditGuard.mockResolvedValue({ underReview: false, verificationOk: false, isLive: false, visibilityStatus: null })
+    // verifyBusinessOwnership
     single.mockResolvedValueOnce({
-      data: { id: 'biz-123', owner_id: 'user-123', status: 'published', slug: 'test', billing_status: 'active' },
+      data: { id: 'biz-123', owner_id: 'user-123' },
       error: null,
     })
     // getUserEntitlements: no subscription
@@ -220,7 +223,12 @@ describe('updateBusiness', () => {
   })
 
   it('updates business on valid data', async () => {
-    // fetch current business status
+    // fetch slug + billing_status
+    single.mockResolvedValueOnce({
+      data: { slug: 'test', billing_status: 'active' },
+      error: null,
+    })
+    // update result
     single.mockResolvedValueOnce({
       data: { ...mockBusiness, name: 'Updated' },
       error: null,
@@ -254,13 +262,14 @@ describe('updateBusiness', () => {
     await expect(updateBusiness('biz-123', fd)).rejects.toThrow('permission')
   })
 
-  it('allows editing a draft with verification_status=pending', async () => {
-    // single #2: fetch current biz status — draft + pending should NOT block
+  it('allows editing when not under review', async () => {
+    // guard.underReview = false (default) → editing allowed
+    // fetch slug + billing_status
     single.mockResolvedValueOnce({
-      data: { status: 'draft', slug: 'test', billing_status: 'active', verification_status: 'pending' },
+      data: { slug: 'test', billing_status: 'active' },
       error: null,
     })
-    // single #3: update result
+    // update result
     single.mockResolvedValueOnce({
       data: { ...mockBusiness, status: 'draft', name: 'Updated' },
       error: null,
@@ -275,12 +284,8 @@ describe('updateBusiness', () => {
     expect(result).toHaveProperty('data')
   })
 
-  it('blocks editing a published listing with verification_status=pending', async () => {
-    // single #2: fetch current biz status — published + pending SHOULD block
-    single.mockResolvedValueOnce({
-      data: { status: 'published', slug: 'test', billing_status: 'active', verification_status: 'pending' },
-      error: null,
-    })
+  it('blocks editing when under review', async () => {
+    mockGetEditGuard.mockResolvedValueOnce({ underReview: true, verificationOk: false, isLive: true, visibilityStatus: 'live' })
 
     const fd = makeFormData({
       name: 'Updated Business',
@@ -299,6 +304,7 @@ describe('updateBusinessLocation', () => {
       data: { user: mockUser },
       error: null,
     })
+    mockGetEditGuard.mockResolvedValue({ underReview: false, verificationOk: false, isLive: false, visibilityStatus: null })
     // ownership check
     single.mockResolvedValueOnce({
       data: { id: 'biz-123', owner_id: 'user-123' },
@@ -392,14 +398,10 @@ describe('updateBusinessCategories', () => {
       data: { user: mockUser },
       error: null,
     })
+    mockGetEditGuard.mockResolvedValue({ underReview: false, verificationOk: false, isLive: false, visibilityStatus: null })
     // verifyBusinessOwnership
     single.mockResolvedValueOnce({
       data: { id: 'biz-123', owner_id: 'user-123' },
-      error: null,
-    })
-    // verification_status + status guard query
-    single.mockResolvedValueOnce({
-      data: { verification_status: 'approved', status: 'draft' },
       error: null,
     })
   })
@@ -446,42 +448,16 @@ describe('updateBusinessCategories', () => {
     expect(result).toEqual({ error: 'Secondary categories must be in the same group as the primary category.' })
   })
 
-  it('allows editing when draft has verification_status=pending', async () => {
-    vi.resetAllMocks()
-    mockSupabase.auth.getUser.mockResolvedValue({
-      data: { user: mockUser },
-      error: null,
-    })
-    single.mockResolvedValueOnce({
-      data: { id: 'biz-123', owner_id: 'user-123' },
-      error: null,
-    })
-    // draft + pending = should NOT block
-    single.mockResolvedValueOnce({
-      data: { verification_status: 'pending', status: 'draft' },
-      error: null,
-    })
+  it('allows editing when not under review', async () => {
+    // guard.underReview = false (default) → editing allowed
     mockSupabase.rpc.mockResolvedValueOnce({ data: null, error: null })
 
     const result = await updateBusinessCategories('biz-123', 'cat-1', [])
     expect(result).toEqual({ success: true })
   })
 
-  it('blocks editing when published listing has verification_status=pending', async () => {
-    vi.resetAllMocks()
-    mockSupabase.auth.getUser.mockResolvedValue({
-      data: { user: mockUser },
-      error: null,
-    })
-    single.mockResolvedValueOnce({
-      data: { id: 'biz-123', owner_id: 'user-123' },
-      error: null,
-    })
-    // published + pending = SHOULD block
-    single.mockResolvedValueOnce({
-      data: { verification_status: 'pending', status: 'published' },
-      error: null,
-    })
+  it('blocks editing when under review', async () => {
+    mockGetEditGuard.mockResolvedValueOnce({ underReview: true, verificationOk: false, isLive: true, visibilityStatus: 'live' })
 
     const result = await updateBusinessCategories('biz-123', 'cat-1', [])
     expect(result).toEqual({ error: 'This listing is currently under review and cannot be edited.' })
@@ -506,6 +482,7 @@ describe('publishChanges', () => {
       data: { user: mockUser },
       error: null,
     })
+    mockGetEditGuard.mockResolvedValue({ underReview: false, verificationOk: false, isLive: false, visibilityStatus: null })
     // verifyBusinessOwnership: business fetch
     single.mockResolvedValueOnce({
       data: { id: 'biz-123', owner_id: 'user-123' },
