@@ -47,8 +47,13 @@ vi.mock('@/lib/claim-scoring', () => ({
 }))
 
 const mockGetCurrentPublishedTyped = vi.fn()
+const mockGetActiveWorkingTyped = vi.fn()
+const mockDeriveStatus = vi.fn()
 vi.mock('@/lib/pw-service', () => ({
   getCurrentPublishedTyped: (...args: any[]) => mockGetCurrentPublishedTyped(...args),
+  getActiveWorkingTyped: (...args: any[]) => mockGetActiveWorkingTyped(...args),
+  getListingState: vi.fn(),
+  deriveStatus: (...args: any[]) => mockDeriveStatus(...args),
   dualWrite: vi.fn(async (_label: string, fn: () => Promise<void>) => { try { await fn() } catch {} }),
   createWorking: vi.fn(),
   updateWorking: vi.fn(),
@@ -596,6 +601,45 @@ describe('unpublishBusiness', () => {
 })
 
 describe('getMyBusiness', () => {
+  const derivedPublished = {
+    effectiveStatus: 'published',
+    effectiveVerification: 'approved',
+    hasPendingChanges: false,
+    visibilityStatus: 'live',
+    reviewStatus: null,
+  }
+
+  const mockW = {
+    id: 'w-1',
+    business_id: mockBusiness.id,
+    name: 'Working Name',
+    description: 'Working desc',
+    phone: '0400000000',
+    email_contact: 'w@test.com',
+    website: 'https://working.com',
+    abn: '99999999999',
+    suburb: 'Melbourne',
+    state: 'VIC',
+    postcode: '3000',
+    address_text: '1 Working St',
+    service_radius_km: 10,
+    lat: null,
+    lng: null,
+    primary_category_id: 'cat-1',
+    secondary_category_ids: ['cat-2'],
+    review_status: 'draft' as const,
+    change_type: 'edit' as const,
+    rejection_reason: null,
+    rejection_count: 0,
+    verification_job_id: null,
+    submitted_at: null,
+    reviewed_at: null,
+    reviewed_by: null,
+    archived_at: null,
+    created_at: '',
+    updated_at: '',
+  }
+
   beforeEach(() => {
     vi.resetAllMocks()
   })
@@ -614,33 +658,131 @@ describe('getMyBusiness', () => {
       data: { user: mockUser },
       error: null,
     })
-    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    // No selectedId → .order() → chainResult
+    chainResult.mockReturnValueOnce({ data: [], error: null })
 
     const result = await getMyBusiness()
     expect(result).toBeNull()
   })
 
-  it('flattens location and returns null subscription', async () => {
+  it('overrides content from W when W exists', async () => {
     mockSupabase.auth.getUser.mockResolvedValue({
       data: { user: mockUser },
       error: null,
     })
-    // getMyBusiness uses .order() without .single(), so result comes via chainResult
+    // No selectedId → .order() → chainResult (businesses list)
     chainResult.mockReturnValueOnce({
       data: [{
         ...mockBusiness,
-        business_locations: [{ id: 'loc-1', suburb: 'Brisbane' }],
+        business_locations: [{ suburb: 'Brisbane', state: 'QLD', postcode: '4000' }],
+        business_categories: [{ category_id: 'cat-1', is_primary: true }],
+        photos: [],
+        testimonials: [],
+      }],
+      error: null,
+    })
+    // W + P fetched in parallel
+    mockGetActiveWorkingTyped.mockResolvedValueOnce(mockW)
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce(null)
+    mockDeriveStatus.mockReturnValueOnce(derivedPublished)
+    // photos + testimonials chainResult (from Promise.all with W/P)
+    chainResult.mockReturnValueOnce({ data: [], error: null }) // photos
+    chainResult.mockReturnValueOnce({ data: [], error: null }) // testimonials
+
+    const result = await getMyBusiness()
+    expect(result).not.toBeNull()
+    expect(result!.name).toBe('Working Name')
+    expect(result!.description).toBe('Working desc')
+    expect(result!.phone).toBe('0400000000')
+    expect(result!.subscription).toBeNull()
+  })
+
+  it('uses location from W/P when available', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    })
+    chainResult.mockReturnValueOnce({
+      data: [{
+        ...mockBusiness,
+        business_locations: [{ suburb: 'Brisbane', state: 'QLD', postcode: '4000' }],
         business_categories: [],
         photos: [],
         testimonials: [],
       }],
       error: null,
     })
+    mockGetActiveWorkingTyped.mockResolvedValueOnce(mockW)
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce(null)
+    mockDeriveStatus.mockReturnValueOnce(derivedPublished)
+    chainResult.mockReturnValueOnce({ data: [], error: null })
+    chainResult.mockReturnValueOnce({ data: [], error: null })
 
     const result = await getMyBusiness()
-    expect(result).not.toBeNull()
-    expect(result!.location).toEqual({ id: 'loc-1', suburb: 'Brisbane' })
-    expect(result!.subscription).toBeNull()
+    expect(result!.location).toEqual({
+      suburb: 'Melbourne', state: 'VIC', postcode: '3000',
+      address_text: '1 Working St', service_radius_km: 10,
+    })
+  })
+
+  it('falls back to businesses table location when no W/P location', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    })
+    chainResult.mockReturnValueOnce({
+      data: [{
+        ...mockBusiness,
+        business_locations: [{ id: 'loc-1', suburb: 'Brisbane', state: 'QLD', postcode: '4000' }],
+        business_categories: [],
+        photos: [],
+        testimonials: [],
+      }],
+      error: null,
+    })
+    // No W, no P
+    mockGetActiveWorkingTyped.mockResolvedValueOnce(null)
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce(null)
+    mockDeriveStatus.mockReturnValueOnce(derivedPublished)
+    chainResult.mockReturnValueOnce({ data: [], error: null })
+    chainResult.mockReturnValueOnce({ data: [], error: null })
+
+    const result = await getMyBusiness()
+    // Falls back to relational join location
+    expect(result!.location).toEqual({ id: 'loc-1', suburb: 'Brisbane', state: 'QLD', postcode: '4000' })
+  })
+
+  it('returns derived status and verification from deriveStatus', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    })
+    chainResult.mockReturnValueOnce({
+      data: [{
+        ...mockBusiness,
+        business_locations: [],
+        business_categories: [],
+        photos: [],
+        testimonials: [],
+      }],
+      error: null,
+    })
+    mockGetActiveWorkingTyped.mockResolvedValueOnce({
+      ...mockW,
+      review_status: 'pending',
+    })
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce(null)
+    mockDeriveStatus.mockReturnValueOnce({
+      ...derivedPublished,
+      effectiveStatus: 'published',
+      effectiveVerification: 'pending',
+    })
+    chainResult.mockReturnValueOnce({ data: [], error: null })
+    chainResult.mockReturnValueOnce({ data: [], error: null })
+
+    const result = await getMyBusiness()
+    expect(result!.status).toBe('published')
+    expect(result!.verification_status).toBe('pending')
   })
 })
 

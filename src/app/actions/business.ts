@@ -1050,21 +1050,25 @@ export async function getMyBusinesses() {
 
   if (!user) return []
 
+  // Identity fields from businesses table (pending_changes kept for legacy UI compat)
   const { data } = await supabase
     .from('businesses')
-    .select(`
-      id, name, slug, status,
-      description, phone, email_contact, website,
-      verification_status, pending_changes, deleted_at, suspended_reason,
-      business_locations(id, postcode, suburb, state),
-      business_categories(category_id, is_primary)
-    `)
+    .select('id, slug, billing_status, deleted_at, is_seed, suspended_reason, pending_changes')
     .eq('owner_id', user.id)
     .eq('is_seed', false)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
   if (!data || data.length === 0) return []
+
+  // Fetch W + P for each business in parallel
+  const pwStates = await Promise.all(data.map(async (b) => {
+    const [w, p] = await Promise.all([
+      pwService.getActiveWorkingTyped(b.id),
+      pwService.getCurrentPublishedTyped(b.id),
+    ])
+    return { w, p }
+  }))
 
   const [entitlements, systemFlags] = await Promise.all([
     getUserEntitlements(supabase, user.id),
@@ -1079,33 +1083,55 @@ export async function getMyBusinesses() {
     listingsEnabled: systemFlags.listings_enabled,
   }
 
-  return data.map((b) => {
-    const loc = Array.isArray(b.business_locations)
-      ? b.business_locations[0] ?? null
-      : b.business_locations
+  return data.map((b, i) => {
+    const { w, p } = pwStates[i]
+    const source = w ?? p // W first, fallback to P
+    const derived = pwService.deriveStatus(p, w, { deleted_at: b.deleted_at, billing_status: b.billing_status })
+
+    // Content from W/P
+    const name = source?.name ?? ''
+    const description = source?.description ?? null
+    const phone = source?.phone ?? null
+    const emailContact = source?.email_contact ?? null
+    const website = source?.website ?? null
+    const suburb = source?.suburb ?? null
+    const state = source?.state ?? null
+
+    // Categories from W/P
+    let hasCategories = false
+    if (w) {
+      hasCategories = !!w.primary_category_id || (w.secondary_category_ids ?? []).length > 0
+    } else if (p) {
+      hasCategories = (p.category_ids ?? []).length > 0
+    }
+
+    // Location check (equivalent to old hasValidLocation)
+    const hasLocation = !!(source?.postcode || (source?.suburb && source?.state))
+
     return {
       id: b.id,
-      name: b.name,
+      name,
       slug: b.slug,
-      status: b.status,
-      suburb: (loc as any)?.suburb ?? null,
-      state: (loc as any)?.state ?? null,
-      verification_status: b.verification_status,
+      status: derived.effectiveStatus,
+      suburb,
+      state,
+      verification_status: derived.effectiveVerification,
       pending_changes: b.pending_changes,
-      suspended_reason: (b as any).suspended_reason ?? null,
+      hasPendingChanges: derived.hasPendingChanges,
+      suspended_reason: b.suspended_reason ?? null,
       quality: getListingQuality({
-        name: b.name,
-        description: b.description,
-        phone: b.phone,
-        email_contact: b.email_contact,
-        website: b.website,
-        status: b.status,
-        verification_status: b.verification_status,
-        pending_changes: b.pending_changes,
+        name,
+        description,
+        phone,
+        email_contact: emailContact,
+        website,
+        status: derived.effectiveStatus,
+        verification_status: derived.effectiveVerification,
+        pending_changes: derived.hasPendingChanges ? true : null,
         deleted_at: b.deleted_at,
-        suspended_reason: (b as any).suspended_reason ?? null,
-        hasCategories: (b.business_categories ?? []).length > 0,
-        hasLocation: hasValidLocation(b.business_locations),
+        suspended_reason: b.suspended_reason ?? null,
+        hasCategories,
+        hasLocation,
       }, qualityFlags),
     }
   })
@@ -1326,9 +1352,11 @@ export async function getMyBusiness(selectedId?: string) {
     return null
   }
 
-  // If a specific business was requested, fetch it directly (verify ownership)
+  // Keep existing query with relational joins (categories, photos, testimonials)
+  let business: any = null
+
   if (selectedId) {
-    const { data: business, error } = await supabase
+    const { data, error } = await supabase
       .from('businesses')
       .select(
         `
@@ -1348,58 +1376,74 @@ export async function getMyBusiness(selectedId?: string) {
       .eq('is_seed', false)
       .maybeSingle()
 
-    if (error || !business) return null
+    if (error || !data) return null
+    business = data
+  } else {
+    const { data: businesses, error } = await supabase
+      .from('businesses')
+      .select(
+        `
+        *,
+        business_locations (*),
+        business_categories (
+          category_id,
+          categories (*)
+        ),
+        photos (*),
+        testimonials (*)
+      `
+      )
+      .eq('owner_id', user.id)
+      .eq('is_seed', false)
+      .order('created_at', { ascending: false })
 
-    const location = Array.isArray(business.business_locations)
+    // Pick the best listing: prefer published+claimed, then published, then most recent
+    business = businesses?.sort((a: any, b: any) => {
+      const score = (biz: any) =>
+        (biz.status === 'published' ? 2 : 0) + (biz.claim_status === 'claimed' ? 1 : 0)
+      return score(b) - score(a)
+    })[0] ?? null
+
+    if (error || !business) return null
+  }
+
+  // Fetch W + P for content overlay
+  const [w, p] = await Promise.all([
+    pwService.getActiveWorkingTyped(business.id),
+    pwService.getCurrentPublishedTyped(business.id),
+  ])
+  const source = w ?? p
+  const derived = pwService.deriveStatus(p, w, {
+    deleted_at: business.deleted_at,
+    billing_status: business.billing_status,
+  })
+
+  // Flatten location: prefer W/P, fallback to relational join
+  const location = source && (source.suburb || source.state || source.postcode)
+    ? {
+        suburb: source.suburb,
+        state: source.state,
+        postcode: source.postcode,
+        address_text: source.address_text,
+        service_radius_km: source.service_radius_km,
+      }
+    : Array.isArray(business.business_locations)
       ? business.business_locations[0] ?? null
       : business.business_locations
 
-    return {
-      ...business,
-      location,
-      subscription: null,
-      categories: business.business_categories,
-      photos: business.photos ?? [],
-      testimonials: business.testimonials ?? [],
-    }
-  }
-
-  const { data: businesses, error } = await supabase
-    .from('businesses')
-    .select(
-      `
-      *,
-      business_locations (*),
-      business_categories (
-        category_id,
-        categories (*)
-      ),
-      photos (*),
-      testimonials (*)
-    `
-    )
-    .eq('owner_id', user.id)
-    .eq('is_seed', false)
-    .order('created_at', { ascending: false })
-
-  // Pick the best listing: prefer published+claimed, then published, then most recent
-  const business = businesses?.sort((a, b) => {
-    const score = (biz: typeof a) =>
-      (biz.status === 'published' ? 2 : 0) + (biz.claim_status === 'claimed' ? 1 : 0)
-    return score(b) - score(a)
-  })[0] ?? null
-
-  if (error || !business) {
-    return null
-  }
-
-  // Flatten location (one-to-one relationship)
-  const location = Array.isArray(business.business_locations)
-    ? business.business_locations[0] ?? null
-    : business.business_locations
-
   return {
     ...business,
+    // Override content from W/P (if available), fallback to businesses table
+    name: source?.name ?? business.name,
+    description: source?.description ?? business.description,
+    phone: source?.phone ?? business.phone,
+    email_contact: source?.email_contact ?? business.email_contact,
+    website: source?.website ?? business.website,
+    abn: source?.abn ?? business.abn,
+    // Override status from deriveStatus
+    status: derived.effectiveStatus,
+    verification_status: derived.effectiveVerification,
+    // Preserve relational data
     location,
     subscription: null,
     categories: business.business_categories,
