@@ -165,6 +165,10 @@ export type Category = {
   name: string
   slug: string
   parent_id: string | null
+  synonyms: string[]
+  keywords: string[]
+  is_active: boolean
+  sort_order: number
 }
 
 export type BusinessCategory = {
@@ -560,7 +564,7 @@ export type Database = {
       }
       categories: {
         Row: Category
-        Insert: Omit<Category, 'id'>
+        Insert: Omit<Category, 'id' | 'synonyms' | 'keywords' | 'is_active' | 'sort_order'> & Partial<Pick<Category, 'synonyms' | 'keywords' | 'is_active' | 'sort_order'>>
         Update: Partial<Omit<Category, 'id'>>
         Relationships: [
           {

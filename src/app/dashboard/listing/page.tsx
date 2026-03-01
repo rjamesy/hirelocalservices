@@ -22,6 +22,7 @@ import type { QualityResult } from '@/lib/listing-quality'
 import { cn, formatPhone } from '@/lib/utils'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ListingsCommandCenter from '@/components/ListingsCommandCenter'
+import CategoryPicker from '@/components/CategoryPicker'
 import PhotoUploader from '@/components/PhotoUploader'
 import TestimonialForm from '@/components/TestimonialForm'
 import TestimonialCard from '@/components/TestimonialCard'
@@ -37,6 +38,9 @@ interface Category {
   name: string
   slug: string
   parent_id: string | null
+  synonyms?: string[]
+  keywords?: string[]
+  sort_order?: number
 }
 
 interface PendingChanges {
@@ -830,45 +834,6 @@ function ListingContent() {
     }
   }
 
-  // ─── Category selection ─────────────────────────────────────────
-
-  function selectPrimary(categoryId: string) {
-    setPrimaryCategory(categoryId)
-    // Clear secondaries — new primary may be in a different group
-    setSecondaryCategories([])
-  }
-
-  function toggleSecondary(categoryId: string) {
-    setSecondaryCategories((prev) => {
-      if (prev.includes(categoryId)) {
-        return prev.filter((id) => id !== categoryId)
-      }
-      if (prev.length >= 3) return prev
-      return [...prev, categoryId]
-    })
-  }
-
-  function getPrimaryGroupId(): string | null {
-    if (!primaryCategory) return null
-    const cat = categories.find((c) => c.id === primaryCategory)
-    return cat?.parent_id ?? null
-  }
-
-  // ─── Group categories by parent ──────────────────────────────────
-
-  function getGroupedCategories() {
-    const parents = categories
-      .filter((c) => !c.parent_id)
-      .sort((a, b) => a.name.localeCompare(b.name))
-
-    return parents.map((parent) => ({
-      ...parent,
-      children: categories
-        .filter((c) => c.parent_id === parent.id)
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    }))
-  }
-
   // ─── Render helpers ──────────────────────────────────────────────
 
   function renderFieldError(errors: FieldErrors, field: string) {
@@ -1153,7 +1118,7 @@ function ListingContent() {
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Categories</h2>
               <p className="mt-1 text-sm text-gray-500">
-                Choose your primary service, then optionally add related services from the same group.
+                Search for your primary service, then optionally add related services from the same group.
               </p>
             </div>
 
@@ -1164,104 +1129,17 @@ function ListingContent() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-6">
-                {/* ── Primary category selection ── */}
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-1">
-                    Primary service <span className="text-red-500">*</span>
-                  </h3>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Select the main service your business provides.
-                  </p>
-                  <div className="space-y-4">
-                    {getGroupedCategories().map((group) => (
-                      group.children.length > 0 && (
-                        <div key={group.id}>
-                          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                            {group.name}
-                          </h4>
-                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            {group.children.map((child) => (
-                              <label
-                                key={child.id}
-                                className={cn(
-                                  'flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors',
-                                  primaryCategory === child.id
-                                    ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500'
-                                    : 'border-gray-200 hover:bg-gray-50'
-                                )}
-                              >
-                                <input
-                                  type="radio"
-                                  name="primaryCategory"
-                                  checked={primaryCategory === child.id}
-                                  onChange={() => selectPrimary(child.id)}
-                                  className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-500"
-                                />
-                                <span className="text-sm text-gray-700">{child.name}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )
-                    ))}
-                  </div>
-                </div>
-
-                {/* ── Secondary categories (same group only) ── */}
-                {primaryCategory && (() => {
-                  const groupId = getPrimaryGroupId()
-                  const group = getGroupedCategories().find((g) => g.id === groupId)
-                  const siblings = group?.children.filter((c) => c.id !== primaryCategory) ?? []
-
-                  if (siblings.length === 0) return null
-
-                  return (
-                    <div className="border-t border-gray-200 pt-6">
-                      <h3 className="text-sm font-semibold text-gray-900 mb-1">
-                        Additional services
-                      </h3>
-                      <p className="text-xs text-gray-500 mb-3">
-                        Optionally select related services from {group?.name} (max 3).
-                        {secondaryCategories.length > 0 && (
-                          <span className="ml-1 font-medium text-gray-700">
-                            {secondaryCategories.length}/3 selected
-                          </span>
-                        )}
-                      </p>
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        {siblings.map((child) => (
-                          <label
-                            key={child.id}
-                            className={cn(
-                              'flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors',
-                              secondaryCategories.includes(child.id)
-                                ? 'border-brand-300 bg-brand-50'
-                                : 'border-gray-200 hover:bg-gray-50',
-                              !secondaryCategories.includes(child.id) &&
-                                secondaryCategories.length >= 3
-                                ? 'opacity-50 cursor-not-allowed'
-                                : ''
-                            )}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={secondaryCategories.includes(child.id)}
-                              onChange={() => toggleSecondary(child.id)}
-                              disabled={
-                                !secondaryCategories.includes(child.id) &&
-                                secondaryCategories.length >= 3
-                              }
-                              className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                            />
-                            <span className="text-sm text-gray-700">{child.name}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })()}
-              </div>
+              <CategoryPicker
+                categories={categories}
+                primaryCategory={primaryCategory}
+                secondaryCategories={secondaryCategories}
+                onPrimaryChange={(id) => {
+                  setPrimaryCategory(id)
+                  if (!id) setSecondaryCategories([])
+                }}
+                onSecondaryChange={setSecondaryCategories}
+                error={step2Error}
+              />
             )}
           </div>
         )}

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createMockSupabaseClient } from '@/__tests__/helpers/supabase-mock'
 
-const { client: mockSupabase, order, select } = createMockSupabaseClient()
+const { client: mockSupabase, order, select, eq } = createMockSupabaseClient()
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(() => Promise.resolve(mockSupabase)),
@@ -14,16 +14,21 @@ describe('GET /api/categories', () => {
     vi.resetAllMocks()
   })
 
+  // Helper: the route chains .eq().order().order() — first order chains, second is terminal
+  function mockOrderResult(result: { data: any; error: any }) {
+    order
+      .mockReturnValueOnce(undefined)   // first .order('sort_order') → chains
+      .mockReturnValueOnce(Promise.resolve(result)) // second .order('name') → terminal
+  }
+
   it('returns JSON array of categories', async () => {
-    order.mockReturnValueOnce(
-      Promise.resolve({
-        data: [
-          { id: '1', name: 'Cleaning', slug: 'cleaning', parent_id: null },
-          { id: '2', name: 'Plumbing', slug: 'plumbing', parent_id: null },
-        ],
-        error: null,
-      })
-    )
+    mockOrderResult({
+      data: [
+        { id: '1', name: 'Cleaning', slug: 'cleaning', parent_id: null },
+        { id: '2', name: 'Plumbing', slug: 'plumbing', parent_id: null },
+      ],
+      error: null,
+    })
 
     const response = await GET()
     const json = await response.json()
@@ -36,12 +41,10 @@ describe('GET /api/categories', () => {
   })
 
   it('returns 500 on database error', async () => {
-    order.mockReturnValueOnce(
-      Promise.resolve({
-        data: null,
-        error: { message: 'DB error' },
-      })
-    )
+    mockOrderResult({
+      data: null,
+      error: { message: 'DB error' },
+    })
 
     const response = await GET()
     expect(response.status).toBe(500)
@@ -49,14 +52,14 @@ describe('GET /api/categories', () => {
     expect(json).toEqual([])
   })
 
-  it('queries categories table ordered by name', async () => {
-    order.mockReturnValueOnce(
-      Promise.resolve({ data: [], error: null })
-    )
+  it('queries categories table with is_active filter and sort_order', async () => {
+    mockOrderResult({ data: [], error: null })
 
     await GET()
     expect(mockSupabase.from).toHaveBeenCalledWith('categories')
-    expect(select).toHaveBeenCalledWith('id, name, slug, parent_id')
-    expect(order).toHaveBeenCalledWith('name')
+    expect(select).toHaveBeenCalledWith('id, name, slug, parent_id, synonyms, keywords, sort_order')
+    expect(eq).toHaveBeenCalledWith('is_active', true)
+    expect(order).toHaveBeenCalledWith('sort_order', { ascending: true })
+    expect(order).toHaveBeenCalledWith('name', { ascending: true })
   })
 })
