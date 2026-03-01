@@ -15,11 +15,12 @@ export interface ListingForQuality {
   phone: string | null
   email_contact: string | null
   website: string | null
-  status: string
-  verification_status: string
-  pending_changes: unknown | null
+  isSuspended: boolean
+  suspendedReason: string | null
+  isUnderReview: boolean
+  isRejected: boolean
+  hasPendingChanges: boolean
   deleted_at: string | null
-  suspended_reason: string | null
   hasCategories: boolean
   hasLocation: boolean
 }
@@ -110,9 +111,9 @@ export function getListingQuality(
   const f = flags ?? DEFAULT_FLAGS
 
   // 1. BLOCKED — checked first
-  if (listing.status === 'suspended') {
-    const reason = listing.suspended_reason
-      ? `Suspended: ${listing.suspended_reason}`
+  if (listing.isSuspended) {
+    const reason = listing.suspendedReason
+      ? `Suspended: ${listing.suspendedReason}`
       : 'Listing suspended'
     return blocked(reason)
   }
@@ -122,10 +123,9 @@ export function getListingQuality(
   if (!f.canPublish && !f.isActive) return blocked('Not visible: subscription required')
 
   // 2. UNDER_REVIEW / REJECTED / EDITED
-  if (listing.verification_status === 'pending') return underReview('Awaiting approval')
-  if (listing.verification_status === 'review') return underReview('Under admin review')
-  if (listing.verification_status === 'rejected') return rejected('Rejected: edit and resubmit')
-  if (listing.pending_changes !== null && listing.status === 'published') {
+  if (listing.isUnderReview) return underReview('Awaiting approval')
+  if (listing.isRejected) return rejected('Rejected: edit and resubmit')
+  if (listing.hasPendingChanges) {
     return edited('Has pending changes')
   }
 

@@ -14,11 +14,12 @@ function makeListing(overrides: Partial<ListingForQuality> = {}): ListingForQual
     phone: '0400000000',
     email_contact: 'test@example.com',
     website: 'https://example.com',
-    status: 'published',
-    verification_status: 'approved',
-    pending_changes: null,
+    isSuspended: false,
+    suspendedReason: null,
+    isUnderReview: false,
+    isRejected: false,
+    hasPendingChanges: false,
     deleted_at: null,
-    suspended_reason: null,
     hasCategories: true,
     hasLocation: true,
     ...overrides,
@@ -53,7 +54,7 @@ describe('getListingQuality', () => {
     // ── BLOCKED ──
     {
       desc: 'suspended → blocked',
-      listing: { status: 'suspended' },
+      listing: { isSuspended: true },
       expected: { flag: 'blocked', hint: /suspended/i },
     },
     {
@@ -94,23 +95,18 @@ describe('getListingQuality', () => {
 
     // ── UNDER_REVIEW ──
     {
-      desc: 'verification_status=pending → under_review',
-      listing: { verification_status: 'pending' },
+      desc: 'isUnderReview → under_review',
+      listing: { isUnderReview: true },
       expected: { flag: 'under_review', hint: /awaiting approval/i },
     },
     {
-      desc: 'verification_status=review → under_review',
-      listing: { verification_status: 'review' },
-      expected: { flag: 'under_review', hint: /admin review/i },
-    },
-    {
-      desc: 'verification_status=rejected → rejected',
-      listing: { verification_status: 'rejected' },
+      desc: 'isRejected → rejected',
+      listing: { isRejected: true },
       expected: { flag: 'rejected', hint: /rejected/i },
     },
     {
-      desc: 'pending_changes + published → edited',
-      listing: { pending_changes: { name: 'New Name' }, status: 'published' },
+      desc: 'hasPendingChanges → edited',
+      listing: { hasPendingChanges: true },
       expected: { flag: 'edited', hint: /pending changes/i },
     },
 
@@ -151,7 +147,7 @@ describe('getListingQuality', () => {
   // ── Priority ordering ──
   it('blocked overrides needs_action', () => {
     const result = getListingQuality(
-      makeListing({ status: 'suspended', description: null }),
+      makeListing({ isSuspended: true, description: null }),
       makeFlags()
     )
     expect(result.flag).toBe('blocked')
@@ -159,7 +155,7 @@ describe('getListingQuality', () => {
 
   it('under_review overrides needs_action', () => {
     const result = getListingQuality(
-      makeListing({ verification_status: 'pending', description: null }),
+      makeListing({ isUnderReview: true, description: null }),
       makeFlags()
     )
     expect(result.flag).toBe('under_review')
@@ -167,7 +163,7 @@ describe('getListingQuality', () => {
 
   it('blocked overrides under_review', () => {
     const result = getListingQuality(
-      makeListing({ status: 'suspended', verification_status: 'pending' }),
+      makeListing({ isSuspended: true, isUnderReview: true }),
       makeFlags()
     )
     expect(result.flag).toBe('blocked')
@@ -175,7 +171,7 @@ describe('getListingQuality', () => {
 
   it('suspended with reason shows reason in hint', () => {
     const result = getListingQuality(
-      makeListing({ status: 'suspended', suspended_reason: 'Terms of service violation' }),
+      makeListing({ isSuspended: true, suspendedReason: 'Terms of service violation' }),
       makeFlags()
     )
     expect(result.flag).toBe('blocked')
@@ -184,7 +180,7 @@ describe('getListingQuality', () => {
 
   it('rejected overrides needs_action', () => {
     const result = getListingQuality(
-      makeListing({ verification_status: 'rejected', description: null }),
+      makeListing({ isRejected: true, description: null }),
       makeFlags()
     )
     expect(result.flag).toBe('rejected')
@@ -218,7 +214,7 @@ describe('getListingQuality', () => {
   })
 
   it('blocked has red colorClass', () => {
-    const result = getListingQuality(makeListing({ status: 'suspended' }), makeFlags())
+    const result = getListingQuality(makeListing({ isSuspended: true }), makeFlags())
     expect(result.colorClass).toContain('red')
   })
 })
