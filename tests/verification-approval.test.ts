@@ -157,6 +157,11 @@ describe('adminRejectVerification', () => {
   })
 
   it('rejects business and returns success', async () => {
+    // Write-then-read sanity check for verification_status
+    single.mockResolvedValueOnce({
+      data: { verification_status: 'rejected' },
+      error: null,
+    })
     // pending_add photos query (the chainResult for the select query)
     chainResult.mockReturnValueOnce({
       data: [
@@ -175,6 +180,11 @@ describe('adminRejectVerification', () => {
   })
 
   it('returns success even with no pending photos', async () => {
+    // Write-then-read sanity check for verification_status
+    single.mockResolvedValueOnce({
+      data: { verification_status: 'rejected' },
+      error: null,
+    })
     chainResult.mockReturnValueOnce({ data: [], error: null })
     maybeSingle.mockResolvedValueOnce({
       data: { id: 'job-1' },
