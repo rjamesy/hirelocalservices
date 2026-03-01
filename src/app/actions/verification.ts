@@ -126,32 +126,152 @@ export async function getAdminVerificationQueue(page = 1) {
   const from = (page - 1) * perPage
   const to = from + perPage - 1
 
-  const { data, count, error } = await supabase
-    .from('businesses')
+  // Query working_listings: pending review, not archived
+  const { data: wRows, count, error } = await supabase
+    .from('working_listings')
     .select(
-      `
-      id, name, slug, description, phone, email_contact, website, abn,
-      listing_source, verification_status, created_at, pending_changes,
-      duplicate_user_choice, duplicate_of_business_id, duplicate_confidence,
-      verification_jobs (
-        id, deterministic_result, ai_result, final_decision, created_at
-      ),
-      photos (id, url, sort_order, status),
-      testimonials (id, author_name, text, rating, status)
-    `,
+      'business_id, name, description, phone, email_contact, website, abn, change_type, review_status, submitted_at, created_at',
       { count: 'exact' }
     )
-    .eq('verification_status', 'pending')
-    .order('created_at', { ascending: true })
+    .eq('review_status', 'pending')
+    .is('archived_at', null)
+    .order('submitted_at', { ascending: true })
     .range(from, to)
 
-  if (error) {
-    return { data: [], totalCount: 0, page, totalPages: 0 }
+  if (error || !wRows || wRows.length === 0) {
+    return { data: [], totalCount: count ?? 0, page, totalPages: Math.ceil((count ?? 0) / perPage) }
   }
+
+  const bizIds = Array.from(new Set(wRows.map(w => w.business_id)))
+
+  // Batch-fetch related data in parallel
+  const [bizRes, pRes, jobsRes, photosRes, testimonialsRes] = await Promise.all([
+    supabase
+      .from('businesses')
+      .select('id, slug, listing_source, duplicate_user_choice, duplicate_of_business_id, duplicate_confidence')
+      .in('id', bizIds),
+    supabase
+      .from('published_listings')
+      .select('business_id, name, description, phone, email_contact, website, abn')
+      .in('business_id', bizIds)
+      .eq('is_current', true),
+    supabase
+      .from('verification_jobs')
+      .select('id, business_id, deterministic_result, ai_result, final_decision, created_at')
+      .in('business_id', bizIds),
+    supabase
+      .from('photos')
+      .select('id, business_id, url, sort_order, status')
+      .in('business_id', bizIds),
+    supabase
+      .from('testimonials')
+      .select('id, business_id, author_name, text, rating, status')
+      .in('business_id', bizIds),
+  ])
+
+  // Index lookups by business_id
+  const bizMap = new Map((bizRes.data ?? []).map(b => [b.id, b]))
+  const pMap = new Map((pRes.data ?? []).map(p => [p.business_id, p]))
+
+  // Pre-index relational data by business_id
+  const jobsByBiz = new Map<string, NonNullable<typeof jobsRes.data>>()
+  for (const j of (jobsRes.data ?? [])) {
+    let arr = jobsByBiz.get(j.business_id)
+    if (!arr) { arr = []; jobsByBiz.set(j.business_id, arr) }
+    arr.push(j)
+  }
+  const photosByBiz = new Map<string, NonNullable<typeof photosRes.data>>()
+  for (const ph of (photosRes.data ?? [])) {
+    let arr = photosByBiz.get(ph.business_id)
+    if (!arr) { arr = []; photosByBiz.set(ph.business_id, arr) }
+    arr.push(ph)
+  }
+  const testimonialsByBiz = new Map<string, NonNullable<typeof testimonialsRes.data>>()
+  for (const t of (testimonialsRes.data ?? [])) {
+    let arr = testimonialsByBiz.get(t.business_id)
+    if (!arr) { arr = []; testimonialsByBiz.set(t.business_id, arr) }
+    arr.push(t)
+  }
+
+  // Hardcoded diff fields for pending_changes
+  const DIFF_FIELDS = ['name', 'description', 'phone', 'email_contact', 'website', 'abn'] as const
+
+  // Assemble VerificationRow-shaped objects
+  const data = wRows.map(w => {
+    const biz = bizMap.get(w.business_id)
+    const p = pMap.get(w.business_id)
+
+    // Content fields + pending_changes based on change_type
+    let name: string
+    let description: string | null
+    let phone: string | null
+    let email_contact: string | null
+    let website: string | null
+    let abn: string | null
+    let pending_changes: Record<string, unknown> | null = null
+
+    if (w.change_type === 'edit' && p) {
+      // Edit change: main fields from P (live baseline)
+      name = p.name
+      description = p.description
+      phone = p.phone
+      email_contact = p.email_contact
+      website = p.website
+      abn = p.abn
+      // pending_changes = W fields that differ from P (null-safe comparison)
+      const diff: Record<string, unknown> = {}
+      for (const f of DIFF_FIELDS) {
+        if ((w[f] ?? null) !== (p[f] ?? null)) diff[f] = w[f]
+      }
+      pending_changes = Object.keys(diff).length > 0 ? diff : null
+    } else {
+      // New listing: main fields from W, no diff
+      name = w.name
+      description = w.description
+      phone = w.phone
+      email_contact = w.email_contact
+      website = w.website
+      abn = w.abn
+    }
+
+    const bid = w.business_id
+    return {
+      id: bid,
+      name,
+      slug: biz?.slug ?? '',
+      description,
+      phone,
+      email_contact,
+      website,
+      abn,
+      listing_source: biz?.listing_source ?? 'manual',
+      verification_status: 'pending' as string,
+      created_at: w.submitted_at ?? w.created_at,
+      pending_changes,
+      duplicate_user_choice: biz?.duplicate_user_choice ?? null,
+      duplicate_of_business_id: biz?.duplicate_of_business_id ?? null,
+      duplicate_confidence: biz?.duplicate_confidence ?? null,
+      verification_jobs: (jobsByBiz.get(bid) ?? []).map(
+        ({ id, deterministic_result, ai_result, final_decision, created_at }) => ({
+          id, deterministic_result, ai_result, final_decision, created_at,
+        })
+      ),
+      photos: (photosByBiz.get(bid) ?? []).map(
+        ({ id, url, sort_order, status }) => ({
+          id, url, sort_order, status,
+        })
+      ),
+      testimonials: (testimonialsByBiz.get(bid) ?? []).map(
+        ({ id, author_name, text, rating, status }) => ({
+          id, author_name, text, rating, status,
+        })
+      ),
+    }
+  })
 
   const totalCount = count ?? 0
   return {
-    data: data ?? [],
+    data,
     totalCount,
     page,
     totalPages: Math.ceil(totalCount / perPage),
