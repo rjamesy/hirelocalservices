@@ -1114,7 +1114,7 @@ export async function getMyBusinesses() {
         isSuspended: derived.effectiveStatus === 'suspended',
         suspendedReason: b.suspended_reason ?? null,
         isUnderReview: derived.effectiveVerification === 'pending',
-        isRejected: derived.effectiveVerification === 'rejected' || derived.effectiveVerification === 'changes_required',
+        isRejected: derived.effectiveVerification === 'rejected',
         hasPendingChanges: derived.hasPendingChanges,
         deleted_at: b.deleted_at,
         hasCategories,
@@ -1483,7 +1483,7 @@ export async function getBusinessBySlug(slug: string) {
 
   // Photos and testimonials from P snapshots (already live-only)
   const photos = (p.photos_snapshot ?? []) as Array<{ id: string; url: string; sort_order: number; [k: string]: unknown }>
-  const testimonials = (p.testimonials_snapshot ?? []) as Array<{ id: string; author_name: string; text: string; rating: number; [k: string]: unknown }>
+  const testimonials = (p.testimonials_snapshot ?? []) as Array<{ id: string; author_name: string; text: string; rating: number; created_at: string; [k: string]: unknown }>
 
   // Calculate average rating from snapshot testimonials
   const avgRating =
