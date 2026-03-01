@@ -199,4 +199,30 @@ describe('searchCategories', () => {
     const results2 = searchCategories('drain', allCategories)
     expect(results2[0].id).toBe('c-plumbing')
   })
+
+  it('finds GBP-style categories by name substring', () => {
+    const webDesigner: SearchableCategory = {
+      id: 'c-web-designer',
+      name: 'Web designer',
+      parent_id: 'g-digital',
+    }
+    const websiteDesigner: SearchableCategory = {
+      id: 'c-website-designer',
+      name: 'Website designer',
+      parent_id: 'g-digital',
+    }
+    const digitalGroup: SearchableCategory = {
+      id: 'g-digital',
+      name: 'Digital Services',
+      parent_id: null,
+    }
+    const cats = [...allCategories, digitalGroup, webDesigner, websiteDesigner]
+
+    const results = searchCategories('web', cats)
+    const ids = results.map((r) => r.id)
+    expect(ids).toContain('c-web-designer')
+    expect(ids).toContain('c-website-designer')
+    // Parent group should NOT appear
+    expect(ids).not.toContain('g-digital')
+  })
 })

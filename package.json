@@ -17,6 +17,8 @@
     "test:e2e:seed": "npx tsx e2e/helpers/global-setup.ts",
     "test:all": "npm run test && npm run test:e2e",
     "seed:osm": "tsx scripts/seed-osm-businesses.ts",
+    "import:gbp": "tsx scripts/import-gbp-categories.ts",
+    "import:gbp:dry-run": "tsx scripts/import-gbp-categories.ts --dry-run",
     "deploy": "bash scripts/deploy-aws.sh",
     "deploy:verify": "bash scripts/verify-deploy.sh"
   },
