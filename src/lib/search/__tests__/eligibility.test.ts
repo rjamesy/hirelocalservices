@@ -15,6 +15,11 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(() => Promise.resolve({})),
 }))
 
+const mockGetCurrentPublishedTyped = vi.fn()
+vi.mock('@/lib/pw-service', () => ({
+  getCurrentPublishedTyped: (...args: unknown[]) => mockGetCurrentPublishedTyped(...args),
+}))
+
 import { evaluateSearchEligibility, getListingEligibility } from '../eligibility'
 
 function makeRpcChecks(overrides: Partial<Record<string, { passed: boolean; detail: string }>> = {}) {
@@ -128,8 +133,6 @@ describe('evaluateSearchEligibility', () => {
 
 function createEligibilitySupabase(opts: {
   business?: {
-    status: string
-    verification_status: string
     billing_status: string
     deleted_at: string | null
     owner_id: string | null
@@ -150,9 +153,7 @@ function createEligibilitySupabase(opts: {
   }
 }
 
-const publishedBusiness = {
-  status: 'published',
-  verification_status: 'approved',
+const activeBusiness = {
   billing_status: 'active',
   deleted_at: null,
   owner_id: 'user-1',
@@ -167,6 +168,9 @@ describe('getListingEligibility', () => {
       plan: 'premium',
       reasonCodes: [],
     })
+    mockGetCurrentPublishedTyped.mockResolvedValue({
+      visibility_status: 'live',
+    })
   })
 
   it('returns all-false for non-existent business', async () => {
@@ -178,8 +182,91 @@ describe('getListingEligibility', () => {
     expect(result.blockedReasons).toContain('business_not_found')
   })
 
-  it('returns visible for published+approved+active business', async () => {
-    const supabase = createEligibilitySupabase({ business: publishedBusiness })
+  it('blocks when no published listing exists', async () => {
+    mockGetCurrentPublishedTyped.mockResolvedValue(null)
+    const supabase = createEligibilitySupabase({ business: activeBusiness })
+    const result = await getListingEligibility(supabase, 'biz-1')
+
+    expect(result.visiblePublic).toBe(false)
+    expect(result.checks.verificationOk).toBe(false)
+    expect(result.checks.statusOk).toBe(false)
+    expect(result.blockedReasons).toContain('no published listing exists (not verified)')
+  })
+
+  it('blocks when visibility_status is not live', async () => {
+    mockGetCurrentPublishedTyped.mockResolvedValue({ visibility_status: 'paused' })
+    const supabase = createEligibilitySupabase({ business: activeBusiness })
+    const result = await getListingEligibility(supabase, 'biz-1')
+
+    expect(result.visiblePublic).toBe(false)
+    expect(result.checks.statusOk).toBe(false)
+    expect(result.checks.verificationOk).toBe(true)
+    expect(result.blockedReasons[0]).toContain("expected 'live'")
+  })
+
+  it('blocks when suspended', async () => {
+    mockGetCurrentPublishedTyped.mockResolvedValue({ visibility_status: 'suspended' })
+    const supabase = createEligibilitySupabase({ business: activeBusiness })
+    const result = await getListingEligibility(supabase, 'biz-1')
+
+    expect(result.visiblePublic).toBe(false)
+    expect(result.checks.statusOk).toBe(false)
+    expect(result.checks.notSuspended).toBe(false)
+    expect(result.blockedReasons).toEqual(
+      expect.arrayContaining([expect.stringContaining('suspended')])
+    )
+  })
+
+  it('blocks when billing suspended', async () => {
+    const supabase = createEligibilitySupabase({
+      business: { ...activeBusiness, billing_status: 'billing_suspended' },
+    })
+    const result = await getListingEligibility(supabase, 'biz-1')
+
+    expect(result.visiblePublic).toBe(false)
+    expect(result.checks.billingOk).toBe(false)
+    expect(result.blockedReasons).toContain("billing_status is 'billing_suspended'")
+  })
+
+  it('treats trial billing_status as OK', async () => {
+    const supabase = createEligibilitySupabase({
+      business: { ...activeBusiness, billing_status: 'trial' },
+    })
+    const result = await getListingEligibility(supabase, 'biz-1')
+
+    expect(result.visiblePublic).toBe(true)
+    expect(result.checks.billingOk).toBe(true)
+  })
+
+  it('blocks when deleted', async () => {
+    const supabase = createEligibilitySupabase({
+      business: { ...activeBusiness, deleted_at: '2024-01-01T00:00:00Z' },
+    })
+    const result = await getListingEligibility(supabase, 'biz-1')
+
+    expect(result.visiblePublic).toBe(false)
+    expect(result.checks.notDeleted).toBe(false)
+    expect(result.blockedReasons).toContain('business is deleted')
+  })
+
+  it('blocks search when owner subscription inactive', async () => {
+    mockGetUserEntitlements.mockResolvedValue({
+      isActive: false,
+      plan: null,
+      reasonCodes: ['no_subscription'],
+    })
+
+    const supabase = createEligibilitySupabase({ business: activeBusiness })
+    const result = await getListingEligibility(supabase, 'biz-1')
+
+    expect(result.visiblePublic).toBe(true)
+    expect(result.visibleInSearch).toBe(false)
+    expect(result.checks.ownerActive).toBe(false)
+    expect(result.blockedReasons).toContain('owner subscription inactive (plan: none)')
+  })
+
+  it('allows valid live listing', async () => {
+    const supabase = createEligibilitySupabase({ business: activeBusiness })
     const result = await getListingEligibility(supabase, 'biz-1')
 
     expect(result.visiblePublic).toBe(true)
@@ -192,72 +279,11 @@ describe('getListingEligibility', () => {
     expect(result.checks.notSuspended).toBe(true)
   })
 
-  it('returns not visible for draft business', async () => {
+  it('allows seed listing without subscription check', async () => {
     const supabase = createEligibilitySupabase({
-      business: { ...publishedBusiness, status: 'draft' },
+      business: { ...activeBusiness, is_seed: true, owner_id: null },
     })
-    const result = await getListingEligibility(supabase, 'biz-1')
 
-    expect(result.visiblePublic).toBe(false)
-    expect(result.checks.statusOk).toBe(false)
-    expect(result.blockedReasons).toContain("status is 'draft', expected 'published'")
-  })
-
-  it('returns not visible for suspended business', async () => {
-    const supabase = createEligibilitySupabase({
-      business: { ...publishedBusiness, status: 'suspended' },
-    })
-    const result = await getListingEligibility(supabase, 'biz-1')
-
-    expect(result.visiblePublic).toBe(false)
-    expect(result.checks.statusOk).toBe(false)
-    expect(result.checks.notSuspended).toBe(false)
-  })
-
-  it('returns not visible for pending verification', async () => {
-    const supabase = createEligibilitySupabase({
-      business: { ...publishedBusiness, verification_status: 'pending' },
-    })
-    const result = await getListingEligibility(supabase, 'biz-1')
-
-    expect(result.visiblePublic).toBe(false)
-    expect(result.checks.verificationOk).toBe(false)
-  })
-
-  it('returns not visible for billing_suspended', async () => {
-    const supabase = createEligibilitySupabase({
-      business: { ...publishedBusiness, billing_status: 'billing_suspended' },
-    })
-    const result = await getListingEligibility(supabase, 'biz-1')
-
-    expect(result.visiblePublic).toBe(false)
-    expect(result.checks.billingOk).toBe(false)
-  })
-
-  it('treats trial billing_status as OK', async () => {
-    const supabase = createEligibilitySupabase({
-      business: { ...publishedBusiness, billing_status: 'trial' },
-    })
-    const result = await getListingEligibility(supabase, 'biz-1')
-
-    expect(result.visiblePublic).toBe(true)
-    expect(result.checks.billingOk).toBe(true)
-  })
-
-  it('returns not visible for deleted business', async () => {
-    const supabase = createEligibilitySupabase({
-      business: { ...publishedBusiness, deleted_at: '2024-01-01T00:00:00Z' },
-    })
-    const result = await getListingEligibility(supabase, 'biz-1')
-
-    expect(result.visiblePublic).toBe(false)
-    expect(result.checks.notDeleted).toBe(false)
-  })
-
-  it('skips owner check for seed businesses', async () => {
-    const supabase = createEligibilitySupabase({
-      business: { ...publishedBusiness, is_seed: true, owner_id: null },
-    })
     const result = await getListingEligibility(supabase, 'biz-1')
 
     expect(result.visiblePublic).toBe(true)
@@ -266,19 +292,24 @@ describe('getListingEligibility', () => {
     expect(mockGetUserEntitlements).not.toHaveBeenCalled()
   })
 
-  it('returns visiblePublic but not visibleInSearch when owner inactive', async () => {
-    mockGetUserEntitlements.mockResolvedValue({
-      isActive: false,
-      plan: null,
-      reasonCodes: ['no_subscription'],
-    })
-
-    const supabase = createEligibilitySupabase({ business: publishedBusiness })
+  it('paused listing not visible publicly', async () => {
+    mockGetCurrentPublishedTyped.mockResolvedValue({ visibility_status: 'paused' })
+    const supabase = createEligibilitySupabase({ business: activeBusiness })
     const result = await getListingEligibility(supabase, 'biz-1')
 
-    expect(result.visiblePublic).toBe(true)
-    expect(result.visibleInSearch).toBe(false)
-    expect(result.checks.ownerActive).toBe(false)
-    expect(result.blockedReasons).toContain('owner subscription inactive (plan: none)')
+    expect(result.visiblePublic).toBe(false)
+    expect(result.checks.statusOk).toBe(false)
+    expect(result.checks.notSuspended).toBe(true)
+  })
+
+  it('W is never read — only P controls public visibility', async () => {
+    mockGetCurrentPublishedTyped.mockResolvedValue({ visibility_status: 'live' })
+    const supabase = createEligibilitySupabase({ business: activeBusiness })
+    await getListingEligibility(supabase, 'biz-1')
+
+    expect(mockGetCurrentPublishedTyped).toHaveBeenCalledWith('biz-1')
+    // Verify businesses query does NOT select status or verification_status
+    const selectCall = supabase.from.mock.results[0].value.select
+    expect(selectCall).toHaveBeenCalledWith('billing_status, deleted_at, owner_id, is_seed')
   })
 })

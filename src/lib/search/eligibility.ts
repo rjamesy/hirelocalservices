@@ -1,4 +1,5 @@
 import { getUserEntitlements } from '@/lib/entitlements'
+import { getCurrentPublishedTyped } from '@/lib/pw-service'
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -48,11 +49,14 @@ export async function getListingEligibility(
   supabase: SupabaseClient,
   businessId: string
 ): Promise<ListingEligibility> {
-  const { data: biz, error } = await supabase
-    .from('businesses')
-    .select('status, verification_status, billing_status, deleted_at, owner_id, is_seed')
-    .eq('id', businessId)
-    .single()
+  const [{ data: biz, error }, p] = await Promise.all([
+    supabase
+      .from('businesses')
+      .select('billing_status, deleted_at, owner_id, is_seed')
+      .eq('id', businessId)
+      .single(),
+    getCurrentPublishedTyped(businessId),
+  ])
 
   if (error || !biz) {
     return {
@@ -71,11 +75,11 @@ export async function getListingEligibility(
     }
   }
 
-  const statusOk = biz.status === 'published'
-  const verificationOk = biz.verification_status === 'approved'
+  const statusOk = p?.visibility_status === 'live'
+  const verificationOk = !!p
   const billingOk = biz.billing_status !== 'billing_suspended'
   const notDeleted = biz.deleted_at === null
-  const notSuspended = biz.status !== 'suspended'
+  const notSuspended = p?.visibility_status !== 'suspended'
 
   // Owner subscription check (seed businesses are always considered active)
   let ownerPlan: string | null = null
@@ -91,11 +95,14 @@ export async function getListingEligibility(
   const visibleInSearch = visiblePublic && ownerActive
 
   const blockedReasons: string[] = []
-  if (!statusOk) blockedReasons.push(`status is '${biz.status}', expected 'published'`)
-  if (!verificationOk) blockedReasons.push(`verification_status is '${biz.verification_status}', expected 'approved'`)
+  if (!verificationOk) {
+    blockedReasons.push('no published listing exists (not verified)')
+  } else {
+    if (!statusOk) blockedReasons.push(`visibility_status is '${p!.visibility_status}', expected 'live'`)
+    if (!notSuspended) blockedReasons.push(`visibility_status is '${p!.visibility_status}' (suspended)`)
+  }
   if (!billingOk) blockedReasons.push(`billing_status is '${biz.billing_status}'`)
   if (!notDeleted) blockedReasons.push('business is deleted')
-  if (!notSuspended) blockedReasons.push('business is suspended')
   if (!ownerActive) blockedReasons.push(`owner subscription inactive (plan: ${ownerPlan ?? 'none'})`)
 
   return {
