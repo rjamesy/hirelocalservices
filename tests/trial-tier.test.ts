@@ -1,12 +1,12 @@
 /**
  * tests/trial-tier.test.ts
  *
- * Tests for trial tier behaviour:
- * - Auto-assignment on claim approval
- * - Trial duration and expiration
- * - Trial ranking behaviour
- * - Upgrade path from trial
- * - Trial expiration effect on visibility
+ * Tests for trial behaviour (now Stripe-native):
+ * - Trial duration constant
+ * - isTrialExpired always returns false (trial is Stripe-native)
+ * - Tier weight and ranking behaviour
+ * - Upgrade path from basic
+ * - Trial days remaining calculation
  */
 
 import { describe, it, expect } from 'vitest'
@@ -19,7 +19,7 @@ import {
 } from '@/lib/ranking'
 import { getPlanById } from '@/lib/constants'
 
-describe('Trial Tier', () => {
+describe('Trial & Tier Behaviour', () => {
   // ─── Trial Duration ───────────────────────────────────────────────
 
   describe('Trial Duration', () => {
@@ -42,56 +42,38 @@ describe('Trial Tier', () => {
     })
   })
 
-  // ─── Trial Expiration Detection ───────────────────────────────────
+  // ─── isTrialExpired (now always returns false) ─────────────────────
 
-  describe('Trial Expiration Detection', () => {
-    it('should detect expired trial', () => {
-      const pastDate = '2024-01-01T00:00:00Z'
-      expect(isTrialExpired('free_trial', pastDate)).toBe(true)
+  describe('isTrialExpired (Stripe-native trial)', () => {
+    it('should always return false for all plans', () => {
+      expect(isTrialExpired('basic', '2024-01-01T00:00:00Z')).toBe(false)
+      expect(isTrialExpired('premium', '2024-01-01T00:00:00Z')).toBe(false)
+      expect(isTrialExpired('premium_annual', '2024-01-01T00:00:00Z')).toBe(false)
     })
 
-    it('should detect active trial', () => {
+    it('should return false even with past date', () => {
+      const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      expect(isTrialExpired('basic', pastDate)).toBe(false)
+    })
+
+    it('should return false with future date', () => {
       const futureDate = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString()
-      expect(isTrialExpired('free_trial', futureDate)).toBe(false)
+      expect(isTrialExpired('premium', futureDate)).toBe(false)
     })
 
-    it('should treat trial just expired (1 second ago) as expired', () => {
-      const justExpired = new Date(Date.now() - 1000).toISOString()
-      expect(isTrialExpired('free_trial', justExpired)).toBe(true)
-    })
-
-    it('should NOT treat non-trial plans as expired regardless of date', () => {
-      expect(isTrialExpired('basic', '2020-01-01T00:00:00Z')).toBe(false)
-      expect(isTrialExpired('premium', '2020-01-01T00:00:00Z')).toBe(false)
-      expect(isTrialExpired('premium_annual', '2020-01-01T00:00:00Z')).toBe(false)
-    })
-
-    it('should handle null period_end as not expired', () => {
-      expect(isTrialExpired('free_trial', null)).toBe(false)
+    it('should return false with null period_end', () => {
+      expect(isTrialExpired('basic', null)).toBe(false)
     })
   })
 
-  // ─── Trial Ranking Behaviour ──────────────────────────────────────
+  // ─── Tier Ranking Behaviour ──────────────────────────────────────
 
-  describe('Trial Ranking Behaviour', () => {
-    it('trial should have 0 tier weight', () => {
-      expect(getTierWeight('free_trial')).toBe(0)
+  describe('Tier Ranking Behaviour', () => {
+    it('basic should have tier weight of 10', () => {
+      expect(getTierWeight('basic')).toBe(10)
     })
 
-    it('trial with quality should still rank lower than basic with quality', () => {
-      const trialWithQuality = calculateRankScore({
-        tier: 'free_trial',
-        hasDescription: true,
-        hasPhoto: true,
-        hasPhone: true,
-        hasWebsite: true,
-        reviewCount: 10,
-        avgRating: 5.0,
-        distanceKm: 2,
-        recentImpressions: 0,
-        avgTierImpressions: 0,
-      })
-
+    it('basic with quality should rank lower than premium with quality', () => {
       const basicWithQuality = calculateRankScore({
         tier: 'basic',
         hasDescription: true,
@@ -105,13 +87,26 @@ describe('Trial Tier', () => {
         avgTierImpressions: 0,
       })
 
-      expect(trialWithQuality).toBeLessThan(basicWithQuality)
-      expect(basicWithQuality - trialWithQuality).toBe(10) // basic weight difference
+      const premiumWithQuality = calculateRankScore({
+        tier: 'premium',
+        hasDescription: true,
+        hasPhoto: true,
+        hasPhone: true,
+        hasWebsite: true,
+        reviewCount: 10,
+        avgRating: 5.0,
+        distanceKm: 2,
+        recentImpressions: 0,
+        avgTierImpressions: 0,
+      })
+
+      expect(basicWithQuality).toBeLessThan(premiumWithQuality)
+      expect(premiumWithQuality - basicWithQuality).toBe(20) // premium(30) - basic(10)
     })
 
-    it('trial businesses should still appear in search (rank > -infinity)', () => {
-      const trialRank = calculateRankScore({
-        tier: 'free_trial',
+    it('basic businesses should still appear in search (rank > -infinity)', () => {
+      const basicRank = calculateRankScore({
+        tier: 'basic',
         hasDescription: false,
         hasPhoto: false,
         hasPhone: false,
@@ -123,13 +118,13 @@ describe('Trial Tier', () => {
         avgTierImpressions: 0,
       })
 
-      expect(trialRank).toBeGreaterThan(-Infinity)
-      expect(trialRank).toBe(0) // 0 tier + 0 quality + 0 proximity - 0 penalty
+      expect(basicRank).toBeGreaterThan(-Infinity)
+      expect(basicRank).toBe(10) // basic tier weight only
     })
 
-    it('trial with good quality can have positive rank', () => {
-      const trialRank = calculateRankScore({
-        tier: 'free_trial',
+    it('basic with good quality can have high rank', () => {
+      const basicRank = calculateRankScore({
+        tier: 'basic',
         hasDescription: true,
         hasPhoto: true,
         hasPhone: true,
@@ -141,22 +136,16 @@ describe('Trial Tier', () => {
         avgTierImpressions: 0,
       })
 
-      // 0 + (3+3+2+2+5) + 15 - 0 = 30
-      expect(trialRank).toBeGreaterThan(0)
+      // 10 + (3+3+2+2+5) + 15 - 0 = 40
+      expect(basicRank).toBeGreaterThan(0)
     })
   })
 
-  // ─── Effective Tier Weight (Trial Expiration) ─────────────────────
+  // ─── Effective Tier Weight ─────────────────────────────────────────
 
   describe('Effective Tier Weight', () => {
-    it('expired trial should have 0 effective weight', () => {
-      const pastDate = '2024-01-01T00:00:00Z'
-      expect(getEffectiveTierWeight('free_trial', pastDate)).toBe(0)
-    })
-
-    it('active trial should have 0 weight (trial weight is always 0)', () => {
-      const futureDate = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString()
-      expect(getEffectiveTierWeight('free_trial', futureDate)).toBe(0)
+    it('basic should have effective weight of 10', () => {
+      expect(getEffectiveTierWeight('basic', null)).toBe(10)
     })
 
     it('paid plans should not be affected by expiration logic', () => {
@@ -166,35 +155,25 @@ describe('Trial Tier', () => {
     })
   })
 
-  // ─── Trial Auto-Assignment on Claim ───────────────────────────────
+  // ─── Stripe-native Trial on Claim ──────────────────────────────────
 
-  describe('Trial Auto-Assignment on Claim', () => {
-    it('trial subscription should have correct structure', () => {
-      const now = new Date()
-      const trialEnd = new Date(now.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000)
-
+  describe('Stripe-native Trial on Claim', () => {
+    it('trialing subscription should use status trialing (not a separate plan)', () => {
       const subscription = {
         business_id: 'biz-123',
-        status: 'active',
-        plan: 'free_trial',
-        current_period_end: trialEnd.toISOString(),
-        current_period_start: now.toISOString(),
+        status: 'trialing',
+        plan: 'basic',
+        current_period_end: new Date(Date.now() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+        current_period_start: new Date().toISOString(),
         cancel_at_period_end: false,
       }
 
-      expect(subscription.status).toBe('active')
-      expect(subscription.plan).toBe('free_trial')
+      expect(subscription.status).toBe('trialing')
+      expect(subscription.plan).toBe('basic')
       expect(subscription.cancel_at_period_end).toBe(false)
-
-      // Verify end date is ~30 days from now
-      const endDate = new Date(subscription.current_period_end)
-      const diffMs = endDate.getTime() - now.getTime()
-      const diffDays = diffMs / (24 * 60 * 60 * 1000)
-      expect(Math.round(diffDays)).toBe(TRIAL_DURATION_DAYS)
     })
 
     it('should not assign trial if subscription already exists', () => {
-      // Simulates the check in assignTrialSubscription
       const existingSubscription = { id: 'sub-123' }
       const shouldAssign = !existingSubscription
       expect(shouldAssign).toBe(false)
@@ -207,52 +186,40 @@ describe('Trial Tier', () => {
     })
   })
 
-  // ─── Trial Plan Definition ────────────────────────────────────────
+  // ─── Plan Definitions ──────────────────────────────────────────────
 
-  describe('Trial Plan Definition', () => {
-    it('should have Free Trial name', () => {
-      const plan = getPlanById('free_trial')
-      expect(plan.name).toBe('Free Trial')
+  describe('Plan Definitions', () => {
+    it('basic plan should have correct name', () => {
+      const plan = getPlanById('basic')
+      expect(plan.name).toBe('Basic')
     })
 
-    it('should have 30 days interval', () => {
-      const plan = getPlanById('free_trial')
-      expect(plan.interval).toBe('30 days')
-    })
-
-    it('should NOT have photo or testimonial access', () => {
-      const plan = getPlanById('free_trial')
+    it('basic should NOT have photo or testimonial access', () => {
+      const plan = getPlanById('basic')
       expect(plan.canUploadPhotos).toBe(false)
       expect(plan.canAddTestimonials).toBe(false)
     })
 
-    it('should have SEO and profile features', () => {
-      const plan = getPlanById('free_trial')
+    it('basic should have profile features', () => {
+      const plan = getPlanById('basic')
       expect(plan.features).toContain('Professional business profile')
       expect(plan.features).toContain('Appear in search results')
-      expect(plan.features).toContain('SEO-optimised listing')
     })
   })
 
-  // ─── Upgrade Path from Trial ──────────────────────────────────────
+  // ─── Upgrade Path from Basic ──────────────────────────────────────
 
-  describe('Upgrade Path from Trial', () => {
-    it('upgrading to basic should increase tier weight from 0 to 10', () => {
-      const trialWeight = getTierWeight('free_trial')
+  describe('Upgrade Path from Basic', () => {
+    it('upgrading to premium should increase tier weight by 20', () => {
       const basicWeight = getTierWeight('basic')
-      expect(basicWeight - trialWeight).toBe(10)
-    })
-
-    it('upgrading to premium should increase tier weight from 0 to 30', () => {
-      const trialWeight = getTierWeight('free_trial')
       const premiumWeight = getTierWeight('premium')
-      expect(premiumWeight - trialWeight).toBe(30)
+      expect(premiumWeight - basicWeight).toBe(20)
     })
 
-    it('upgrading to premium_annual should increase tier weight from 0 to 40', () => {
-      const trialWeight = getTierWeight('free_trial')
+    it('upgrading to premium_annual should increase tier weight by 30', () => {
+      const basicWeight = getTierWeight('basic')
       const annualWeight = getTierWeight('premium_annual')
-      expect(annualWeight - trialWeight).toBe(40)
+      expect(annualWeight - basicWeight).toBe(30)
     })
 
     it('upgrading should significantly improve rank score', () => {
@@ -268,12 +235,10 @@ describe('Trial Tier', () => {
         avgTierImpressions: 0,
       }
 
-      const trialRank = calculateRankScore({ ...baseParams, tier: 'free_trial' })
       const basicRank = calculateRankScore({ ...baseParams, tier: 'basic' })
       const premiumRank = calculateRankScore({ ...baseParams, tier: 'premium' })
 
       // Each upgrade should provide meaningful rank improvement
-      expect(basicRank - trialRank).toBe(10)
       expect(premiumRank - basicRank).toBe(20)
     })
   })

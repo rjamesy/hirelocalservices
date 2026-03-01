@@ -15,18 +15,13 @@ import {
 // ─── PLANS ──────────────────────────────────────────────────────────
 
 describe('PLANS', () => {
-  it('has 4 plan tiers', () => {
-    expect(PLANS).toHaveLength(4)
+  it('has 3 plan tiers', () => {
+    expect(PLANS).toHaveLength(3)
   })
 
   it('has correct plan IDs', () => {
     const ids = PLANS.map((p) => p.id)
-    expect(ids).toEqual(['free_trial', 'basic', 'premium', 'premium_annual'])
-  })
-
-  it('free_trial has price 0', () => {
-    const plan = PLANS.find((p) => p.id === 'free_trial')!
-    expect(plan.price).toBe(0)
+    expect(ids).toEqual(['basic', 'premium', 'premium_annual'])
   })
 
   it('basic plan costs $4/month', () => {
@@ -47,8 +42,7 @@ describe('PLANS', () => {
     expect(plan.interval).toBe('year')
   })
 
-  it('free_trial and basic cannot upload photos', () => {
-    expect(PLANS.find((p) => p.id === 'free_trial')!.canUploadPhotos).toBe(false)
+  it('basic cannot upload photos', () => {
     expect(PLANS.find((p) => p.id === 'basic')!.canUploadPhotos).toBe(false)
   })
 
@@ -57,8 +51,7 @@ describe('PLANS', () => {
     expect(PLANS.find((p) => p.id === 'premium_annual')!.canUploadPhotos).toBe(true)
   })
 
-  it('free_trial and basic cannot add testimonials', () => {
-    expect(PLANS.find((p) => p.id === 'free_trial')!.canAddTestimonials).toBe(false)
+  it('basic cannot add testimonials', () => {
     expect(PLANS.find((p) => p.id === 'basic')!.canAddTestimonials).toBe(false)
   })
 
@@ -72,6 +65,15 @@ describe('PLANS', () => {
       expect(Array.isArray(plan.features)).toBe(true)
       expect(plan.features.length).toBeGreaterThan(0)
     }
+  })
+
+  it('basic and premium have 30-day trial', () => {
+    expect(PLANS.find((p) => p.id === 'basic')!.trialDays).toBe(30)
+    expect(PLANS.find((p) => p.id === 'premium')!.trialDays).toBe(30)
+  })
+
+  it('premium_annual has no trial', () => {
+    expect(PLANS.find((p) => p.id === 'premium_annual')!.trialDays).toBe(0)
   })
 })
 
@@ -102,10 +104,6 @@ describe('getPlanByPriceId', () => {
 // ─── getPlanById ────────────────────────────────────────────────────
 
 describe('getPlanById', () => {
-  it('returns free_trial plan', () => {
-    expect(getPlanById('free_trial').id).toBe('free_trial')
-  })
-
   it('returns basic plan', () => {
     expect(getPlanById('basic').id).toBe('basic')
   })
@@ -127,7 +125,6 @@ describe('getPlanById', () => {
 
 describe('getValidPriceIds', () => {
   afterEach(() => {
-    delete process.env.STRIPE_PRICE_ID_FREE_TRIAL
     delete process.env.STRIPE_PRICE_ID_BASIC
     delete process.env.STRIPE_PRICE_ID_PREMIUM
     delete process.env.STRIPE_PRICE_ID_ANNUAL

@@ -71,8 +71,9 @@ function getSubscriptionPriceId(
 function mapStripeStatus(stripeStatus: string): string {
   switch (stripeStatus) {
     case 'active':
-    case 'trialing':
       return 'active'
+    case 'trialing':
+      return 'trialing'
     case 'past_due':
       return 'past_due'
     case 'canceled':
@@ -90,10 +91,13 @@ function mapStripeStatus(stripeStatus: string): string {
 async function syncBusinessBillingStatus(
   supabase: ReturnType<typeof createAdminClient>,
   userId: string,
-  billingStatus: 'active' | 'billing_suspended'
+  billingStatus: 'active' | 'trial' | 'billing_suspended',
+  trialEndsAt?: string | null
 ) {
   const updateData: Record<string, unknown> = { billing_status: billingStatus }
-  if (billingStatus === 'active') {
+  if (billingStatus === 'trial' && trialEndsAt) {
+    updateData.trial_ends_at = trialEndsAt
+  } else if (billingStatus === 'active') {
     updateData.trial_ends_at = null
   }
   await supabase
@@ -148,6 +152,8 @@ export async function POST(request: NextRequest) {
       'customer.subscription.created',
       'customer.subscription.updated',
       'customer.subscription.deleted',
+      'invoice.payment_succeeded',
+      'invoice.payment_failed',
     ]
     if (paymentEvents.includes(event.type)) {
       const flags = await getSystemFlagsSafe()
@@ -194,6 +200,12 @@ export async function POST(request: NextRequest) {
         const priceId = getSubscriptionPriceId(subscription)
         const planTier = getPlanTier(session.metadata, priceId)
 
+        // Read trial_end from Stripe subscription
+        const trialEndsAt = subscription.trial_end
+          ? new Date(subscription.trial_end * 1000).toISOString()
+          : null
+        const mappedStatus = mapStripeStatus(subscription.status)
+
         // Upsert into user_subscriptions
         const { error } = await supabase
           .from('user_subscriptions')
@@ -202,7 +214,7 @@ export async function POST(request: NextRequest) {
               user_id: userId,
               stripe_customer_id: stripeCustomerId,
               stripe_subscription_id: subscriptionId,
-              status: mapStripeStatus(subscription.status) as any,
+              status: mappedStatus as any,
               current_period_start: new Date(
                 subscription.current_period_start * 1000
               ).toISOString(),
@@ -212,7 +224,7 @@ export async function POST(request: NextRequest) {
               cancel_at_period_end: subscription.cancel_at_period_end,
               plan: planTier,
               stripe_price_id: priceId,
-              trial_ends_at: null,
+              trial_ends_at: trialEndsAt,
             },
             { onConflict: 'user_id' }
           )
@@ -224,8 +236,12 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        // Set billing_status='active' on all user's businesses
-        await syncBusinessBillingStatus(supabase, userId, 'active')
+        // Sync billing_status on all user's businesses
+        if (mappedStatus === 'trialing') {
+          await syncBusinessBillingStatus(supabase, userId, 'trial', trialEndsAt)
+        } else {
+          await syncBusinessBillingStatus(supabase, userId, 'active')
+        }
 
         // Log payment event
         await logPaymentEvent(userId, stripeCustomerId, subscriptionId, 'checkout.session.completed', {
@@ -243,6 +259,9 @@ export async function POST(request: NextRequest) {
         const status = mapStripeStatus(subscription.status)
         const priceId = getSubscriptionPriceId(subscription)
         const planTier = getPlanTier(subscription.metadata, priceId)
+        const trialEndsAt = subscription.trial_end
+          ? new Date(subscription.trial_end * 1000).toISOString()
+          : null
 
         const updateData: Record<string, unknown> = {
           status,
@@ -252,6 +271,7 @@ export async function POST(request: NextRequest) {
           cancel_at_period_end: subscription.cancel_at_period_end,
           plan: planTier,
           stripe_price_id: priceId,
+          trial_ends_at: trialEndsAt,
         }
 
         // Update user_subscriptions by stripe_subscription_id
@@ -278,6 +298,8 @@ export async function POST(request: NextRequest) {
         if (userSub) {
           if (['canceled', 'unpaid'].includes(status)) {
             await syncBusinessBillingStatus(supabase, userSub.user_id, 'billing_suspended')
+          } else if (status === 'trialing') {
+            await syncBusinessBillingStatus(supabase, userSub.user_id, 'trial', trialEndsAt)
           } else if (['active', 'past_due'].includes(status)) {
             await syncBusinessBillingStatus(supabase, userSub.user_id, 'active')
           }
@@ -325,6 +347,44 @@ export async function POST(request: NextRequest) {
 
           // Log payment event
           await logPaymentEvent(userSub.user_id, null, stripeSubscriptionId, 'customer.subscription.deleted')
+        }
+
+        break
+      }
+
+      // ─── Invoice payment succeeded (recovery from past_due) ─────
+      case 'invoice.payment_succeeded': {
+        const invoice = event.data.object as Stripe.Invoice
+
+        const subscriptionId =
+          typeof invoice.subscription === 'string'
+            ? invoice.subscription
+            : invoice.subscription?.id
+
+        if (!subscriptionId) break
+
+        // Recover: set status back to active
+        const { error: recoverError } = await supabase
+          .from('user_subscriptions')
+          .update({ status: 'active' as any })
+          .eq('stripe_subscription_id', subscriptionId)
+
+        if (recoverError) {
+          console.error(
+            'invoice.payment_succeeded: failed to update user_subscription:',
+            recoverError
+          )
+        }
+
+        // Sync billing to active
+        const { data: recoveredSub } = await supabase
+          .from('user_subscriptions')
+          .select('user_id')
+          .eq('stripe_subscription_id', subscriptionId)
+          .maybeSingle()
+        if (recoveredSub) {
+          await syncBusinessBillingStatus(supabase, recoveredSub.user_id, 'active')
+          await logPaymentEvent(recoveredSub.user_id, null, subscriptionId, 'invoice.payment_succeeded')
         }
 
         break

@@ -22,21 +22,15 @@ describe('Subscription System', () => {
   // ─── Plan Definitions ─────────────────────────────────────────────
 
   describe('Plan Definitions', () => {
-    it('should have exactly 4 plan tiers', () => {
-      expect(PLANS).toHaveLength(4)
+    it('should have exactly 3 plan tiers', () => {
+      expect(PLANS).toHaveLength(3)
     })
 
-    it('should include free_trial, basic, premium, premium_annual', () => {
+    it('should include basic, premium, premium_annual', () => {
       const ids = PLANS.map((p) => p.id)
-      expect(ids).toContain('free_trial')
       expect(ids).toContain('basic')
       expect(ids).toContain('premium')
       expect(ids).toContain('premium_annual')
-    })
-
-    it('free_trial should cost $0', () => {
-      const trial = PLANS.find((p) => p.id === 'free_trial')!
-      expect(trial.price).toBe(0)
     })
 
     it('basic should cost $4/month', () => {
@@ -68,14 +62,6 @@ describe('Subscription System', () => {
   // ─── Feature Gating Configuration ─────────────────────────────────
 
   describe('Feature Gating Configuration', () => {
-    it('free_trial should NOT allow photos or testimonials', () => {
-      const trial = PLANS.find((p) => p.id === 'free_trial')!
-      expect(trial.canUploadPhotos).toBe(false)
-      expect(trial.canAddTestimonials).toBe(false)
-      expect(trial.maxPhotos).toBe(0)
-      expect(trial.maxTestimonials).toBe(0)
-    })
-
     it('basic should NOT allow photos or testimonials', () => {
       const basic = PLANS.find((p) => p.id === 'basic')!
       expect(basic.canUploadPhotos).toBe(false)
@@ -117,7 +103,6 @@ describe('Subscription System', () => {
 
   describe('getPlanById', () => {
     it('should return correct plan for each tier', () => {
-      expect(getPlanById('free_trial').id).toBe('free_trial')
       expect(getPlanById('basic').id).toBe('basic')
       expect(getPlanById('premium').id).toBe('premium')
       expect(getPlanById('premium_annual').id).toBe('premium_annual')
@@ -210,12 +195,10 @@ describe('Subscription System', () => {
   // ─── Tier Upgrade Path ────────────────────────────────────────────
 
   describe('Tier Upgrade Path', () => {
-    it('should have ascending pricing from trial to annual', () => {
-      const trial = PLANS.find((p) => p.id === 'free_trial')!
+    it('should have ascending pricing from basic to annual', () => {
       const basic = PLANS.find((p) => p.id === 'basic')!
       const premium = PLANS.find((p) => p.id === 'premium')!
 
-      expect(trial.price).toBe(0)
       expect(basic.price).toBeLessThan(premium.price)
     })
 

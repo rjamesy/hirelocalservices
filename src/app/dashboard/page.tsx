@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { getMyBusinesses } from '@/app/actions/business'
 import { getUserEntitlements } from '@/lib/entitlements'
 import { getPlanById } from '@/lib/constants'
-import { isTrialExpired, TRIAL_DURATION_DAYS } from '@/lib/ranking'
+// Trial expiry is now handled by Stripe natively
 import { createClient } from '@/lib/supabase/server'
 import { cn } from '@/lib/utils'
 import ViewPublicProfileCard from '@/components/ViewPublicProfileCard'
@@ -29,12 +29,11 @@ export default async function DashboardPage() {
   const hasSub = entitlements.plan !== null
   const planDef = entitlements.plan ? getPlanById(entitlements.plan) : null
 
-  // Trial check
+  // Trial check — Stripe-native trial (status=trialing)
   const isTrial = entitlements.isTrial
-  const trialExpired = entitlements.plan === 'free_trial' && !entitlements.isActive
   let trialDaysLeft: number | null = null
-  if (isTrial && entitlements.currentPeriodEnd) {
-    const endDate = new Date(entitlements.currentPeriodEnd)
+  if (isTrial && entitlements.trialEndsAt) {
+    const endDate = new Date(entitlements.trialEndsAt)
     const now = new Date()
     trialDaysLeft = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
   }
@@ -174,25 +173,23 @@ export default async function DashboardPage() {
             </svg>
             <div>
               <h3 className="text-sm font-medium text-orange-800">
-                {trialExpired ? 'Trial Expired' : 'Billing Suspended'}
+                Billing Suspended
               </h3>
               <p className="mt-1 text-sm text-orange-700">
-                {trialExpired
-                  ? `Your ${TRIAL_DURATION_DAYS}-day free trial has ended. Upgrade to a paid plan to restore your listings.`
-                  : 'Your subscription needs attention. Please fix your billing to keep your listings active.'}
+                Your subscription needs attention. Please fix your billing to keep your listings active.
               </p>
               <Link
                 href="/dashboard/billing"
                 className="mt-3 inline-flex items-center rounded-md bg-orange-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-orange-700 transition-colors"
               >
-                {trialExpired ? 'Upgrade Now' : 'Fix Billing'}
+                Fix Billing
               </Link>
             </div>
           </div>
         </div>
       )}
 
-      {isTrial && !trialExpired && trialDaysLeft !== null && (
+      {isTrial && trialDaysLeft !== null && (
         <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
           <div className="flex items-start gap-3">
             <svg className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -201,14 +198,8 @@ export default async function DashboardPage() {
             <div>
               <h3 className="text-sm font-medium text-blue-800">Free Trial - {trialDaysLeft} days remaining</h3>
               <p className="mt-1 text-sm text-blue-700">
-                Your listing is live with trial ranking. Upgrade to a paid plan for higher search priority and full features.
+                Your trial is active. After {trialDaysLeft} days your card will be charged automatically.
               </p>
-              <Link
-                href="/dashboard/billing"
-                className="mt-3 inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
-              >
-                Choose a Plan
-              </Link>
             </div>
           </div>
         </div>

@@ -115,8 +115,8 @@ export async function POST(request: NextRequest) {
 
     const baseUrl = getBaseUrl()
 
-    // Free Trial uses subscription mode with a 30-day trial
-    const isFreeTrialPlan = plan.id === 'free_trial'
+    // Stripe-native trial: basic & premium get 30-day trial, annual has no trial
+    const trialDays = plan.trialDays
 
     // Create the Stripe Checkout session (per-user, not per-business)
     const sessionConfig: Record<string, unknown> = {
@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
           user_id: user.id,
           plan_tier: plan.id,
         },
-        ...(isFreeTrialPlan ? { trial_period_days: 30 } : {}),
+        ...(trialDays > 0 ? { trial_period_days: trialDays } : {}),
       },
     }
 

@@ -157,11 +157,11 @@ describe('getUserEntitlements', () => {
     expect(result.canEdit).toBe(true)
   })
 
-  it('returns trial entitlements for free_trial plan', async () => {
+  it('returns trial entitlements for trialing status', async () => {
     const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
     const sub = createMockSubRow({
-      status: 'active',
-      plan: 'free_trial',
+      status: 'trialing',
+      plan: 'basic',
       trial_ends_at: futureDate,
       current_period_end: futureDate,
     })
@@ -171,23 +171,23 @@ describe('getUserEntitlements', () => {
     expect(result.isTrial).toBe(true)
     expect(result.isActive).toBe(true)
     expect(result.canPublish).toBe(true)
-    expect(result.canUploadPhotos).toBe(false) // free_trial has no photos
+    expect(result.canUploadPhotos).toBe(false) // basic has no photos
   })
 
-  it('blocks when trial has expired', async () => {
-    const pastDate = '2020-01-01T00:00:00Z'
+  it('trialing premium allows photos', async () => {
+    const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
     const sub = createMockSubRow({
-      status: 'active',
-      plan: 'free_trial',
-      trial_ends_at: pastDate,
-      current_period_end: pastDate,
+      status: 'trialing',
+      plan: 'premium',
+      trial_ends_at: futureDate,
+      current_period_end: futureDate,
     })
     const supabase = createMockSupabase({ activeSub: sub })
     const result = await getUserEntitlements(supabase, 'user-1')
 
-    expect(result.isActive).toBe(false)
-    expect(result.effectiveState).toBe('blocked')
-    expect(result.reasonCodes).toContain('trial_expired')
+    expect(result.isTrial).toBe(true)
+    expect(result.isActive).toBe(true)
+    expect(result.canUploadPhotos).toBe(true)
   })
 
   it('returns exactly one active subscription after repair (unique per user)', async () => {

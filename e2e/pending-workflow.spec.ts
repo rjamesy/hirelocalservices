@@ -654,24 +654,24 @@ test.describe('Pending Photo/Testimonial E2E Workflow', () => {
     expect(publicPhotos![0].status).toBe('live')
   })
 
-  // ── 14. Free tier business: no subscription = premium_required ──
+  // ── 14. Basic tier business: no premium subscription ──
 
-  test('free tier business exists without premium subscription', async () => {
+  test('basic tier business exists without premium subscription', async () => {
     const biz = await createTestBusiness(
-      `${TEST_PREFIX}-free-tier`,
+      `${TEST_PREFIX}-basic-tier`,
       'published',
       'approved',
-      'free_trial' // Not premium
+      'basic' // Not premium
     )
 
-    // Verify owner's subscription is free_trial
+    // Verify owner's subscription is basic
     const { data: sub } = await supabase
       .from('user_subscriptions')
       .select('plan')
       .eq('user_id', biz.owner_id)
       .maybeSingle()
 
-    expect(sub?.plan).toBe('free_trial')
+    expect(sub?.plan).toBe('basic')
     expect(sub?.plan).not.toBe('premium')
   })
 

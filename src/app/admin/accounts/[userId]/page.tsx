@@ -205,13 +205,13 @@ export default function AdminAccountDetailPage() {
       basic: 'bg-green-50 text-green-700',
       premium: 'bg-purple-50 text-purple-700',
       premium_annual: 'bg-indigo-50 text-indigo-700',
-      free_trial: 'bg-blue-50 text-blue-700',
+      // free_trial removed — trials are now Stripe-native (trialing status)
     }
     const labels: Record<string, string> = {
       basic: 'Basic',
       premium: 'Premium',
       premium_annual: 'Annual Premium',
-      free_trial: 'Free Trial',
+      // free_trial removed — trials are now Stripe-native
     }
     if (!plan) {
       return (
@@ -609,7 +609,6 @@ export default function AdminAccountDetailPage() {
                   <option value="basic">Basic</option>
                   <option value="premium">Premium</option>
                   <option value="premium_annual">Premium Annual</option>
-                  <option value="free_trial">Free Trial</option>
                 </select>
               </div>
               <div>

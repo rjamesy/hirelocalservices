@@ -15,24 +15,19 @@ import type { PlanTier } from '@/lib/types'
 
 // Canonical description limits (same values as in entitlements.ts)
 const DESCRIPTION_LIMITS: Record<PlanTier, number> = {
-  free_trial: 250,
   basic: 500,
   premium: 1500,
   premium_annual: 2500,
 }
 
 function getDescriptionLimit(plan: PlanTier | null): number {
-  return plan ? DESCRIPTION_LIMITS[plan] : 250
+  return plan ? DESCRIPTION_LIMITS[plan] : 500
 }
 
 describe('Plan-Based Character Limits', () => {
   // ─── Description limits ────────────────────────────────────────
 
   describe('Description limits per tier', () => {
-    it('returns 250 for free_trial', () => {
-      expect(getDescriptionLimit('free_trial')).toBe(250)
-    })
-
     it('returns 500 for basic', () => {
       expect(getDescriptionLimit('basic')).toBe(500)
     })
@@ -45,8 +40,8 @@ describe('Plan-Based Character Limits', () => {
       expect(getDescriptionLimit('premium_annual')).toBe(2500)
     })
 
-    it('returns 250 for null (no plan)', () => {
-      expect(getDescriptionLimit(null)).toBe(250)
+    it('returns 500 for null (no plan)', () => {
+      expect(getDescriptionLimit(null)).toBe(500)
     })
   })
 
@@ -69,20 +64,20 @@ describe('Plan-Based Character Limits', () => {
       abn: '',
     }
 
-    it('rejects description over 250 chars for free_trial schema', () => {
-      const schema = createBusinessSchema(250)
+    it('rejects description over 500 chars for basic schema', () => {
+      const schema = createBusinessSchema(500)
       const result = schema.safeParse({
         ...validBase,
-        description: 'A'.repeat(251),
+        description: 'A'.repeat(501),
       })
       expect(result.success).toBe(false)
     })
 
-    it('accepts description at exactly 250 chars for free_trial schema', () => {
-      const schema = createBusinessSchema(250)
+    it('accepts description at exactly 500 chars for basic schema', () => {
+      const schema = createBusinessSchema(500)
       const result = schema.safeParse({
         ...validBase,
-        description: 'A'.repeat(250),
+        description: 'A'.repeat(500),
       })
       expect(result.success).toBe(true)
     })
@@ -127,7 +122,7 @@ describe('Plan-Based Character Limits', () => {
   // ─── Business name max 80 across all schemas ───────────────────
 
   describe('Business name max 80 chars', () => {
-    const tiers: (PlanTier | null)[] = ['free_trial', 'basic', 'premium', 'premium_annual']
+    const tiers: (PlanTier | null)[] = ['basic', 'premium', 'premium_annual']
 
     for (const tier of tiers) {
       it(`rejects name > 80 chars for ${tier} schema`, () => {

@@ -38,14 +38,12 @@ describe('POST /api/stripe/checkout', () => {
     vi.resetAllMocks()
     process.env.STRIPE_PRICE_ID_BASIC = 'price_basic'
     process.env.STRIPE_PRICE_ID_PREMIUM = 'price_premium'
-    process.env.STRIPE_PRICE_ID_FREE_TRIAL = 'price_free_trial'
     process.env.STRIPE_PRICE_ID_ANNUAL = 'price_annual'
   })
 
   afterEach(() => {
     delete process.env.STRIPE_PRICE_ID_BASIC
     delete process.env.STRIPE_PRICE_ID_PREMIUM
-    delete process.env.STRIPE_PRICE_ID_FREE_TRIAL
     delete process.env.STRIPE_PRICE_ID_ANNUAL
   })
 
@@ -131,7 +129,7 @@ describe('POST /api/stripe/checkout', () => {
     expect(mockStripe.customers.create).toHaveBeenCalled()
   })
 
-  it('adds trial_period_days for free_trial plan', async () => {
+  it('adds trial_period_days for basic plan', async () => {
     mockSupabase.auth.getUser.mockResolvedValue({
       data: { user: mockUser },
       error: null,
@@ -144,7 +142,7 @@ describe('POST /api/stripe/checkout', () => {
       error: null,
     })
 
-    await POST(makeRequest({ planId: 'free_trial' }))
+    await POST(makeRequest({ planId: 'basic' }))
     expect(mockStripe.checkout.sessions.create).toHaveBeenCalledWith(
       expect.objectContaining({
         subscription_data: expect.objectContaining({
@@ -152,6 +150,24 @@ describe('POST /api/stripe/checkout', () => {
         }),
       })
     )
+  })
+
+  it('does not add trial_period_days for premium_annual plan', async () => {
+    mockSupabase.auth.getUser.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    })
+    // user_subscriptions check - no existing
+    maybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    // profile for email
+    single.mockResolvedValueOnce({
+      data: { email: 'user@test.com' },
+      error: null,
+    })
+
+    await POST(makeRequest({ planId: 'premium_annual' }))
+    const createCall = mockStripe.checkout.sessions.create.mock.calls[0][0]
+    expect(createCall.subscription_data.trial_period_days).toBeUndefined()
   })
 
   it('returns checkout URL for canceled subscription', async () => {

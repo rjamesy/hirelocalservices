@@ -14,7 +14,6 @@ const DEFAULT_TIER_WEIGHTS: Record<string, number> = {
   premium_annual: 40,
   premium: 30,
   basic: 10,
-  free_trial: 0,
 }
 
 function getConfigurableTierWeight(
@@ -54,35 +53,27 @@ describe('Admin Ranking Settings', () => {
       expect(getConfigurableTierWeight('basic')).toBe(10)
     })
 
-    it('should return default weight for free_trial (0)', () => {
-      expect(getConfigurableTierWeight('free_trial')).toBe(0)
-    })
-
     it('should use custom weights when provided', () => {
       const custom = {
         premium_annual: 50,
         premium: 35,
         basic: 15,
-        free_trial: 5,
       }
       expect(getConfigurableTierWeight('premium_annual', custom)).toBe(50)
       expect(getConfigurableTierWeight('premium', custom)).toBe(35)
       expect(getConfigurableTierWeight('basic', custom)).toBe(15)
-      expect(getConfigurableTierWeight('free_trial', custom)).toBe(5)
     })
 
-    it('should maintain ordering: annual > premium > basic > trial', () => {
+    it('should maintain ordering: annual > premium > basic', () => {
       const w = DEFAULT_TIER_WEIGHTS
       expect(w.premium_annual).toBeGreaterThan(w.premium)
       expect(w.premium).toBeGreaterThan(w.basic)
-      expect(w.basic).toBeGreaterThan(w.free_trial)
     })
 
     it('should maintain ordering with custom weights too', () => {
-      const custom = { premium_annual: 60, premium: 40, basic: 20, free_trial: 5 }
+      const custom = { premium_annual: 60, premium: 40, basic: 20 }
       expect(custom.premium_annual).toBeGreaterThan(custom.premium)
       expect(custom.premium).toBeGreaterThan(custom.basic)
-      expect(custom.basic).toBeGreaterThan(custom.free_trial)
     })
 
     it('should return 0 for null tier', () => {
@@ -94,9 +85,9 @@ describe('Admin Ranking Settings', () => {
     })
 
     it('should allow setting all weights to same value', () => {
-      const flat = { premium_annual: 10, premium: 10, basic: 10, free_trial: 10 }
+      const flat = { premium_annual: 10, premium: 10, basic: 10 }
       expect(getConfigurableTierWeight('premium_annual', flat))
-        .toBe(getConfigurableTierWeight('free_trial', flat))
+        .toBe(getConfigurableTierWeight('basic', flat))
     })
   })
 

@@ -77,7 +77,6 @@ export default function AdminAccountsPage() {
       basic: 'Basic',
       premium: 'Premium',
       premium_annual: 'Annual Premium',
-      free_trial: 'Free Trial',
     }
     return (
       <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[account.plan] ?? 'bg-gray-50 text-gray-500'}`}>

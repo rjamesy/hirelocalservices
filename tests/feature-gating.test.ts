@@ -16,11 +16,6 @@ describe('Feature Gating', () => {
   // ─── Photo Gating ─────────────────────────────────────────────────
 
   describe('Photo Upload Gating', () => {
-    it('free_trial cannot upload photos', () => {
-      const plan = getPlanById('free_trial')
-      expect(plan.canUploadPhotos).toBe(false)
-    })
-
     it('basic cannot upload photos', () => {
       const plan = getPlanById('basic')
       expect(plan.canUploadPhotos).toBe(false)
@@ -51,9 +46,7 @@ describe('Feature Gating', () => {
     })
 
     it('non-premium plans should have 0 max photos', () => {
-      const trial = getPlanById('free_trial')
       const basic = getPlanById('basic')
-      expect(trial.maxPhotos).toBe(0)
       expect(basic.maxPhotos).toBe(0)
     })
   })
@@ -61,11 +54,6 @@ describe('Feature Gating', () => {
   // ─── Testimonial Gating ───────────────────────────────────────────
 
   describe('Testimonial Gating', () => {
-    it('free_trial cannot add testimonials', () => {
-      const plan = getPlanById('free_trial')
-      expect(plan.canAddTestimonials).toBe(false)
-    })
-
     it('basic cannot add testimonials', () => {
       const plan = getPlanById('basic')
       expect(plan.canAddTestimonials).toBe(false)
@@ -91,9 +79,7 @@ describe('Feature Gating', () => {
     })
 
     it('non-premium plans should have 0 max testimonials', () => {
-      const trial = getPlanById('free_trial')
       const basic = getPlanById('basic')
-      expect(trial.maxTestimonials).toBe(0)
       expect(basic.maxTestimonials).toBe(0)
     })
   })
@@ -102,7 +88,7 @@ describe('Feature Gating', () => {
 
   describe('Premium Check Logic', () => {
     const premiumTiers: PlanTier[] = ['premium', 'premium_annual']
-    const nonPremiumTiers: PlanTier[] = ['free_trial', 'basic']
+    const nonPremiumTiers: PlanTier[] = ['basic']
 
     it('premium check should match premium and premium_annual', () => {
       for (const tier of premiumTiers) {
@@ -111,7 +97,7 @@ describe('Feature Gating', () => {
       }
     })
 
-    it('premium check should NOT match trial or basic', () => {
+    it('premium check should NOT match basic', () => {
       for (const tier of nonPremiumTiers) {
         const isPremium = tier === 'premium' || tier === 'premium_annual'
         expect(isPremium).toBe(false)
@@ -131,7 +117,6 @@ describe('Feature Gating', () => {
 
   describe('Feature Access Matrix', () => {
     const featureMatrix: { tier: PlanTier; photos: boolean; testimonials: boolean }[] = [
-      { tier: 'free_trial', photos: false, testimonials: false },
       { tier: 'basic', photos: false, testimonials: false },
       { tier: 'premium', photos: true, testimonials: true },
       { tier: 'premium_annual', photos: true, testimonials: true },
@@ -151,7 +136,7 @@ describe('Feature Gating', () => {
   describe('Server Action Gating Pattern', () => {
     it('premium_required check should reject non-premium plans', () => {
       // Simulates the pattern used in photos.ts and testimonials.ts
-      const nonPremiumPlans = ['free_trial', 'basic']
+      const nonPremiumPlans = ['basic']
       for (const plan of nonPremiumPlans) {
         const isPremium = plan === 'premium' || plan === 'premium_annual'
         expect(isPremium).toBe(false)
@@ -207,14 +192,11 @@ describe('Feature Gating', () => {
       expect(testimonialFeature).toBeTruthy()
     })
 
-    it('basic/trial should NOT include photo gallery feature', () => {
-      const trial = getPlanById('free_trial')
+    it('basic should NOT include photo gallery feature', () => {
       const basic = getPlanById('basic')
 
-      const trialPhoto = trial.features.find((f) => f.includes('Photo gallery'))
       const basicPhoto = basic.features.find((f) => f.includes('Photo gallery'))
 
-      expect(trialPhoto).toBeUndefined()
       expect(basicPhoto).toBeUndefined()
     })
   })

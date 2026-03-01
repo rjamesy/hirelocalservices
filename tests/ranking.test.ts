@@ -38,10 +38,6 @@ describe('Fair Ranking Algorithm', () => {
       expect(getTierWeight('basic')).toBe(10)
     })
 
-    it('should return 0 for free_trial', () => {
-      expect(getTierWeight('free_trial')).toBe(0)
-    })
-
     it('should return 0 for null tier', () => {
       expect(getTierWeight(null)).toBe(0)
     })
@@ -322,55 +318,47 @@ describe('Fair Ranking Algorithm', () => {
       expect(premiumFull).toBeGreaterThan(basicEmpty)
     })
 
-    it('should ensure trial tier has lower rank than basic tier', () => {
-      const trial = calculateRankScore({ ...baseRankParams, tier: 'free_trial' })
+    it('should ensure null tier has lower rank than basic tier', () => {
+      const noTier = calculateRankScore({ ...baseRankParams, tier: null })
       const basic = calculateRankScore({ ...baseRankParams, tier: 'basic' })
-      expect(trial).toBeLessThan(basic)
+      expect(noTier).toBeLessThan(basic)
     })
   })
 
   // ─── Trial Expiration ─────────────────────────────────────────────
 
   describe('isTrialExpired', () => {
-    it('should return false for non-trial plans', () => {
+    it('should always return false (trial is now Stripe-native)', () => {
       expect(isTrialExpired('basic', '2020-01-01T00:00:00Z')).toBe(false)
       expect(isTrialExpired('premium', '2020-01-01T00:00:00Z')).toBe(false)
       expect(isTrialExpired('premium_annual', '2020-01-01T00:00:00Z')).toBe(false)
+      expect(isTrialExpired('basic', null)).toBe(false)
     })
 
-    it('should return false if trial has no end date', () => {
-      expect(isTrialExpired('free_trial', null)).toBe(false)
-    })
-
-    it('should return true if trial end date is in the past', () => {
+    it('should return false even with a past date', () => {
       const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-      expect(isTrialExpired('free_trial', pastDate)).toBe(true)
+      expect(isTrialExpired('basic', pastDate)).toBe(false)
     })
 
-    it('should return false if trial end date is in the future', () => {
+    it('should return false with a future date', () => {
       const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-      expect(isTrialExpired('free_trial', futureDate)).toBe(false)
+      expect(isTrialExpired('premium', futureDate)).toBe(false)
     })
   })
 
   describe('getEffectiveTierWeight', () => {
-    it('should return normal weight for non-trial plans', () => {
+    it('should return normal weight for all plans', () => {
       expect(getEffectiveTierWeight('premium', null)).toBe(30)
       expect(getEffectiveTierWeight('basic', null)).toBe(10)
+      expect(getEffectiveTierWeight('premium_annual', null)).toBe(40)
     })
 
     it('should return 0 for null tier', () => {
       expect(getEffectiveTierWeight(null, null)).toBe(0)
     })
 
-    it('should return 0 for expired trial', () => {
-      const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-      expect(getEffectiveTierWeight('free_trial', pastDate)).toBe(0)
-    })
-
-    it('should return 0 for active trial (tier weight is 0)', () => {
-      const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-      expect(getEffectiveTierWeight('free_trial', futureDate)).toBe(0)
+    it('should return 0 for unknown tier', () => {
+      expect(getEffectiveTierWeight('unknown', null)).toBe(0)
     })
   })
 
@@ -383,7 +371,7 @@ describe('Fair Ranking Algorithm', () => {
   // ─── Ranking Fairness Properties ──────────────────────────────────
 
   describe('Ranking Fairness', () => {
-    it('premium_annual > premium > basic > trial for same quality', () => {
+    it('premium_annual > premium > basic > null for same quality', () => {
       const quality = {
         hasDescription: true,
         hasPhoto: true,
@@ -399,11 +387,11 @@ describe('Fair Ranking Algorithm', () => {
       const annual = calculateRankScore({ ...quality, tier: 'premium_annual' })
       const premium = calculateRankScore({ ...quality, tier: 'premium' })
       const basic = calculateRankScore({ ...quality, tier: 'basic' })
-      const trial = calculateRankScore({ ...quality, tier: 'free_trial' })
+      const noTier = calculateRankScore({ ...quality, tier: null })
 
       expect(annual).toBeGreaterThan(premium)
       expect(premium).toBeGreaterThan(basic)
-      expect(basic).toBeGreaterThan(trial)
+      expect(basic).toBeGreaterThan(noTier)
     })
 
     it('exposure penalty can push overexposed premium below fresh basic', () => {
@@ -452,8 +440,8 @@ describe('Fair Ranking Algorithm', () => {
         avgTierImpressions: 0,
       })
 
-      const trialClose = calculateRankScore({
-        tier: 'free_trial',
+      const basicClose = calculateRankScore({
+        tier: 'basic',
         hasDescription: false,
         hasPhoto: false,
         hasPhone: false,
@@ -465,8 +453,8 @@ describe('Fair Ranking Algorithm', () => {
         avgTierImpressions: 0,
       })
 
-      // Premium(30) + 0 = 30 vs Trial(0) + 15 = 15
-      expect(premiumFar).toBeGreaterThan(trialClose)
+      // Premium(30) + 0 = 30 vs Basic(10) + 15 = 25
+      expect(premiumFar).toBeGreaterThan(basicClose)
     })
   })
 })

@@ -4,41 +4,21 @@ import Link from 'next/link'
 export const metadata: Metadata = {
   title: 'Pricing - List Your Business | HireLocalServices',
   description:
-    'Choose a plan to list your business on HireLocalServices. Free trial, Basic from $4/month, Premium from $10/month, or save with Annual Premium at $99/year.',
+    'Choose a plan to list your business on HireLocalServices. Basic from $4/month, Premium from $10/month, or save with Annual Premium at $99/year. All monthly plans include a 30-day free trial.',
   openGraph: {
     title: 'Pricing - List Your Business | HireLocalServices',
     description:
-      'Choose a plan to list your business on HireLocalServices. Free trial, Basic from $4/month, Premium from $10/month, or save with Annual Premium at $99/year.',
+      'Choose a plan to list your business on HireLocalServices. Basic from $4/month, Premium from $10/month, or save with Annual Premium at $99/year. All monthly plans include a 30-day free trial.',
   },
 }
 
 const plans = [
   {
-    id: 'free_trial',
-    name: 'Free Trial',
-    price: '$0',
-    interval: 'for 30 days',
-    description: 'Try it free for 30 days. No credit card required upfront.',
-    included: [
-      '1 listing',
-      'Professional business profile',
-      'Appear in search results',
-      'Phone, email, and website links',
-      'Custom service area radius',
-      'SEO-optimised listing',
-      'ABN display',
-      'Up to 250 character description',
-    ],
-    cta: 'Start Free Trial',
-    highlighted: false,
-    badge: null,
-  },
-  {
     id: 'basic',
     name: 'Basic',
     price: '$4',
     interval: '/month',
-    description: 'Get your business visible to local customers.',
+    description: 'Get your business visible to local customers. 30-day free trial included.',
     included: [
       '1 listing',
       'Professional business profile',
@@ -48,8 +28,9 @@ const plans = [
       'SEO-optimised listing',
       'ABN display',
       'Up to 500 character description',
+      '30-day free trial',
     ],
-    cta: 'Get Started',
+    cta: 'Start Free Trial',
     highlighted: false,
     badge: null,
   },
@@ -58,7 +39,7 @@ const plans = [
     name: 'Premium',
     price: '$10',
     interval: '/month',
-    description: 'Showcase your work with photos and testimonials.',
+    description: 'Showcase your work with photos and testimonials. 30-day free trial included.',
     included: [
       'Up to 10 listings',
       'Professional business profile',
@@ -70,8 +51,9 @@ const plans = [
       'Up to 1,500 character description',
       'Photo gallery (up to 10 photos)',
       'Customer testimonials (up to 20)',
+      '30-day free trial',
     ],
-    cta: 'Go Premium',
+    cta: 'Start Free Trial',
     highlighted: true,
     badge: 'Most Popular',
   },
@@ -106,9 +88,9 @@ const faqs = [
       'Monthly plans are billed via Stripe and renew automatically. The Annual Premium plan is billed once per year. All prices are in AUD and include GST.',
   },
   {
-    question: 'What happens after the free trial?',
+    question: 'How does the free trial work?',
     answer:
-      'After 30 days, your listing will be paused until you choose a paid plan. Your data is preserved — just subscribe to go live again.',
+      'Basic and Premium monthly plans include a 30-day free trial. After the trial, your card is charged automatically. You can cancel anytime before the trial ends to avoid being charged.',
   },
   {
     question: 'Can I upgrade or downgrade at any time?',
@@ -159,12 +141,12 @@ export default function PricingPage() {
           Plans for Every Business
         </h1>
         <p className="mx-auto mt-4 max-w-2xl text-lg text-gray-600 leading-relaxed">
-          Start free, upgrade when you&apos;re ready. No hidden fees, cancel anytime.
+          Monthly plans include a 30-day free trial. No hidden fees, cancel anytime.
         </p>
       </div>
 
       {/* Pricing Grid */}
-      <div className="mx-auto mt-12 grid max-w-6xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {plans.map((plan) => (
           <div
             key={plan.id}

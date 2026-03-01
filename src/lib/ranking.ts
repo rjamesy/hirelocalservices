@@ -15,7 +15,6 @@ const TIER_WEIGHTS: Record<string, number> = {
   premium_annual: 40,
   premium: 30,
   basic: 10,
-  free_trial: 0,
 }
 
 export function getTierWeight(tier: PlanTier | string | null): number {
@@ -140,30 +139,28 @@ export function calculateRankScore(params: RankScoreParams): number {
 
 // ─── Trial Expiration ───────────────────────────────────────────────
 
-/** Default trial duration in days. */
+/** Default trial duration in days. Kept for backward compat with tests/migrations. */
 export const TRIAL_DURATION_DAYS = 30
 
 /**
  * Check if a trial has expired.
+ * NOTE: With Stripe-native trials, trial expiry is handled by Stripe.
+ * The free_trial plan no longer exists. This always returns false.
  */
 export function isTrialExpired(
-  plan: PlanTier | string,
-  currentPeriodEnd: string | null
+  _plan: PlanTier | string,
+  _currentPeriodEnd: string | null
 ): boolean {
-  if (plan !== 'free_trial') return false
-  if (!currentPeriodEnd) return false
-  return new Date(currentPeriodEnd) < new Date()
+  return false
 }
 
 /**
- * Get effective tier weight, considering trial expiration.
- * Expired trials get 0 weight (same as no subscription).
+ * Get effective tier weight. Trial expiry is now Stripe-managed.
  */
 export function getEffectiveTierWeight(
   tier: PlanTier | string | null,
-  currentPeriodEnd: string | null
+  _currentPeriodEnd: string | null
 ): number {
   if (!tier) return 0
-  if (isTrialExpired(tier, currentPeriodEnd)) return 0
   return getTierWeight(tier)
 }

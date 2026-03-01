@@ -36,7 +36,6 @@ type SupabaseClient = {
 // ─── Constants ──────────────────────────────────────────────────────
 
 const DESCRIPTION_LIMITS: Record<PlanTier, number> = {
-  free_trial: 250,
   basic: 500,
   premium: 1500,
   premium_annual: 2500,
@@ -110,15 +109,11 @@ async function buildEntitlements(
   const status = sub.status as SubscriptionStatus
   const planDef = getPlanById(plan)
 
-  const isActive = ['active', 'past_due'].includes(status) ||
+  const isActive = ['active', 'trialing', 'past_due'].includes(status) ||
     (status === 'canceled' && sub.current_period_end && new Date(sub.current_period_end) > new Date())
-  const isTrial = plan === 'free_trial' && isActive
+  const isTrial = status === 'trialing'
 
-  // Check if trial has expired
-  const trialExpired = plan === 'free_trial' && sub.trial_ends_at &&
-    new Date(sub.trial_ends_at) <= new Date()
-
-  const effectivelyActive = isActive && !trialExpired
+  const effectivelyActive = isActive
 
   // Max listings
   let maxListings = 1
@@ -129,8 +124,7 @@ async function buildEntitlements(
   // Reason codes
   const reasonCodes: string[] = []
   if (!effectivelyActive) {
-    if (trialExpired) reasonCodes.push('trial_expired')
-    else if (status === 'canceled') reasonCodes.push('subscription_canceled')
+    if (status === 'canceled') reasonCodes.push('subscription_canceled')
     else if (status === 'unpaid') reasonCodes.push('subscription_unpaid')
     else reasonCodes.push('no_active_subscription')
   }
@@ -275,7 +269,7 @@ export async function syncBusinessBillingStatus(
 
   // Derive billing_status
   let billingStatus: BillingStatus
-  if (entitlements.isActive && entitlements.isTrial) {
+  if (entitlements.isTrial) {
     billingStatus = 'trial'
   } else if (entitlements.isActive) {
     billingStatus = 'active'

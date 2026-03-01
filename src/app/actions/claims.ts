@@ -9,7 +9,7 @@ import {
   ADMIN_REVIEW_THRESHOLD,
 } from '@/lib/claim-scoring'
 import { quickBlacklistCheck } from '@/lib/blacklist'
-import { TRIAL_DURATION_DAYS } from '@/lib/ranking'
+import { syncBusinessBillingStatus } from '@/lib/entitlements'
 import { logAudit } from '@/lib/audit'
 import { getUserEntitlements } from '@/lib/entitlements'
 import { createNotification } from '@/app/actions/notifications'
@@ -39,54 +39,16 @@ async function requireAdmin() {
   return { supabase, user }
 }
 
-// ─── Ensure user has a subscription, assign trial if needed ──────────
+// ─── Sync business billing status from user entitlements ─────────────
 
 async function ensureUserSubscription(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
-  businessId: string
+  _businessId: string
 ) {
-  // 1. Check if user already has an active subscription
-  const { data: existing } = await supabase
-    .from('user_subscriptions')
-    .select('id, plan, status')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (existing && ['active', 'past_due'].includes(existing.status)) {
-    // User has active plan — set business billing_status based on plan
-    const billingStatus = existing.plan === 'free_trial' ? 'trial' : 'active'
-    await supabase
-      .from('businesses')
-      .update({ billing_status: billingStatus })
-      .eq('id', businessId)
-    return
-  }
-
-  // 2. No active subscription — create free trial
-  const now = new Date()
-  const trialEnd = new Date(now.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000)
-
-  await supabase.from('user_subscriptions').upsert(
-    {
-      user_id: userId,
-      status: 'active' as const,
-      plan: 'free_trial' as const,
-      current_period_end: trialEnd.toISOString(),
-      current_period_start: now.toISOString(),
-      cancel_at_period_end: false,
-      trial_ends_at: trialEnd.toISOString(),
-    },
-    { onConflict: 'user_id' }
-  )
-
-  await supabase
-    .from('businesses')
-    .update({
-      billing_status: 'trial',
-      trial_ends_at: trialEnd.toISOString(),
-    })
-    .eq('id', businessId)
+  // Sync billing_status on all user's businesses from their entitlements.
+  // If user has no subscription, they'll need to subscribe via Stripe checkout.
+  await syncBusinessBillingStatus(supabase, userId)
 }
 
 // ─── Claim Business (with scoring) ──────────────────────────────────

@@ -202,7 +202,7 @@ export type Testimonial = {
   created_at: string
 }
 
-export type PlanTier = 'free_trial' | 'basic' | 'premium' | 'premium_annual'
+export type PlanTier = 'basic' | 'premium' | 'premium_annual'
 
 export type BillingStatus = 'active' | 'trial' | 'billing_suspended'
 

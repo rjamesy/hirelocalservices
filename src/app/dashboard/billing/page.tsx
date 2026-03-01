@@ -105,8 +105,8 @@ function PlanCard({
   redirecting: boolean
 }) {
   const isPremium = plan.id === 'premium' || plan.id === 'premium_annual'
-  const priceDisplay = plan.id === 'free_trial' ? '$0' : `$${plan.price}`
-  const intervalDisplay = plan.id === 'free_trial' ? '/ 30 days' : `/${plan.interval}`
+  const priceDisplay = `$${plan.price}`
+  const intervalDisplay = `/${plan.interval}`
 
   return (
     <div
@@ -365,7 +365,7 @@ function BillingContent() {
 
   const currentPlan = getPlanById(subscription.plan ?? 'basic')
   const isPremiumTier = subscription.plan === 'premium' || subscription.plan === 'premium_annual'
-  const isFreeTrial = subscription.plan === 'free_trial'
+  const isTrialing = subscription.status === 'trialing'
   const hasStripeSubscription = !!subscription.stripe_subscription_id
 
   return (
@@ -413,37 +413,35 @@ function BillingContent() {
           <div className="flex items-center justify-between">
             <div>
               <h2 data-testid="billing-current-plan" className="text-lg font-semibold text-gray-900">
-                {isFreeTrial ? 'Free Trial' : `${currentPlan.name} Plan`}
+                {currentPlan.name} Plan
               </h2>
-              <SubscriptionBadge status={isFreeTrial ? 'trialing' : subscription.status} />
+              <SubscriptionBadge status={subscription.status} />
             </div>
-            {!isFreeTrial && (
-              <div className="text-right">
-                <p className="text-3xl font-bold text-gray-900">
-                  ${currentPlan.price}
-                </p>
-                <p className="text-sm text-gray-500">
-                  /{currentPlan.interval}
-                </p>
-              </div>
-            )}
+            <div className="text-right">
+              <p className="text-3xl font-bold text-gray-900">
+                ${currentPlan.price}
+              </p>
+              <p className="text-sm text-gray-500">
+                /{currentPlan.interval}
+              </p>
+            </div>
           </div>
 
           {/* Billing details */}
           <div className="mt-6 divide-y divide-gray-100">
             <div className="flex items-center justify-between py-3">
               <span className="text-sm text-gray-500">Status</span>
-              <SubscriptionBadge status={isFreeTrial ? 'trialing' : subscription.status} />
+              <SubscriptionBadge status={subscription.status} />
             </div>
 
             <div className="flex items-center justify-between py-3">
               <span className="text-sm text-gray-500">Plan</span>
               <span className="text-sm font-medium text-gray-900">
-                {isFreeTrial ? 'Free Trial' : currentPlan.name}
+                {currentPlan.name}{isTrialing ? ' (Trial)' : ''}
               </span>
             </div>
 
-            {isFreeTrial && subscription.trial_ends_at && (
+            {isTrialing && subscription.trial_ends_at && (
               <div className="flex items-center justify-between py-3">
                 <span className="text-sm text-gray-500">Trial Ends</span>
                 <span className="text-sm font-medium text-gray-900">
@@ -452,7 +450,7 @@ function BillingContent() {
               </div>
             )}
 
-            {!isFreeTrial && subscription.current_period_end && (
+            {subscription.current_period_end && (
               <div className="flex items-center justify-between py-3">
                 <span className="text-sm text-gray-500">Current Period Ends</span>
                 <span className="text-sm font-medium text-gray-900">
@@ -526,28 +524,16 @@ function BillingContent() {
         )}
       </div>
 
-      {/* Upgrade prompt for free trial or non-premium users */}
-      {(isFreeTrial || !isPremiumTier) && (
+      {/* Upgrade prompt for non-premium users */}
+      {!isPremiumTier && (
         <div className="mt-6 rounded-xl border border-brand-200 bg-brand-50 p-6">
           <h3 className="text-sm font-semibold text-brand-900">
-            {isFreeTrial ? 'Upgrade to a Paid Plan' : 'Upgrade to Premium'}
+            Upgrade to Premium
           </h3>
           <p className="mt-1 text-sm text-brand-700">
-            {isFreeTrial
-              ? 'Your free trial will expire. Choose a plan to keep your listings active.'
-              : 'Get photo galleries and customer testimonials to showcase your work and build trust.'}
+            Get photo galleries and customer testimonials to showcase your work and build trust.
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
-            {isFreeTrial && (
-              <button
-                type="button"
-                onClick={() => handleSelectPlan('basic')}
-                disabled={redirecting}
-                className="inline-flex items-center rounded-lg border border-brand-600 bg-white px-4 py-2 text-sm font-medium text-brand-600 hover:bg-brand-50 disabled:opacity-50 transition-colors"
-              >
-                Basic - $4/month
-              </button>
-            )}
             <button
               type="button"
               onClick={() => handleSelectPlan('premium')}

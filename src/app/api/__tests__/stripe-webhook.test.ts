@@ -97,7 +97,8 @@ describe('POST /api/stripe/webhook', () => {
     expect(mockAdminSupabase.from).toHaveBeenCalledWith('user_subscriptions')
   })
 
-  it('maps trialing status to active', async () => {
+  it('maps trialing status to trialing', async () => {
+    const trialEnd = Math.floor(Date.now() / 1000) + 30 * 86400
     mockConstructEvent.mockReturnValue({
       type: 'checkout.session.completed',
       data: {
@@ -105,24 +106,28 @@ describe('POST /api/stripe/webhook', () => {
           mode: 'subscription',
           subscription: 'sub_123',
           customer: 'cus_123',
-          metadata: { user_id: 'user-123', plan_tier: 'free_trial' },
+          metadata: { user_id: 'user-123', plan_tier: 'basic' },
         },
       },
     })
     mockSubscriptionsRetrieve.mockResolvedValue({
       id: 'sub_123',
       status: 'trialing',
+      trial_end: trialEnd,
       current_period_start: Math.floor(Date.now() / 1000),
-      current_period_end: Math.floor(Date.now() / 1000) + 30 * 86400,
+      current_period_end: trialEnd,
       cancel_at_period_end: false,
-      items: { data: [{ price: { id: 'price_free' } }] },
+      items: { data: [{ price: { id: 'price_basic' } }] },
     })
 
     const response = await POST(makeWebhookRequest('{}'))
     expect(response.status).toBe(200)
-    // The upsert should have status 'active' for trialing
+    // The upsert should have status 'trialing' and trial_ends_at set
     expect(upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'active' }),
+      expect.objectContaining({
+        status: 'trialing',
+        trial_ends_at: expect.any(String),
+      }),
       expect.any(Object)
     )
   })

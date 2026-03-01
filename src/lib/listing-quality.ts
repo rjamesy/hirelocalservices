@@ -76,7 +76,7 @@ function edited(hint: string): QualityResult {
 }
 
 function getBlockedHint(reasonCodes: string[]): string {
-  if (reasonCodes.includes('trial_expired')) return 'Not visible: free trial expired'
+  if (reasonCodes.includes('trial_expired')) return 'Not visible: trial expired'
   if (reasonCodes.includes('subscription_canceled')) return 'Not visible: subscription cancelled'
   if (reasonCodes.includes('payment_past_due')) return 'Not visible: payment past due'
   return 'Not visible: subscription required'

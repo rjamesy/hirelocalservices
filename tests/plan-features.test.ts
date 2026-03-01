@@ -4,7 +4,7 @@
  * Tests for plan-based premium feature access:
  * - Premium users can access photos
  * - Premium annual users can access testimonials
- * - Free trial users blocked from photos
+ * - Basic users blocked from photos
  * - Basic users blocked from testimonials
  * - Premium check logic returns correct boolean
  */
@@ -29,10 +29,6 @@ describe('Plan-Based Feature Access', () => {
       expect(isPremium('premium_annual')).toBe(true)
     })
 
-    it('free_trial user blocked from photos', () => {
-      expect(isPremium('free_trial')).toBe(false)
-    })
-
     it('basic user blocked from photos', () => {
       expect(isPremium('basic')).toBe(false)
     })
@@ -53,10 +49,6 @@ describe('Plan-Based Feature Access', () => {
       expect(isPremium('premium_annual')).toBe(true)
     })
 
-    it('free_trial user blocked from testimonials', () => {
-      expect(isPremium('free_trial')).toBe(false)
-    })
-
     it('basic user blocked from testimonials', () => {
       expect(isPremium('basic')).toBe(false)
     })
@@ -66,7 +58,6 @@ describe('Plan-Based Feature Access', () => {
 
   describe('isPremium() comprehensive check', () => {
     const allTiers: { tier: PlanTier; expected: boolean }[] = [
-      { tier: 'free_trial', expected: false },
       { tier: 'basic', expected: false },
       { tier: 'premium', expected: true },
       { tier: 'premium_annual', expected: true },

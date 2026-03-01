@@ -27,7 +27,7 @@ export const RADIUS_OPTIONS = [
 
 // ─── Plan Tiers ─────────────────────────────────────────────────────
 
-export type PlanTier = 'free_trial' | 'basic' | 'premium' | 'premium_annual'
+export type PlanTier = 'basic' | 'premium' | 'premium_annual'
 
 export interface PlanDefinition {
   id: PlanTier
@@ -35,6 +35,7 @@ export interface PlanDefinition {
   price: number
   interval: string
   priceIdEnvVar: string
+  trialDays: number
   features: string[]
   canUploadPhotos: boolean
   canAddTestimonials: boolean
@@ -44,30 +45,12 @@ export interface PlanDefinition {
 
 export const PLANS: PlanDefinition[] = [
   {
-    id: 'free_trial',
-    name: 'Free Trial',
-    price: 0,
-    interval: '30 days',
-    priceIdEnvVar: 'STRIPE_PRICE_ID_FREE_TRIAL',
-    features: [
-      'Professional business profile',
-      'Appear in search results',
-      'Phone, email, and website links',
-      'Custom service area radius',
-      'SEO-optimised listing',
-      'ABN display',
-    ],
-    canUploadPhotos: false,
-    canAddTestimonials: false,
-    maxPhotos: 0,
-    maxTestimonials: 0,
-  },
-  {
     id: 'basic',
     name: 'Basic',
     price: 4,
     interval: 'month',
     priceIdEnvVar: 'STRIPE_PRICE_ID_BASIC',
+    trialDays: 30,
     features: [
       'Professional business profile',
       'Appear in search results',
@@ -87,6 +70,7 @@ export const PLANS: PlanDefinition[] = [
     price: 10,
     interval: 'month',
     priceIdEnvVar: 'STRIPE_PRICE_ID_PREMIUM',
+    trialDays: 30,
     features: [
       'Professional business profile',
       'Appear in search results',
@@ -108,6 +92,7 @@ export const PLANS: PlanDefinition[] = [
     price: 99,
     interval: 'year',
     priceIdEnvVar: 'STRIPE_PRICE_ID_ANNUAL',
+    trialDays: 0,
     features: [
       'Professional business profile',
       'Appear in search results',
@@ -134,7 +119,7 @@ export function getPlanByPriceId(priceId: string): PlanDefinition | undefined {
 
 /** Get a plan definition by tier ID. */
 export function getPlanById(tier: PlanTier): PlanDefinition {
-  return PLANS.find((p) => p.id === tier) ?? PLANS[1] // default to basic
+  return PLANS.find((p) => p.id === tier) ?? PLANS[0] // default to basic
 }
 
 /** All known Stripe price IDs. */
