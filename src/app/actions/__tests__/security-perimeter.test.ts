@@ -55,6 +55,19 @@ vi.mock('@/app/actions/notifications', () => ({
   createNotification: vi.fn(),
 }))
 
+const mockGetCurrentPublishedTyped = vi.fn()
+vi.mock('@/lib/pw-service', () => ({
+  getCurrentPublishedTyped: (...args: any[]) => mockGetCurrentPublishedTyped(...args),
+  dualWrite: vi.fn(async (_label: string, fn: () => Promise<void>) => { try { await fn() } catch {} }),
+  createWorking: vi.fn(),
+  updateWorking: vi.fn(),
+  submitWorking: vi.fn(),
+  approveWorking: vi.fn(),
+  rejectWorking: vi.fn(),
+  archiveWorking: vi.fn(),
+  setVisibility: vi.fn(),
+}))
+
 // Import after mocks
 import { getBusinessBySlug } from '../business'
 import { approveClaim, rejectClaim } from '../claims'
@@ -63,24 +76,79 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-// ─── getBusinessBySlug Visibility Gating ────────────────────────────────────
+// ─── getBusinessBySlug Visibility Gating (P-based) ──────────────────────────
 
 describe('getBusinessBySlug — public visibility gate', () => {
-  const publishedApproved = {
-    ...mockBusiness,
-    status: 'published',
-    verification_status: 'approved',
-    deleted_at: null,
+  // Identity-only fields returned by businesses query
+  const bizIdentity = {
+    id: mockBusiness.id,
+    owner_id: mockBusiness.owner_id,
+    slug: mockBusiness.slug,
     billing_status: 'active',
-    photos: [],
-    testimonials: [],
-    business_locations: [],
-    business_categories: [],
+    deleted_at: null,
+    is_seed: false,
+    claim_status: 'unclaimed',
+    listing_source: 'manual',
   }
 
-  it('returns null for draft business when anonymous', async () => {
-    const draft = { ...publishedApproved, status: 'draft' }
-    maybeSingle.mockResolvedValueOnce({ data: draft, error: null })
+  // Published listing (P) — content source
+  const mockP = {
+    id: 'pl-1',
+    business_id: mockBusiness.id,
+    amendment_number: 1,
+    is_current: true,
+    visibility_status: 'live' as const,
+    name: 'Test Business',
+    description: 'A great test business',
+    phone: '0412345678',
+    email_contact: 'contact@test.com',
+    website: 'https://test.com',
+    abn: '12345678901',
+    suburb: 'Brisbane',
+    state: 'QLD',
+    postcode: '4000',
+    address_text: '123 Test St',
+    service_radius_km: 25,
+    lat: -27.4698,
+    lng: 153.0251,
+    primary_category_id: null,
+    category_ids: [],
+    category_names: [],
+    photos_snapshot: [],
+    testimonials_snapshot: [],
+    published_at: '2024-06-01T00:00:00Z',
+    created_at: '2024-06-01T00:00:00Z',
+  }
+
+  it('returns null when no published listing (P) exists — anonymous', async () => {
+    maybeSingle.mockResolvedValueOnce({ data: bizIdentity, error: null })
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce(null)
+
+    const result = await getBusinessBySlug('test-business')
+    expect(result).toBeNull()
+  })
+
+  it('returns null when P.visibility_status is paused — anonymous', async () => {
+    maybeSingle.mockResolvedValueOnce({ data: bizIdentity, error: null })
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce({ ...mockP, visibility_status: 'paused' })
+    mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
+
+    const result = await getBusinessBySlug('test-business')
+    expect(result).toBeNull()
+  })
+
+  it('returns null when P.visibility_status is suspended — anonymous', async () => {
+    maybeSingle.mockResolvedValueOnce({ data: bizIdentity, error: null })
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce({ ...mockP, visibility_status: 'suspended' })
+    mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
+
+    const result = await getBusinessBySlug('test-business')
+    expect(result).toBeNull()
+  })
+
+  it('returns null when eligibility check fails — anonymous', async () => {
+    maybeSingle.mockResolvedValueOnce({ data: bizIdentity, error: null })
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce({ ...mockP, visibility_status: 'live' })
     mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
     mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: false })
 
@@ -88,58 +156,9 @@ describe('getBusinessBySlug — public visibility gate', () => {
     expect(result).toBeNull()
   })
 
-  it('returns null for pending verification when anonymous', async () => {
-    const pending = { ...publishedApproved, verification_status: 'pending' }
-    maybeSingle.mockResolvedValueOnce({ data: pending, error: null })
-    mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
-    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: false })
-
-    const result = await getBusinessBySlug('test-business')
-    expect(result).toBeNull()
-  })
-
-  it('returns null for rejected verification when anonymous', async () => {
-    const rejected = { ...publishedApproved, verification_status: 'rejected' }
-    maybeSingle.mockResolvedValueOnce({ data: rejected, error: null })
-    mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
-    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: false })
-
-    const result = await getBusinessBySlug('test-business')
-    expect(result).toBeNull()
-  })
-
-  it('returns null for deleted business when anonymous', async () => {
-    const deleted = { ...publishedApproved, deleted_at: '2024-01-01T00:00:00Z' }
-    maybeSingle.mockResolvedValueOnce({ data: deleted, error: null })
-    mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
-    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: false })
-
-    const result = await getBusinessBySlug('test-business')
-    expect(result).toBeNull()
-  })
-
-  it('returns null for billing_suspended when anonymous', async () => {
-    const suspended = { ...publishedApproved, billing_status: 'billing_suspended' }
-    maybeSingle.mockResolvedValueOnce({ data: suspended, error: null })
-    mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
-    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: false })
-
-    const result = await getBusinessBySlug('test-business')
-    expect(result).toBeNull()
-  })
-
-  it('returns null for suspended status when anonymous', async () => {
-    const suspended = { ...publishedApproved, status: 'suspended' }
-    maybeSingle.mockResolvedValueOnce({ data: suspended, error: null })
-    mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
-    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: false })
-
-    const result = await getBusinessBySlug('test-business')
-    expect(result).toBeNull()
-  })
-
-  it('returns business for published+approved when anonymous', async () => {
-    maybeSingle.mockResolvedValueOnce({ data: publishedApproved, error: null })
+  it('returns business when P is live and eligible — anonymous', async () => {
+    maybeSingle.mockResolvedValueOnce({ data: bizIdentity, error: null })
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce({ ...mockP, visibility_status: 'live' })
     mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
     mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: true })
 
@@ -148,33 +167,34 @@ describe('getBusinessBySlug — public visibility gate', () => {
     expect(result?.name).toBe('Test Business')
   })
 
-  it('returns draft business when user is owner', async () => {
-    const draft = { ...publishedApproved, status: 'draft', owner_id: mockUser.id }
-    maybeSingle.mockResolvedValueOnce({ data: draft, error: null })
+  it('returns business for owner — bypasses visibility check', async () => {
+    const ownerBiz = { ...bizIdentity, owner_id: mockUser.id }
+    maybeSingle.mockResolvedValueOnce({ data: ownerBiz, error: null })
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce({ ...mockP, visibility_status: 'paused' })
     mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: mockUser }, error: null })
 
     const result = await getBusinessBySlug('test-business')
     expect(result).not.toBeNull()
   })
 
-  it('returns pending-verification business when user is owner', async () => {
-    const pending = { ...publishedApproved, verification_status: 'pending', owner_id: mockUser.id }
-    maybeSingle.mockResolvedValueOnce({ data: pending, error: null })
-    mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: mockUser }, error: null })
-
-    const result = await getBusinessBySlug('test-business')
-    expect(result).not.toBeNull()
-  })
-
-  it('returns any-status business when user is admin', async () => {
-    const draft = { ...publishedApproved, status: 'draft', verification_status: 'pending', owner_id: 'other-user' }
-    maybeSingle.mockResolvedValueOnce({ data: draft, error: null })
+  it('returns business for admin — bypasses visibility check', async () => {
+    maybeSingle.mockResolvedValueOnce({ data: bizIdentity, error: null })
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce({ ...mockP, visibility_status: 'suspended' })
     mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: mockAdminUser }, error: null })
     // Admin profile check
     single.mockResolvedValueOnce({ data: { role: 'admin' }, error: null })
 
     const result = await getBusinessBySlug('test-business')
     expect(result).not.toBeNull()
+  })
+
+  it('returns null for everyone (including owner) when no P exists', async () => {
+    const ownerBiz = { ...bizIdentity, owner_id: mockUser.id }
+    maybeSingle.mockResolvedValueOnce({ data: ownerBiz, error: null })
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce(null)
+
+    const result = await getBusinessBySlug('test-business')
+    expect(result).toBeNull()
   })
 })
 

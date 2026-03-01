@@ -1411,33 +1411,25 @@ export async function getMyBusiness(selectedId?: string) {
 export async function getBusinessBySlug(slug: string) {
   const supabase = await createClient()
 
-  const { data: business, error } = await supabase
+  // Resolve slug → business identity (identity fields only)
+  const { data: biz, error } = await supabase
     .from('businesses')
-    .select(
-      `
-      *,
-      business_locations (*),
-      business_categories (
-        category_id,
-        categories (*)
-      ),
-      photos (*),
-      testimonials (*)
-    `
-    )
+    .select('id, owner_id, slug, billing_status, deleted_at, is_seed, claim_status, listing_source')
     .eq('slug', slug)
     .maybeSingle()
 
-  if (error || !business) {
-    return null
-  }
+  if (error || !biz) return null
+
+  // Fetch current published listing (P) — content source
+  const p = await pwService.getCurrentPublishedTyped(biz.id)
+  if (!p) return null
 
   // Determine viewer identity
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const isOwner = !!user && user.id === business.owner_id
+  const isOwner = !!user && user.id === biz.owner_id
 
   // Check admin only if authenticated and not owner (avoid unnecessary DB call)
   let isAdmin = false
@@ -1450,57 +1442,74 @@ export async function getBusinessBySlug(slug: string) {
     isAdmin = profile?.role === 'admin'
   }
 
-  // Hard gate: unapproved listings are invisible to anonymous users
-  if (business.verification_status !== 'approved' && !isOwner && !isAdmin) {
-    return null
-  }
-
-  // Additional visibility checks for non-owner, non-admin (billing, deleted, suspended)
+  // Visibility checks for non-owner, non-admin
   if (!isOwner && !isAdmin) {
-    const eligibility = await getListingEligibility(supabase, business.id)
-    if (!eligibility.visiblePublic) {
-      return null
-    }
+    if (p.visibility_status !== 'live') return null
+    // Existing eligibility check (reads old businesses columns via dual-write)
+    const eligibility = await getListingEligibility(supabase, biz.id)
+    if (!eligibility.visiblePublic) return null
   }
 
-  // Filter to live-only photos and testimonials for public display
-  const allPhotos = business.photos ?? []
-  const livePhotos = allPhotos.filter(
-    (p: { status?: string }) => !p.status || p.status === 'live'
-  )
-  const allTestimonials = business.testimonials ?? []
-  const liveTestimonials = allTestimonials.filter(
-    (t: { status?: string }) => !t.status || t.status === 'live'
-  )
+  // Photos and testimonials from P snapshots (already live-only)
+  const photos = (p.photos_snapshot ?? []) as Array<{ id: string; url: string; sort_order: number; [k: string]: unknown }>
+  const testimonials = (p.testimonials_snapshot ?? []) as Array<{ id: string; author_name: string; text: string; rating: number; [k: string]: unknown }>
 
-  // Calculate average rating from live testimonials only
+  // Calculate average rating from snapshot testimonials
   const avgRating =
-    liveTestimonials.length > 0
+    testimonials.length > 0
       ? Math.round(
-          (liveTestimonials.reduce(
+          (testimonials.reduce(
             (sum: number, t: { rating: number }) => sum + t.rating,
             0
           ) /
-            liveTestimonials.length) *
+            testimonials.length) *
             10
         ) / 10
       : null
 
-  // Flatten location
-  const location = Array.isArray(business.business_locations)
-    ? business.business_locations[0] ?? null
-    : business.business_locations
+  // Location from P denormalized fields
+  const location = (p.suburb || p.state || p.postcode)
+    ? { suburb: p.suburb, state: p.state, postcode: p.postcode, address_text: p.address_text, service_radius_km: p.service_radius_km, lat: p.lat, lng: p.lng }
+    : null
+
+  // Categories from P arrays — resolve slugs for breadcrumb links
+  const catIds = p.category_ids ?? []
+  let catSlugMap = new Map<string, string>()
+  if (catIds.length > 0) {
+    const { data: catRows } = await supabase.from('categories').select('id, slug').in('id', catIds)
+    for (const c of catRows ?? []) catSlugMap.set(c.id, c.slug)
+  }
+  const categories = catIds.map((catId: string, i: number) => ({
+    category_id: catId,
+    is_primary: catId === p.primary_category_id,
+    categories: { id: catId, name: (p.category_names ?? [])[i] ?? '', slug: catSlugMap.get(catId) ?? '' },
+  }))
 
   return {
-    ...business,
+    id: biz.id,
+    owner_id: biz.owner_id,
+    name: p.name,
+    slug: biz.slug,
+    description: p.description,
+    phone: p.phone,
+    email_contact: p.email_contact,
+    website: p.website,
+    abn: p.abn,
+    status: p.visibility_status === 'live' ? 'published' : p.visibility_status,
+    verification_status: 'approved' as const,
+    billing_status: biz.billing_status,
+    is_seed: biz.is_seed,
+    claim_status: biz.claim_status,
+    listing_source: biz.listing_source,
+    deleted_at: biz.deleted_at,
     location,
-    categories: business.business_categories,
-    photos: livePhotos.sort(
+    categories,
+    photos: [...photos].sort(
       (a: { sort_order: number }, b: { sort_order: number }) =>
         a.sort_order - b.sort_order
     ),
-    testimonials: liveTestimonials,
+    testimonials,
     avgRating,
-    reviewCount: liveTestimonials.length,
+    reviewCount: testimonials.length,
   }
 }

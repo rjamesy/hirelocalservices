@@ -55,7 +55,9 @@ import {
   setVisibility,
   getActiveWorking,
   getCurrentPublished,
+  deriveStatus,
 } from '@/lib/pw-service'
+import type { PublishedListing, WorkingListing } from '@/lib/types'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -348,5 +350,144 @@ describe('getCurrentPublished', () => {
     const result = await getCurrentPublished('biz-1')
 
     expect(result).toBeNull()
+  })
+})
+
+// ─── deriveStatus (pure function — no mocks needed) ─────────────────────────
+
+describe('deriveStatus', () => {
+  const biz = { deleted_at: null, billing_status: 'active' }
+
+  function makeP(overrides: Partial<PublishedListing> = {}): PublishedListing {
+    return {
+      id: 'p-1', business_id: 'biz-1', amendment: 0, is_current: true,
+      visibility_status: 'live', name: 'Test', slug: 'test',
+      description: null, phone: null, email_contact: null, website: null, abn: null,
+      address_text: null, suburb: null, state: null, postcode: null,
+      lat: null, lng: null, service_radius_km: null,
+      category_ids: [], category_names: [], primary_category_id: null,
+      photos_snapshot: [], testimonials_snapshot: [],
+      approved_by: null, approval_comment: null, verification_job_id: null,
+      approved_at: '', created_at: '',
+      ...overrides,
+    }
+  }
+
+  function makeW(overrides: Partial<WorkingListing> = {}): WorkingListing {
+    return {
+      id: 'w-1', business_id: 'biz-1', name: 'Test',
+      description: null, phone: null, email_contact: null, website: null, abn: null,
+      address_text: null, suburb: null, state: null, postcode: null,
+      lat: null, lng: null, service_radius_km: 25,
+      primary_category_id: null, secondary_category_ids: [],
+      review_status: 'draft', change_type: 'new',
+      rejection_reason: null, rejection_count: 0, verification_job_id: null,
+      submitted_at: null, reviewed_at: null, reviewed_by: null,
+      archived_at: null, created_at: '', updated_at: '',
+      ...overrides,
+    }
+  }
+
+  it('P(live) + no W → published, approved', () => {
+    const result = deriveStatus(makeP(), null, biz)
+    expect(result.effectiveStatus).toBe('published')
+    expect(result.effectiveVerification).toBe('approved')
+    expect(result.hasPendingChanges).toBe(false)
+    expect(result.visibilityStatus).toBe('live')
+    expect(result.reviewStatus).toBeNull()
+  })
+
+  it('P(live) + W(pending, edit) → published, pending', () => {
+    const result = deriveStatus(
+      makeP(),
+      makeW({ review_status: 'pending', change_type: 'edit' }),
+      biz
+    )
+    expect(result.effectiveStatus).toBe('published')
+    expect(result.effectiveVerification).toBe('pending')
+    expect(result.hasPendingChanges).toBe(true)
+  })
+
+  it('P(live) + W(changes_required, edit) → published, rejected', () => {
+    const result = deriveStatus(
+      makeP(),
+      makeW({ review_status: 'changes_required', change_type: 'edit' }),
+      biz
+    )
+    expect(result.effectiveStatus).toBe('published')
+    expect(result.effectiveVerification).toBe('rejected')
+    expect(result.hasPendingChanges).toBe(true)
+  })
+
+  it('P(live) + W(draft, edit) → published, approved', () => {
+    const result = deriveStatus(
+      makeP(),
+      makeW({ review_status: 'draft', change_type: 'edit' }),
+      biz
+    )
+    expect(result.effectiveStatus).toBe('published')
+    expect(result.effectiveVerification).toBe('approved')
+    expect(result.hasPendingChanges).toBe(true)
+  })
+
+  it('no P + W(draft, new) → draft, pending', () => {
+    const result = deriveStatus(null, makeW(), biz)
+    expect(result.effectiveStatus).toBe('draft')
+    expect(result.effectiveVerification).toBe('pending')
+    expect(result.hasPendingChanges).toBe(false)
+  })
+
+  it('no P + W(pending, new) → draft, pending', () => {
+    const result = deriveStatus(
+      null,
+      makeW({ review_status: 'pending' }),
+      biz
+    )
+    expect(result.effectiveStatus).toBe('draft')
+    expect(result.effectiveVerification).toBe('pending')
+  })
+
+  it('no P + W(changes_required, new) → draft, rejected', () => {
+    const result = deriveStatus(
+      null,
+      makeW({ review_status: 'changes_required' }),
+      biz
+    )
+    expect(result.effectiveStatus).toBe('draft')
+    expect(result.effectiveVerification).toBe('rejected')
+  })
+
+  it('P(paused) + no W → paused, approved', () => {
+    const result = deriveStatus(makeP({ visibility_status: 'paused' }), null, biz)
+    expect(result.effectiveStatus).toBe('paused')
+    expect(result.effectiveVerification).toBe('approved')
+    expect(result.visibilityStatus).toBe('paused')
+  })
+
+  it('P(suspended) + no W → suspended, approved', () => {
+    const result = deriveStatus(makeP({ visibility_status: 'suspended' }), null, biz)
+    expect(result.effectiveStatus).toBe('suspended')
+    expect(result.effectiveVerification).toBe('approved')
+    expect(result.visibilityStatus).toBe('suspended')
+  })
+
+  it('deleted business → deleted, overrides everything', () => {
+    const result = deriveStatus(
+      makeP(),
+      makeW({ review_status: 'pending' }),
+      { deleted_at: '2026-01-01', billing_status: 'active' }
+    )
+    expect(result.effectiveStatus).toBe('deleted')
+    expect(result.effectiveVerification).toBe('approved')
+    expect(result.hasPendingChanges).toBe(false)
+  })
+
+  it('no P + no W → draft, pending', () => {
+    const result = deriveStatus(null, null, biz)
+    expect(result.effectiveStatus).toBe('draft')
+    expect(result.effectiveVerification).toBe('pending')
+    expect(result.hasPendingChanges).toBe(false)
+    expect(result.visibilityStatus).toBeNull()
+    expect(result.reviewStatus).toBeNull()
   })
 })

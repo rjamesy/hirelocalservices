@@ -46,6 +46,19 @@ vi.mock('@/lib/claim-scoring', () => ({
   fuzzyNameScore: (...args: any[]) => mockFuzzyNameScore(...args),
 }))
 
+const mockGetCurrentPublishedTyped = vi.fn()
+vi.mock('@/lib/pw-service', () => ({
+  getCurrentPublishedTyped: (...args: any[]) => mockGetCurrentPublishedTyped(...args),
+  dualWrite: vi.fn(async (_label: string, fn: () => Promise<void>) => { try { await fn() } catch {} }),
+  createWorking: vi.fn(),
+  updateWorking: vi.fn(),
+  submitWorking: vi.fn(),
+  approveWorking: vi.fn(),
+  rejectWorking: vi.fn(),
+  archiveWorking: vi.fn(),
+  setVisibility: vi.fn(),
+}))
+
 // Import actions after mocks
 import {
   createBusinessDraft,
@@ -632,6 +645,51 @@ describe('getMyBusiness', () => {
 })
 
 describe('getBusinessBySlug', () => {
+  // Helper: identity row returned by the businesses query
+  const bizIdentity = {
+    id: mockBusiness.id,
+    owner_id: mockBusiness.owner_id,
+    slug: mockBusiness.slug,
+    billing_status: 'active',
+    deleted_at: null,
+    is_seed: false,
+    claim_status: 'unclaimed',
+    listing_source: 'manual',
+  }
+
+  // Helper: P snapshot matching the published listing
+  const mockP = {
+    id: 'p-1',
+    business_id: mockBusiness.id,
+    amendment: 0,
+    is_current: true,
+    visibility_status: 'live',
+    name: mockBusiness.name,
+    slug: mockBusiness.slug,
+    description: mockBusiness.description,
+    phone: mockBusiness.phone,
+    email_contact: mockBusiness.email_contact,
+    website: mockBusiness.website,
+    abn: mockBusiness.abn,
+    suburb: null,
+    state: null,
+    postcode: null,
+    address_text: null,
+    lat: null,
+    lng: null,
+    service_radius_km: null,
+    category_ids: [],
+    category_names: [],
+    primary_category_id: null,
+    photos_snapshot: [],
+    testimonials_snapshot: [],
+    approved_by: null,
+    approval_comment: null,
+    verification_job_id: null,
+    approved_at: '',
+    created_at: '',
+  }
+
   beforeEach(() => {
     vi.resetAllMocks()
   })
@@ -644,43 +702,41 @@ describe('getBusinessBySlug', () => {
   })
 
   it('returns null if not publicly visible and not owner', async () => {
-    // No authenticated user
     mockSupabase.auth.getUser.mockResolvedValue({
       data: { user: null },
       error: null,
     })
+    // Identity query returns business
     maybeSingle.mockResolvedValueOnce({
-      data: {
-        ...mockBusiness,
-        billing_status: 'billing_suspended',
-        business_locations: [],
-        business_categories: [],
-        photos: [],
-        testimonials: [],
-      },
+      data: { ...bizIdentity, billing_status: 'billing_suspended' },
       error: null,
     })
+    // P exists but eligibility fails
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce({ ...mockP, visibility_status: 'live' })
     mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: false })
 
     const result = await getBusinessBySlug('test-business')
     expect(result).toBeNull()
   })
 
-  it('calculates average rating', async () => {
-    maybeSingle.mockResolvedValueOnce({
-      data: {
-        ...mockBusiness,
-        billing_status: 'active',
-        business_locations: [],
-        business_categories: [],
-        photos: [],
-        testimonials: [
-          { rating: 4 },
-          { rating: 5 },
-        ],
-      },
-      error: null,
+  it('returns null if no published listing exists', async () => {
+    maybeSingle.mockResolvedValueOnce({ data: bizIdentity, error: null })
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce(null)
+
+    const result = await getBusinessBySlug('test-business')
+    expect(result).toBeNull()
+  })
+
+  it('calculates average rating from P testimonials_snapshot', async () => {
+    maybeSingle.mockResolvedValueOnce({ data: bizIdentity, error: null })
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce({
+      ...mockP,
+      testimonials_snapshot: [
+        { id: 't1', author_name: 'A', text: 'Good', rating: 4 },
+        { id: 't2', author_name: 'B', text: 'Great', rating: 5 },
+      ],
     })
+    mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
     mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: true })
 
     const result = await getBusinessBySlug('test-business')
@@ -689,23 +745,41 @@ describe('getBusinessBySlug', () => {
     expect(result!.reviewCount).toBe(2)
   })
 
-  it('returns business data with flattened location', async () => {
-    maybeSingle.mockResolvedValueOnce({
-      data: {
-        ...mockBusiness,
-        billing_status: 'active',
-        business_locations: [{ id: 'loc-1', suburb: 'Sydney' }],
-        business_categories: [{ category_id: 'cat-1' }],
-        photos: [{ url: '/photo.jpg', sort_order: 0 }],
-        testimonials: [],
-      },
-      error: null,
+  it('returns location from P denormalized fields', async () => {
+    maybeSingle.mockResolvedValueOnce({ data: bizIdentity, error: null })
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce({
+      ...mockP,
+      suburb: 'Sydney',
+      state: 'NSW',
+      postcode: '2000',
     })
+    mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
     mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: true })
 
     const result = await getBusinessBySlug('test-business')
     expect(result).not.toBeNull()
-    expect(result!.location).toEqual({ id: 'loc-1', suburb: 'Sydney' })
+    expect(result!.location).toEqual({
+      suburb: 'Sydney', state: 'NSW', postcode: '2000',
+      address_text: null, service_radius_km: null, lat: null, lng: null,
+    })
+  })
+
+  it('returns photos from P photos_snapshot sorted by sort_order', async () => {
+    maybeSingle.mockResolvedValueOnce({ data: bizIdentity, error: null })
+    mockGetCurrentPublishedTyped.mockResolvedValueOnce({
+      ...mockP,
+      photos_snapshot: [
+        { id: 'ph2', url: '/b.jpg', sort_order: 1 },
+        { id: 'ph1', url: '/a.jpg', sort_order: 0 },
+      ],
+    })
+    mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
+    mockGetListingEligibility.mockResolvedValueOnce({ visiblePublic: true })
+
+    const result = await getBusinessBySlug('test-business')
+    expect(result).not.toBeNull()
+    expect(result!.photos[0].url).toBe('/a.jpg')
+    expect(result!.photos[1].url).toBe('/b.jpg')
   })
 })
 

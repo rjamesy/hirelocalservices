@@ -14,7 +14,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database } from '@/lib/types'
+import type { Database, PublishedListing, WorkingListing } from '@/lib/types'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -448,5 +448,129 @@ async function snapshotBusinessState(
     service_radius_km: loc?.service_radius_km ?? 25,
     primary_category_id: primaryCat?.category_id ?? null,
     secondary_category_ids: secondaryCats,
+  }
+}
+
+// ─── Typed Read Helpers (Phase 3a) ──────────────────────────────────────────
+
+/**
+ * Get the current published listing for a business, typed.
+ * Returns null if no published version exists.
+ */
+export async function getCurrentPublishedTyped(
+  businessId: string
+): Promise<PublishedListing | null> {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('published_listings')
+    .select('*')
+    .eq('business_id', businessId)
+    .eq('is_current', true)
+    .maybeSingle()
+  return (data as PublishedListing | null) ?? null
+}
+
+/**
+ * Get the active (non-archived) working listing for a business, typed.
+ */
+export async function getActiveWorkingTyped(
+  businessId: string
+): Promise<WorkingListing | null> {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('working_listings')
+    .select('*')
+    .eq('business_id', businessId)
+    .is('archived_at', null)
+    .maybeSingle()
+  return (data as WorkingListing | null) ?? null
+}
+
+/**
+ * Get both P and W for a business in one call.
+ * Primary read function for dashboard pages.
+ */
+export async function getListingState(businessId: string): Promise<{
+  published: PublishedListing | null
+  working: WorkingListing | null
+}> {
+  const [published, working] = await Promise.all([
+    getCurrentPublishedTyped(businessId),
+    getActiveWorkingTyped(businessId),
+  ])
+  return { published, working }
+}
+
+// ─── Status Derivation ─────────────────────────────────────────────────────
+
+export interface DerivedStatus {
+  /** Mapped to old businesses.status values for backward compat */
+  effectiveStatus: 'draft' | 'published' | 'paused' | 'suspended' | 'deleted'
+  /** Mapped to old businesses.verification_status values for backward compat */
+  effectiveVerification: 'approved' | 'pending' | 'rejected'
+  /** True if active W exists with change_type='edit' */
+  hasPendingChanges: boolean
+  /** Raw P.visibility_status (null if no P) */
+  visibilityStatus: 'live' | 'paused' | 'suspended' | null
+  /** Raw W.review_status (null if no W) */
+  reviewStatus: 'draft' | 'pending' | 'changes_required' | null
+}
+
+/**
+ * Derive backward-compatible status fields from P/W state.
+ *
+ * Maps the new P/W model to the old status/verification_status values
+ * so existing UI code (listing-quality, command center, dashboard) works
+ * without changes.
+ */
+export function deriveStatus(
+  p: PublishedListing | null,
+  w: WorkingListing | null,
+  biz: { deleted_at: string | null; billing_status?: string }
+): DerivedStatus {
+  const visibilityStatus = p?.visibility_status ?? null
+  const reviewStatus = w?.review_status ?? null
+  const hasPendingChanges = !!w && w.change_type === 'edit'
+
+  // Deleted overrides everything
+  if (biz.deleted_at) {
+    return {
+      effectiveStatus: 'deleted',
+      effectiveVerification: 'approved',
+      hasPendingChanges: false,
+      visibilityStatus,
+      reviewStatus,
+    }
+  }
+
+  // Status: derived from P.visibility_status, fallback to W.change_type
+  let effectiveStatus: DerivedStatus['effectiveStatus']
+  if (p) {
+    if (p.visibility_status === 'suspended') effectiveStatus = 'suspended'
+    else if (p.visibility_status === 'paused') effectiveStatus = 'paused'
+    else effectiveStatus = 'published'
+  } else {
+    effectiveStatus = 'draft'
+  }
+
+  // Verification: derived from W.review_status, fallback to P existence
+  let effectiveVerification: DerivedStatus['effectiveVerification']
+  if (w && w.review_status === 'pending') {
+    effectiveVerification = 'pending'
+  } else if (w && w.review_status === 'changes_required') {
+    effectiveVerification = 'rejected'
+  } else if (p) {
+    effectiveVerification = 'approved'
+  } else {
+    // No P, no pending/rejected W — new draft not yet submitted
+    effectiveVerification = 'pending'
+  }
+
+  return {
+    effectiveStatus,
+    effectiveVerification,
+    hasPendingChanges,
+    visibilityStatus,
+    reviewStatus,
   }
 }
