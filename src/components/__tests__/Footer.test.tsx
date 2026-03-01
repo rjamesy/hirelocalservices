@@ -10,7 +10,7 @@ describe('Footer', () => {
 
   it('renders company links', () => {
     render(<Footer />)
-    expect(screen.getByText('About')).toBeInTheDocument()
+    expect(screen.getByText('Disclaimer')).toBeInTheDocument()
     expect(screen.getByText('Terms of Service')).toBeInTheDocument()
     expect(screen.getByText('Privacy Policy')).toBeInTheDocument()
     expect(screen.getByText('Contact')).toBeInTheDocument()

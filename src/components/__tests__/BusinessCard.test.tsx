@@ -30,10 +30,10 @@ describe('BusinessCard', () => {
     expect(screen.getByText('Professional plumbing services across Brisbane.')).toBeInTheDocument()
   })
 
-  it('truncates long descriptions', () => {
+  it('renders long descriptions with CSS truncation', () => {
     const longDesc = 'A'.repeat(200)
     render(<BusinessCard {...defaultProps} description={longDesc} />)
-    expect(screen.getByText(`${'A'.repeat(150)}...`)).toBeInTheDocument()
+    expect(screen.getByText(longDesc)).toBeInTheDocument()
   })
 
   it('renders location', () => {

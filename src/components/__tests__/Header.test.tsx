@@ -23,6 +23,13 @@ vi.mock('@supabase/ssr', () => ({
       }),
       signOut: mockSignOut,
     },
+    from: vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          single: vi.fn(() => Promise.resolve({ data: { role: 'user' }, error: null })),
+        })),
+      })),
+    })),
   }),
 }))
 
