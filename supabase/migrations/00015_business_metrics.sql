@@ -121,4 +121,4 @@ GRANT EXECUTE ON FUNCTION public.get_business_metrics(uuid, integer) TO authenti
 CREATE TRIGGER set_business_metrics_updated_at
   BEFORE UPDATE ON public.business_metrics
   FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at();
+  EXECUTE FUNCTION public.update_updated_at_column();

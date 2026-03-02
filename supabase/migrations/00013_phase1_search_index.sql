@@ -23,12 +23,7 @@ CREATE TABLE business_search_index (
   photo_url        text,
   listing_source   listing_source,
   is_claimed       boolean NOT NULL DEFAULT false,
-  search_vector    tsvector GENERATED ALWAYS AS (
-    setweight(to_tsvector('english', coalesce(name, '')), 'A') ||
-    setweight(to_tsvector('english', coalesce(description, '')), 'B') ||
-    setweight(to_tsvector('english', coalesce(array_to_string(category_names, ' '), '')), 'C') ||
-    setweight(to_tsvector('english', coalesce(suburb, '')), 'D')
-  ) STORED,
+  search_vector    tsvector,
   indexed_at       timestamptz NOT NULL DEFAULT now()
 );
 
@@ -52,6 +47,26 @@ CREATE POLICY bsi_update ON business_search_index
 
 CREATE POLICY bsi_delete ON business_search_index
   FOR DELETE USING (is_admin());
+
+-- ─── Auto-compute search_vector on INSERT/UPDATE ──────────────────────
+
+CREATE OR REPLACE FUNCTION bsi_compute_search_vector()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.search_vector :=
+    setweight(to_tsvector('english', coalesce(NEW.name, '')), 'A') ||
+    setweight(to_tsvector('english', coalesce(NEW.description, '')), 'B') ||
+    setweight(to_tsvector('english', coalesce(array_to_string(NEW.category_names, ' '), '')), 'C') ||
+    setweight(to_tsvector('english', coalesce(NEW.suburb, '')), 'D');
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_bsi_search_vector
+  BEFORE INSERT OR UPDATE ON business_search_index
+  FOR EACH ROW EXECUTE FUNCTION bsi_compute_search_vector();
 
 -- ─── Eligibility check function ─────────────────────────────────────
 
