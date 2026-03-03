@@ -4,6 +4,7 @@ import type { LocationToken } from '@/app/actions/search'
 import SearchBar from '@/components/SearchBar'
 import BusinessCard from '@/components/BusinessCard'
 import Pagination from '@/components/Pagination'
+import SearchImpressionTracker from '@/components/SearchImpressionTracker'
 import Link from 'next/link'
 
 interface SearchPageProps {
@@ -211,6 +212,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               />
             ))}
           </div>
+
+          <SearchImpressionTracker businessIds={results.map(r => r.id)} />
 
           {/* Pagination */}
           {totalPages > 1 && (

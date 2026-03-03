@@ -35,6 +35,25 @@ export async function trackProfileView(businessId: string) {
 }
 
 /**
+ * Track a contact click (phone, email, or website) for a business.
+ * Called from the ContactReveal component. Fire-and-forget.
+ */
+export async function trackContactClick(
+  businessId: string,
+  clickType: 'phone' | 'email' | 'website'
+) {
+  try {
+    const supabase = await createClient()
+    await supabase.rpc('increment_contact_click', {
+      p_business_id: businessId,
+      p_click_type: clickType,
+    })
+  } catch {
+    // Non-blocking
+  }
+}
+
+/**
  * Get metrics summary for a business (owner or admin only).
  */
 export async function getBusinessMetrics(businessId: string, days = 30) {
@@ -49,6 +68,9 @@ export async function getBusinessMetrics(businessId: string, days = 30) {
     return {
       total_impressions: 0,
       total_views: 0,
+      total_phone_clicks: 0,
+      total_email_clicks: 0,
+      total_website_clicks: 0,
       daily_impressions: [],
       daily_views: [],
     }
@@ -59,6 +81,9 @@ export async function getBusinessMetrics(businessId: string, days = 30) {
   return {
     total_impressions: Number(row?.total_impressions ?? 0),
     total_views: Number(row?.total_views ?? 0),
+    total_phone_clicks: Number(row?.total_phone_clicks ?? 0),
+    total_email_clicks: Number(row?.total_email_clicks ?? 0),
+    total_website_clicks: Number(row?.total_website_clicks ?? 0),
     daily_impressions: row?.daily_impressions ?? [],
     daily_views: row?.daily_views ?? [],
   }

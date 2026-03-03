@@ -19,6 +19,7 @@ export interface Entitlements {
   canEdit: boolean
   canUploadPhotos: boolean
   canAddTestimonials: boolean
+  canViewMetrics: boolean
   maxPhotos: number
   maxTestimonials: number
   descriptionLimit: number
@@ -148,6 +149,7 @@ async function buildEntitlements(
     canEdit: true, // drafts allowed without subscription
     canUploadPhotos: effectivelyActive && planDef.canUploadPhotos,
     canAddTestimonials: effectivelyActive && planDef.canAddTestimonials,
+    canViewMetrics: effectivelyActive && (plan === 'premium' || plan === 'premium_annual'),
     maxPhotos: planDef.maxPhotos,
     maxTestimonials: planDef.maxTestimonials,
     descriptionLimit: DESCRIPTION_LIMITS[plan] ?? DEFAULT_DESCRIPTION_LIMIT,
@@ -173,6 +175,7 @@ function nullEntitlements(userId: string, currentListingCount: number): Entitlem
     canEdit: true,
     canUploadPhotos: false,
     canAddTestimonials: false,
+    canViewMetrics: false,
     maxPhotos: 0,
     maxTestimonials: 0,
     descriptionLimit: 250,

@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { searchBusinesses, lookupPostcode, lookupSuburb } from '@/app/actions/search'
 import BusinessCard from '@/components/BusinessCard'
 import Pagination from '@/components/Pagination'
+import SearchImpressionTracker from '@/components/SearchImpressionTracker'
 import { formatDistance } from '@/lib/utils'
 import { AU_STATES } from '@/lib/constants'
 
@@ -218,6 +219,8 @@ export default async function LocationPage({
               />
             ))}
           </div>
+
+          <SearchImpressionTracker businessIds={results.map(r => r.id)} />
 
           {totalPages > 1 && (
             <div className="mt-10">

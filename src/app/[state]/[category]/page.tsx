@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { AU_STATES, ITEMS_PER_PAGE } from '@/lib/constants'
 import BusinessCard from '@/components/BusinessCard'
 import Pagination from '@/components/Pagination'
+import SearchImpressionTracker from '@/components/SearchImpressionTracker'
 
 interface StateCategoryPageProps {
   params: Promise<{ state: string; category: string }>
@@ -173,6 +174,8 @@ export default async function StateCategoryPage({
               />
             ))}
           </div>
+
+          <SearchImpressionTracker businessIds={filteredResults.map(r => r.id)} />
 
           {totalPages > 1 && (
             <div className="mt-10">

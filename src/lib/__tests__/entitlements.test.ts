@@ -201,6 +201,37 @@ describe('getUserEntitlements', () => {
     expect(result.isActive).toBe(true)
     expect(result.subscriptionStatus).toBe('active')
   })
+
+  it('canViewMetrics is true for active premium', async () => {
+    const sub = createMockSubRow({ status: 'active', plan: 'premium' })
+    const supabase = createMockSupabase({ activeSub: sub })
+    const result = await getUserEntitlements(supabase, 'user-1')
+
+    expect(result.canViewMetrics).toBe(true)
+  })
+
+  it('canViewMetrics is true for active premium_annual', async () => {
+    const sub = createMockSubRow({ status: 'active', plan: 'premium_annual' })
+    const supabase = createMockSupabase({ activeSub: sub })
+    const result = await getUserEntitlements(supabase, 'user-1')
+
+    expect(result.canViewMetrics).toBe(true)
+  })
+
+  it('canViewMetrics is false for active basic', async () => {
+    const sub = createMockSubRow({ status: 'active', plan: 'basic' })
+    const supabase = createMockSupabase({ activeSub: sub })
+    const result = await getUserEntitlements(supabase, 'user-1')
+
+    expect(result.canViewMetrics).toBe(false)
+  })
+
+  it('canViewMetrics is false for no subscription', async () => {
+    const supabase = createMockSupabase()
+    const result = await getUserEntitlements(supabase, 'user-1')
+
+    expect(result.canViewMetrics).toBe(false)
+  })
 })
 
 describe('syncBusinessBillingStatus', () => {

@@ -255,6 +255,9 @@ export type BusinessMetrics = {
   date: string
   search_impressions: number
   profile_views: number
+  phone_clicks: number
+  email_clicks: number
+  website_clicks: number
   created_at: string
   updated_at: string
 }
@@ -1061,9 +1064,19 @@ export type Database = {
         Returns: {
           total_impressions: number
           total_views: number
+          total_phone_clicks: number
+          total_email_clicks: number
+          total_website_clicks: number
           daily_impressions: unknown
           daily_views: unknown
         }[]
+      }
+      increment_contact_click: {
+        Args: {
+          p_business_id: string
+          p_click_type: string
+        }
+        Returns: undefined
       }
       get_abuse_event_count: {
         Args: {
