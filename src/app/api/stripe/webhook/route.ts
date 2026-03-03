@@ -278,6 +278,16 @@ export async function POST(request: NextRequest) {
           trial_ends_at: trialEndsAt,
         }
 
+        // Detect plan tier change → update plan_changed_at
+        const { data: currentSub } = await supabase
+          .from('user_subscriptions')
+          .select('plan')
+          .eq('stripe_subscription_id', stripeSubscriptionId)
+          .maybeSingle()
+        if (currentSub && currentSub.plan !== planTier) {
+          updateData.plan_changed_at = new Date().toISOString()
+        }
+
         // Update user_subscriptions by stripe_subscription_id
         const { error } = await supabase
           .from('user_subscriptions')

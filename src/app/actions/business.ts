@@ -551,6 +551,16 @@ export async function updateBusinessCategories(
 export async function publishChanges(businessId: string, captchaToken?: string) {
   const { supabase, user } = await verifyBusinessOwnership(businessId)
 
+  // ── Suspension guard (defense in depth — middleware also blocks) ───
+  const { data: callerProfile } = await supabase
+    .from('profiles')
+    .select('suspended_at')
+    .eq('id', user.id)
+    .single()
+  if (callerProfile?.suspended_at) {
+    return { error: 'Your account has been suspended.' }
+  }
+
   // ── Protection guard ───────────────────────────────────────────────
   const publishFlags = await getSystemFlagsSafe()
   if (!publishFlags.listings_enabled) {
