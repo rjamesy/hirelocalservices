@@ -649,6 +649,16 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
     abn: (pending.abn as string | null) ?? biz.abn,
   }
 
+  // ── Contact method validation: at least one required ─────────────
+  const hasContactMethod = Boolean(
+    contentToValidate.phone?.trim() ||
+    contentToValidate.email_contact?.trim() ||
+    contentToValidate.website?.trim()
+  )
+  if (!hasContactMethod) {
+    return { error: 'At least one contact method (phone, email, or website) is required to publish.' }
+  }
+
   // ── Blacklist expansion check: phone, website, ABN, ACN ───────────
   const blacklistFields: { value: string | null; fieldType: string; normalize: (v: string) => string }[] = [
     { value: contentToValidate.phone, fieldType: 'phone', normalize: (v) => v.replace(/\D/g, '') },

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { DashboardSidebarClient } from './DashboardSidebarClient'
 import NotificationBell from '@/components/NotificationBell'
 import { createClient } from '@/lib/supabase/server'
+import { getUserEntitlements } from '@/lib/entitlements'
 
 export const metadata = {
   title: 'Dashboard | HireLocalServices',
@@ -116,10 +117,19 @@ export default async function DashboardLayout({
     }
   }
 
+  // Filter nav items based on entitlements (hide Metrics for Basic users)
+  let filteredNavItems = navItems
+  if (user) {
+    const entitlements = await getUserEntitlements(supabase, user.id)
+    if (!entitlements.canViewMetrics) {
+      filteredNavItems = navItems.filter((item) => item.href !== '/dashboard/metrics')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardSidebarClient
-        navItems={navItems.map(({ href, label }) => ({ href, label }))}
+        navItems={filteredNavItems.map(({ href, label }) => ({ href, label }))}
       >
         {/* Desktop sidebar - rendered server-side */}
         <aside className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-64 lg:flex-col">
@@ -148,7 +158,7 @@ export default async function DashboardLayout({
 
             {/* Navigation */}
             <nav className="flex-1 space-y-1 px-2 py-4">
-              {navItems.map((item) => (
+              {filteredNavItems.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}

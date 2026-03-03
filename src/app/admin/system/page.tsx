@@ -199,6 +199,7 @@ export default function AdminSystemPage() {
   const [blacklistEntries, setBlacklistEntries] = useState<any[]>([])
   const [newTerm, setNewTerm] = useState('')
   const [newMatchType, setNewMatchType] = useState<'exact' | 'contains' | 'starts_with'>('contains')
+  const [newFieldType, setNewFieldType] = useState<'business_name' | 'email' | 'phone' | 'website' | 'abn' | 'acn'>('business_name')
   const [newReason, setNewReason] = useState('')
 
   // API key state
@@ -312,7 +313,7 @@ export default function AdminSystemPage() {
 
   async function handleAddBlacklist() {
     if (!newTerm.trim()) return
-    const result = await addBlacklistEntry(newTerm, newMatchType, newReason || undefined)
+    const result = await addBlacklistEntry(newTerm, newMatchType, newReason || undefined, newFieldType)
     if ('error' in result && result.error) {
       setMessage({ type: 'error', text: result.error })
     } else {
@@ -1444,13 +1445,28 @@ export default function AdminSystemPage() {
             {/* Add new entry */}
             <div className="flex flex-wrap items-end gap-3">
               <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Field Type</label>
+                <select
+                  value={newFieldType}
+                  onChange={(e) => setNewFieldType(e.target.value as any)}
+                  className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="business_name">Business Name</option>
+                  <option value="email">Email</option>
+                  <option value="phone">Phone</option>
+                  <option value="website">Website</option>
+                  <option value="abn">ABN</option>
+                  <option value="acn">ACN</option>
+                </select>
+              </div>
+              <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Term</label>
                 <input
                   type="text"
                   value={newTerm}
                   onChange={(e) => setNewTerm(e.target.value)}
-                  placeholder="e.g. escort"
-                  className="w-40 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  placeholder={newFieldType === 'phone' ? 'e.g. 0412345678' : newFieldType === 'website' ? 'e.g. example.com' : newFieldType === 'abn' || newFieldType === 'acn' ? 'e.g. 12345678901' : 'e.g. escort'}
+                  className="w-44 rounded-md border border-gray-300 px-3 py-2 text-sm"
                 />
               </div>
               <div>
@@ -1492,7 +1508,10 @@ export default function AdminSystemPage() {
                   <div key={entry.id} className="flex items-center justify-between py-2">
                     <div>
                       <span className="text-sm font-medium text-gray-900">{entry.term}</span>
-                      <span className="ml-2 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                      <span className="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                        {entry.field_type || 'business_name'}
+                      </span>
+                      <span className="ml-1 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
                         {entry.match_type}
                       </span>
                       {entry.reason && (

@@ -37,7 +37,8 @@ export async function getBlacklistEntries() {
 export async function addBlacklistEntry(
   term: string,
   matchType: 'exact' | 'contains' | 'starts_with',
-  reason?: string
+  reason?: string,
+  fieldType: 'business_name' | 'email' | 'phone' | 'website' | 'abn' | 'acn' = 'business_name'
 ) {
   const { supabase, user } = await requireAdmin()
 
@@ -48,6 +49,7 @@ export async function addBlacklistEntry(
   const { error } = await supabase.from('blacklist').insert({
     term: term.trim().toLowerCase(),
     match_type: matchType,
+    field_type: fieldType,
     reason: reason || null,
     added_by: user.id,
     is_active: true,
