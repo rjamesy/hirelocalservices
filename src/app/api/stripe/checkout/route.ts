@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
       !returnTo.includes('//') &&
       !returnTo.includes('\\')
         ? returnTo
-        : '/dashboard/listing'
+        : '/dashboard'
 
     // Stripe-native trial: basic & premium get 30-day trial, annual has no trial
     const trialDays = plan.trialDays

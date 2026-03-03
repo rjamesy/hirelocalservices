@@ -14,7 +14,13 @@ export interface Entitlements {
   isTrial: boolean
   maxListings: number
   currentListingCount: number
+  publishedListingCount: number
+  /** @deprecated Use canCreateMore instead */
   canClaimMore: boolean
+  /** Can create new drafts (total non-deleted < maxListings hard cap) */
+  canCreateMore: boolean
+  /** Can publish listings (published count < plan publish limit) */
+  canPublishMore: boolean
   canPublish: boolean
   canEdit: boolean
   canUploadPhotos: boolean
@@ -64,15 +70,25 @@ export async function getUserEntitlements(
     .limit(1)
     .maybeSingle()
 
-  // 2. Count user's non-seed, non-deleted businesses
-  const { count } = await supabase
-    .from('businesses')
-    .select('*', { count: 'exact', head: true })
-    .eq('owner_id', userId)
-    .eq('is_seed', false)
-    .is('deleted_at', null)
+  // 2. Count user's non-seed, non-deleted businesses (total = hard cap check)
+  const [totalRes, publishedRes] = await Promise.all([
+    supabase
+      .from('businesses')
+      .select('*', { count: 'exact', head: true })
+      .eq('owner_id', userId)
+      .eq('is_seed', false)
+      .is('deleted_at', null),
+    supabase
+      .from('businesses')
+      .select('*', { count: 'exact', head: true })
+      .eq('owner_id', userId)
+      .eq('is_seed', false)
+      .is('deleted_at', null)
+      .eq('status', 'published'),
+  ])
 
-  const currentListingCount = count ?? 0
+  const currentListingCount = totalRes.count ?? 0
+  const publishedListingCount = publishedRes.count ?? 0
 
   // 3. No active subscription
   if (!sub) {
@@ -90,20 +106,21 @@ export async function getUserEntitlements(
       const periodEnd = new Date(canceledSub.current_period_end)
       if (periodEnd > new Date()) {
         // Still active until period end
-        return buildEntitlements(canceledSub, currentListingCount, userId)
+        return buildEntitlements(canceledSub, currentListingCount, publishedListingCount, userId)
       }
     }
 
-    return nullEntitlements(userId, currentListingCount)
+    return nullEntitlements(userId, currentListingCount, publishedListingCount)
   }
 
   // 4. Active subscription found
-  return buildEntitlements(sub, currentListingCount, userId)
+  return buildEntitlements(sub, currentListingCount, publishedListingCount, userId)
 }
 
 async function buildEntitlements(
   sub: Record<string, any>,
   currentListingCount: number,
+  publishedListingCount: number,
   userId: string
 ): Promise<Entitlements> {
   const plan = sub.plan as PlanTier
@@ -136,6 +153,9 @@ async function buildEntitlements(
   if (!effectivelyActive) effectiveState = 'blocked'
   else if (status === 'past_due') effectiveState = 'limited'
 
+  // Publish limit: Basic = 1 published, Premium/Annual = maxListings
+  const publishLimit = (plan === 'basic') ? 1 : maxListings
+
   return {
     userId,
     plan,
@@ -144,7 +164,10 @@ async function buildEntitlements(
     isTrial,
     maxListings,
     currentListingCount,
+    publishedListingCount,
     canClaimMore: currentListingCount < maxListings,
+    canCreateMore: currentListingCount < maxListings,
+    canPublishMore: publishedListingCount < publishLimit,
     canPublish: effectivelyActive,
     canEdit: true, // drafts allowed without subscription
     canUploadPhotos: effectivelyActive && planDef.canUploadPhotos,
@@ -161,7 +184,7 @@ async function buildEntitlements(
   }
 }
 
-function nullEntitlements(userId: string, currentListingCount: number): Entitlements {
+function nullEntitlements(userId: string, currentListingCount: number, publishedListingCount: number): Entitlements {
   return {
     userId,
     plan: null,
@@ -170,7 +193,10 @@ function nullEntitlements(userId: string, currentListingCount: number): Entitlem
     isTrial: false,
     maxListings: 1,
     currentListingCount,
+    publishedListingCount,
     canClaimMore: currentListingCount < 1,
+    canCreateMore: currentListingCount < 1,
+    canPublishMore: publishedListingCount < 1,
     canPublish: false,
     canEdit: true,
     canUploadPhotos: false,
@@ -215,31 +241,38 @@ export async function getBatchUserEntitlements(
     subsByUser.set(sub.user_id, list)
   }
 
-  // 2. Batch count businesses per owner
+  // 2. Batch count businesses per owner (total + published)
   // We need counts per user, so do a grouped query
   const { data: bizCounts } = await supabase
     .from('businesses')
-    .select('owner_id', { count: 'exact', head: false })
+    .select('owner_id, status', { count: 'exact', head: false })
     .in('owner_id', userIds)
     .eq('is_seed', false)
+    .is('deleted_at', null)
 
   // Count per owner from the returned rows
   const countByUser = new Map<string, number>()
+  const publishedCountByUser = new Map<string, number>()
   for (const row of bizCounts ?? []) {
-    const ownerId = (row as Record<string, unknown>).owner_id as string
+    const r = row as Record<string, unknown>
+    const ownerId = r.owner_id as string
     countByUser.set(ownerId, (countByUser.get(ownerId) ?? 0) + 1)
+    if (r.status === 'published') {
+      publishedCountByUser.set(ownerId, (publishedCountByUser.get(ownerId) ?? 0) + 1)
+    }
   }
 
   // 3. Build entitlements for each user
   for (const userId of userIds) {
     const subs = subsByUser.get(userId) ?? []
     const currentListingCount = countByUser.get(userId) ?? 0
+    const publishedListingCount = publishedCountByUser.get(userId) ?? 0
 
     // Find non-canceled sub
     const activeSub = subs.find(s => s.status !== 'canceled')
 
     if (activeSub) {
-      result.set(userId, await buildEntitlements(activeSub, currentListingCount, userId))
+      result.set(userId, await buildEntitlements(activeSub, currentListingCount, publishedListingCount, userId))
     } else {
       // Check for canceled sub still within period
       const canceledSub = subs
@@ -247,9 +280,9 @@ export async function getBatchUserEntitlements(
         .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0]
 
       if (canceledSub?.current_period_end && new Date(canceledSub.current_period_end) > new Date()) {
-        result.set(userId, await buildEntitlements(canceledSub, currentListingCount, userId))
+        result.set(userId, await buildEntitlements(canceledSub, currentListingCount, publishedListingCount, userId))
       } else {
-        result.set(userId, nullEntitlements(userId, currentListingCount))
+        result.set(userId, nullEntitlements(userId, currentListingCount, publishedListingCount))
       }
     }
   }
@@ -260,9 +293,10 @@ export async function getBatchUserEntitlements(
 // ─── SYNC HELPER — ONLY writer of billing_status ────────────────────
 
 /**
- * syncBusinessBillingStatus is the ONLY writer of billing_status.
- * Called from: Stripe webhook, admin plan change, claim approval, trial expiration.
- * Reads getUserEntitlements() and writes derived billing_status to all user's businesses.
+ * syncBusinessBillingStatus derives billing_status from getUserEntitlements()
+ * and writes it to all user's businesses.
+ * Called from: admin plan change, claim approval, trial expiration.
+ * Note: Stripe webhook has its own direct writer for real-time status updates.
  */
 export async function syncBusinessBillingStatus(
   supabase: SupabaseClient,
@@ -271,11 +305,17 @@ export async function syncBusinessBillingStatus(
   const entitlements = await getUserEntitlements(supabase, userId)
 
   // Derive billing_status
+  // Note: past_due is isActive=true so it stays 'active' here.
+  // The webhook handler writes paused_payment_failed directly on final failure.
   let billingStatus: BillingStatus
   if (entitlements.isTrial) {
     billingStatus = 'trial'
   } else if (entitlements.isActive) {
     billingStatus = 'active'
+  } else if (entitlements.subscriptionStatus === 'canceled') {
+    billingStatus = 'paused_subscription_expired'
+  } else if (entitlements.subscriptionStatus === 'unpaid') {
+    billingStatus = 'paused_payment_failed'
   } else {
     billingStatus = 'billing_suspended'
   }

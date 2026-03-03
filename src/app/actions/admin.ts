@@ -1015,9 +1015,9 @@ export async function adminTransferOwnership(businessId: string, newOwnerId: str
     return { error: 'New owner not found' }
   }
 
-  // Check capacity for new owner
+  // Check capacity for new owner (hard cap)
   const newEntitlements = await getUserEntitlements(supabase, newOwnerId)
-  if (!newEntitlements.canClaimMore) {
+  if (!newEntitlements.canCreateMore) {
     return { error: `New owner has reached their listing limit (${newEntitlements.maxListings})` }
   }
 

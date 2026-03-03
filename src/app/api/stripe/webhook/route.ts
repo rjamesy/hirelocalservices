@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPlanByPriceId } from '@/lib/constants'
-import type { PlanTier } from '@/lib/types'
+import type { PlanTier, BillingStatus } from '@/lib/types'
 import type Stripe from 'stripe'
 import { logPaymentEvent, getSystemFlagsSafe } from '@/lib/protection'
 
@@ -87,11 +87,12 @@ function mapStripeStatus(stripeStatus: string): string {
 
 /**
  * Update billing_status on all businesses owned by a user.
+ * Supports granular pause reasons for subscription lifecycle.
  */
 async function syncBusinessBillingStatus(
   supabase: ReturnType<typeof createAdminClient>,
   userId: string,
-  billingStatus: 'active' | 'trial' | 'billing_suspended',
+  billingStatus: BillingStatus,
   trialEndsAt?: string | null
 ) {
   const updateData: Record<string, unknown> = { billing_status: billingStatus }
@@ -207,6 +208,7 @@ export async function POST(request: NextRequest) {
         const mappedStatus = mapStripeStatus(subscription.status)
 
         // Upsert into user_subscriptions
+        const now = new Date().toISOString()
         const { error } = await supabase
           .from('user_subscriptions')
           .upsert(
@@ -225,6 +227,8 @@ export async function POST(request: NextRequest) {
               plan: planTier,
               stripe_price_id: priceId,
               trial_ends_at: trialEndsAt,
+              subscribed_at: now,
+              plan_changed_at: now,
             },
             { onConflict: 'user_id' }
           )
@@ -296,8 +300,13 @@ export async function POST(request: NextRequest) {
           .maybeSingle()
 
         if (userSub) {
-          if (['canceled', 'unpaid'].includes(status)) {
-            await syncBusinessBillingStatus(supabase, userSub.user_id, 'billing_suspended')
+          if (status === 'canceled') {
+            // Don't prematurely pause — listings stay live until period end.
+            // The customer.subscription.deleted webhook fires at period end
+            // and sets paused_subscription_expired.
+            // Keep active billing status during cancel_at_period_end grace period.
+          } else if (status === 'unpaid') {
+            await syncBusinessBillingStatus(supabase, userSub.user_id, 'paused_payment_failed')
           } else if (status === 'trialing') {
             await syncBusinessBillingStatus(supabase, userSub.user_id, 'trial', trialEndsAt)
           } else if (['active', 'past_due'].includes(status)) {
@@ -341,9 +350,9 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        // Suspend all user's businesses
+        // Pause all user's businesses — subscription period ended
         if (userSub) {
-          await syncBusinessBillingStatus(supabase, userSub.user_id, 'billing_suspended')
+          await syncBusinessBillingStatus(supabase, userSub.user_id, 'paused_subscription_expired')
 
           // Log payment event
           await logPaymentEvent(userSub.user_id, null, stripeSubscriptionId, 'customer.subscription.deleted')
@@ -404,6 +413,10 @@ export async function POST(request: NextRequest) {
           break
         }
 
+        // Check if this is the final attempt (Stripe default: 4 attempts)
+        // next_payment_attempt is null when Stripe has exhausted all retries
+        const isFinalAttempt = !invoice.next_payment_attempt
+
         const { error } = await supabase
           .from('user_subscriptions')
           .update({ status: 'past_due' as any })
@@ -416,14 +429,20 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        // Log payment event
+        // On final failure, pause all listings
         const { data: failedSub } = await supabase
           .from('user_subscriptions')
           .select('user_id')
           .eq('stripe_subscription_id', subscriptionId)
           .maybeSingle()
+
         if (failedSub) {
-          await logPaymentEvent(failedSub.user_id, null, subscriptionId, 'invoice.payment_failed')
+          if (isFinalAttempt) {
+            await syncBusinessBillingStatus(supabase, failedSub.user_id, 'paused_payment_failed')
+          }
+          await logPaymentEvent(failedSub.user_id, null, subscriptionId, 'invoice.payment_failed', {
+            final_attempt: isFinalAttempt,
+          })
         }
 
         break

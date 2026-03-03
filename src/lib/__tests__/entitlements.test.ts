@@ -42,8 +42,9 @@ function createMockSupabase(opts: {
   activeSub?: Record<string, unknown> | null
   canceledSub?: Record<string, unknown> | null
   businessCount?: number
+  publishedCount?: number
 } = {}) {
-  const { activeSub = null, canceledSub = null, businessCount = 0 } = opts
+  const { activeSub = null, canceledSub = null, businessCount = 0, publishedCount = 0 } = opts
 
   // Build a fully chainable mock — every method returns itself,
   // terminal methods (maybeSingle, single) resolve with data
@@ -65,8 +66,9 @@ function createMockSupabase(opts: {
     return chain
   }
 
-  // Track call count to differentiate first vs second user_subscriptions query
+  // Track call count to differentiate queries
   let userSubCallCount = 0
+  let businessCallCount = 0
 
   return {
     from: vi.fn((table: string) => {
@@ -80,8 +82,18 @@ function createMockSupabase(opts: {
         return buildChainable(canceledSub)
       }
       if (table === 'businesses') {
+        businessCallCount++
+        // First call: total count (via Promise.all)
+        // Second call: published count (via Promise.all)
+        if (businessCallCount === 1) {
+          return {
+            select: vi.fn(() => buildChainable(businessCount)),
+            update: vi.fn(() => buildChainable(null)),
+          }
+        }
+        // Second call for published count
         return {
-          select: vi.fn(() => buildChainable(businessCount)),
+          select: vi.fn(() => buildChainable(publishedCount)),
           update: vi.fn(() => buildChainable(null)),
         }
       }
@@ -110,7 +122,7 @@ describe('getUserEntitlements', () => {
 
   it('returns active premium entitlements', async () => {
     const sub = createMockSubRow({ status: 'active', plan: 'premium' })
-    const supabase = createMockSupabase({ activeSub: sub, businessCount: 2 })
+    const supabase = createMockSupabase({ activeSub: sub, businessCount: 2, publishedCount: 1 })
     const result = await getUserEntitlements(supabase, 'user-1')
 
     expect(result.plan).toBe('premium')
@@ -122,7 +134,10 @@ describe('getUserEntitlements', () => {
     expect(result.maxTestimonials).toBe(20)
     expect(result.maxListings).toBe(10)
     expect(result.currentListingCount).toBe(2)
+    expect(result.publishedListingCount).toBe(1)
     expect(result.canClaimMore).toBe(true)
+    expect(result.canCreateMore).toBe(true)
+    expect(result.canPublishMore).toBe(true)
     expect(result.effectiveState).toBe('ok')
   })
 
@@ -140,14 +155,43 @@ describe('getUserEntitlements', () => {
     expect(result.effectiveState).toBe('blocked')
   })
 
-  it('canClaimMore is false when at listing limit', async () => {
+  it('canCreateMore is false when at listing hard cap', async () => {
     const sub = createMockSubRow({ status: 'active', plan: 'basic' })
-    const supabase = createMockSupabase({ activeSub: sub, businessCount: 1 })
+    const supabase = createMockSupabase({ activeSub: sub, businessCount: 1, publishedCount: 0 })
     const result = await getUserEntitlements(supabase, 'user-1')
 
     expect(result.maxListings).toBe(1) // basic = 1
     expect(result.currentListingCount).toBe(1)
     expect(result.canClaimMore).toBe(false)
+    expect(result.canCreateMore).toBe(false)
+  })
+
+  it('canPublishMore is false when at publish limit', async () => {
+    const sub = createMockSubRow({ status: 'active', plan: 'basic' })
+    const supabase = createMockSupabase({ activeSub: sub, businessCount: 1, publishedCount: 1 })
+    const result = await getUserEntitlements(supabase, 'user-1')
+
+    expect(result.canPublishMore).toBe(false) // basic publish limit = 1
+    expect(result.publishedListingCount).toBe(1)
+  })
+
+  it('canPublishMore is true for premium with room', async () => {
+    const sub = createMockSubRow({ status: 'active', plan: 'premium' })
+    const supabase = createMockSupabase({ activeSub: sub, businessCount: 3, publishedCount: 2 })
+    const result = await getUserEntitlements(supabase, 'user-1')
+
+    expect(result.canPublishMore).toBe(true) // premium publish limit = 10, published = 2
+    expect(result.canCreateMore).toBe(true)
+  })
+
+  it('basic user can create drafts but not publish more than 1', async () => {
+    const sub = createMockSubRow({ status: 'active', plan: 'basic' })
+    // Has 0 total businesses, 0 published — can create AND publish
+    const supabase = createMockSupabase({ activeSub: sub, businessCount: 0, publishedCount: 0 })
+    const result = await getUserEntitlements(supabase, 'user-1')
+
+    expect(result.canCreateMore).toBe(true) // 0 < 1 hard cap
+    expect(result.canPublishMore).toBe(true) // 0 < 1 publish limit
   })
 
   it('canEdit is always true (drafts allowed)', async () => {
@@ -193,7 +237,7 @@ describe('getUserEntitlements', () => {
   it('returns exactly one active subscription after repair (unique per user)', async () => {
     // After migration repair, only one non-canceled row per user
     const sub = createMockSubRow({ status: 'active', plan: 'premium' })
-    const supabase = createMockSupabase({ activeSub: sub, businessCount: 1 })
+    const supabase = createMockSupabase({ activeSub: sub, businessCount: 1, publishedCount: 1 })
     const result = await getUserEntitlements(supabase, 'user-1')
 
     // Should have exactly one plan, not duplicates
@@ -250,11 +294,18 @@ describe('syncBusinessBillingStatus', () => {
       return chain
     })
 
-    const supabase = createMockSupabase({ activeSub: sub, businessCount: 1 })
+    const supabase = createMockSupabase({ activeSub: sub, businessCount: 1, publishedCount: 1 })
     // Override the businesses `update` specifically
     const origFrom = supabase.from
+    let businessUpdateCallCount = 0
     supabase.from = vi.fn((table: string) => {
       if (table === 'businesses') {
+        businessUpdateCallCount++
+        // The first 2 calls are from getUserEntitlements (count queries)
+        // The 3rd call is from syncBusinessBillingStatus (update)
+        if (businessUpdateCallCount <= 2) {
+          return origFrom(table)
+        }
         const chain = origFrom(table)
         chain.update = updateMock
         return chain
@@ -264,5 +315,43 @@ describe('syncBusinessBillingStatus', () => {
 
     await syncBusinessBillingStatus(supabase, 'user-1')
     expect(updateMock).toHaveBeenCalledWith({ billing_status: 'active' })
+  })
+
+  it('sets billing_suspended for canceled sub past period end (entitlements-based)', async () => {
+    // When canceled and past period end, nullEntitlements returns subscriptionStatus=null
+    // so the entitlements-based sync falls through to billing_suspended.
+    // The webhook handler uses its own direct function with granular statuses.
+    const sub = createMockSubRow({
+      status: 'canceled',
+      plan: 'basic',
+      current_period_end: '2020-01-01T00:00:00Z', // in the past
+    })
+    const updateMock = vi.fn(() => {
+      const chain: any = {}
+      const methods = ['eq', 'neq', 'select', 'order', 'limit', 'range']
+      for (const m of methods) chain[m] = vi.fn(() => chain)
+      chain.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null }))
+      chain.then = vi.fn((resolve: (val: unknown) => void) => resolve({ error: null }))
+      return chain
+    })
+
+    const supabase = createMockSupabase({ canceledSub: sub, businessCount: 0, publishedCount: 0 })
+    const origFrom = supabase.from
+    let businessUpdateCallCount = 0
+    supabase.from = vi.fn((table: string) => {
+      if (table === 'businesses') {
+        businessUpdateCallCount++
+        if (businessUpdateCallCount <= 2) {
+          return origFrom(table)
+        }
+        const chain = origFrom(table)
+        chain.update = updateMock
+        return chain
+      }
+      return origFrom(table)
+    })
+
+    await syncBusinessBillingStatus(supabase, 'user-1')
+    expect(updateMock).toHaveBeenCalledWith({ billing_status: 'billing_suspended' })
   })
 })

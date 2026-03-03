@@ -103,9 +103,9 @@ export async function claimBusiness(
     return { error: `This business name contains a blocked term and cannot be claimed.` }
   }
 
-  // Check listing capacity via canonical entitlements
+  // Check listing capacity via canonical entitlements (hard cap on total)
   const entitlements = await getUserEntitlements(supabase, user.id)
-  if (!entitlements.canClaimMore) {
+  if (!entitlements.canCreateMore) {
     return {
       error:
         entitlements.maxListings === 1
@@ -404,7 +404,7 @@ export async function approveClaim(claimId: string, notes?: string) {
   }
 
   const claimerEntitlements = await getUserEntitlements(supabase, claim.claimer_id)
-  if (!claimerEntitlements.canClaimMore) {
+  if (!claimerEntitlements.canCreateMore) {
     return { error: 'Claimer has reached their listing limit. Cannot approve.' }
   }
 

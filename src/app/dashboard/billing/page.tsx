@@ -200,8 +200,8 @@ function BillingContent() {
       return
     }
     if (sessionId) {
-      // No returnTo — redirect to My Listings
-      window.location.replace('/dashboard/listing')
+      // No returnTo — redirect to dashboard
+      window.location.replace('/dashboard')
       return
     }
   }, [searchParams, returnTo])
@@ -553,33 +553,16 @@ function BillingContent() {
         )}
       </div>
 
-      {/* Upgrade prompt for non-premium users */}
+      {/* Plan info for non-premium users */}
       {!isPremiumTier && (
-        <div className="mt-6 rounded-xl border border-brand-200 bg-brand-50 p-6">
-          <h3 className="text-sm font-semibold text-brand-900">
-            Upgrade to Premium
+        <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-6">
+          <h3 className="text-sm font-semibold text-gray-900">
+            Want more features?
           </h3>
-          <p className="mt-1 text-sm text-brand-700">
-            Get photo galleries and customer testimonials to showcase your work and build trust.
+          <p className="mt-1 text-sm text-gray-600">
+            Premium plans include photo galleries, customer testimonials, and performance metrics.
+            To switch plans, cancel your current subscription and subscribe to a new plan.
           </p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => handleSelectPlan('premium')}
-              disabled={redirecting}
-              className="inline-flex items-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50 transition-colors"
-            >
-              Premium - $10/month
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelectPlan('premium_annual')}
-              disabled={redirecting}
-              className="inline-flex items-center rounded-lg border border-brand-600 bg-white px-4 py-2 text-sm font-medium text-brand-600 hover:bg-brand-50 disabled:opacity-50 transition-colors"
-            >
-              Annual - $99/year (save 17%)
-            </button>
-          </div>
         </div>
       )}
 
@@ -595,10 +578,10 @@ function BillingContent() {
             </dd>
           </div>
           <div>
-            <dt className="text-sm font-medium text-gray-700">How do I upgrade?</dt>
+            <dt className="text-sm font-medium text-gray-700">How do I change my plan?</dt>
             <dd className="mt-1 text-sm text-gray-500">
-              Click the upgrade buttons above or manage your subscription through Stripe to switch plans.
-              Upgrades take effect immediately.
+              To switch plans, cancel your current subscription (your listing stays active until the end of
+              the billing period), then subscribe to the new plan from this page.
             </dd>
           </div>
           <div>

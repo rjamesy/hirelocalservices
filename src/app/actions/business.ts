@@ -79,9 +79,9 @@ export async function createBusinessDraft(formData: FormData) {
     return { error: 'Please verify your email address before creating a listing.' }
   }
 
-  // Check listing capacity via canonical entitlements
+  // Check listing capacity via canonical entitlements (hard cap on total drafts + published)
   const entitlements = await getUserEntitlements(supabase, user.id)
-  if (!entitlements.canClaimMore) {
+  if (!entitlements.canCreateMore) {
     return {
       error:
         entitlements.maxListings === 1
@@ -599,8 +599,9 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
     return { error: 'Business not found' }
   }
 
-  if ((biz as any).billing_status === 'billing_suspended') {
-    return { error: 'This listing is suspended due to billing. Please upgrade your plan.' }
+  const bizBillingStatus = (biz as any).billing_status as string
+  if (['billing_suspended', 'paused_subscription_expired', 'paused_payment_failed'].includes(bizBillingStatus)) {
+    return { error: 'This listing is suspended due to billing. Please update your subscription.' }
   }
 
   // Duplicate detection guard: require choice when strong match exists (>= 85)
@@ -621,6 +622,49 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
     email_contact: (pending.email_contact as string | null) ?? biz.email_contact,
     website: (pending.website as string | null) ?? biz.website,
     abn: (pending.abn as string | null) ?? biz.abn,
+  }
+
+  // ── Blacklist expansion check: phone, website, ABN, ACN ───────────
+  const blacklistFields: { value: string | null; fieldType: string; normalize: (v: string) => string }[] = [
+    { value: contentToValidate.phone, fieldType: 'phone', normalize: (v) => v.replace(/\D/g, '') },
+    { value: contentToValidate.website, fieldType: 'website', normalize: (v) => v.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '') },
+    { value: contentToValidate.abn, fieldType: 'abn', normalize: (v) => v.replace(/\D/g, '') },
+  ]
+
+  for (const { value, fieldType, normalize } of blacklistFields) {
+    if (!value || !value.trim()) continue
+    const normalized = normalize(value)
+    if (!normalized) continue
+
+    const { data: blResult } = await supabase.rpc('is_blacklisted', {
+      p_value: normalized,
+      p_field_type: fieldType,
+    })
+
+    const row = Array.isArray(blResult) ? blResult[0] : blResult
+    if (row?.is_blocked) {
+      // Blacklist match → suspend account + cancel subscription
+      const { adminSuspendAccount } = await import('@/app/actions/admin-accounts')
+      await adminSuspendAccount(user.id, `Blacklist match: ${fieldType} "${normalized}" matched "${row.matched_term}" (${row.reason || 'no reason'})`)
+
+      // Cancel Stripe subscription
+      const { data: userSub } = await supabase
+        .from('user_subscriptions')
+        .select('stripe_subscription_id')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (userSub?.stripe_subscription_id) {
+        try {
+          const { stripe } = await import('@/lib/stripe')
+          await stripe.subscriptions.cancel(userSub.stripe_subscription_id)
+        } catch (e) {
+          console.error('Failed to cancel Stripe subscription after blacklist match:', e)
+        }
+      }
+
+      return { error: 'Your account has been suspended due to a policy violation.' }
+    }
   }
 
   // Run verification pipeline

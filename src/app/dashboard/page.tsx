@@ -58,7 +58,7 @@ export default async function DashboardPage() {
   } else if (entitlements.effectiveState === 'blocked') {
     ctaLabel = 'Fix Billing'
     ctaHref = '/dashboard/billing'
-  } else if (entitlements.canClaimMore) {
+  } else if (entitlements.canCreateMore) {
     ctaLabel = 'Create New Listing'
     ctaHref = '/dashboard/listing?bid=new'
   } else {

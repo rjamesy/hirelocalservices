@@ -84,7 +84,8 @@ export async function checkBlacklist(name: string) {
   const supabase = await createClient()
 
   const { data, error } = await supabase.rpc('is_blacklisted', {
-    p_name: name,
+    p_value: name,
+    p_field_type: 'business_name',
   })
 
   if (error || !data || data.length === 0) {

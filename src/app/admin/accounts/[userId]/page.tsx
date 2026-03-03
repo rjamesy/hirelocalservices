@@ -495,10 +495,10 @@ export default function AdminAccountDetailPage() {
               </tr>
               <tr>
                 <td className="py-2 pr-4 font-medium text-gray-500 whitespace-nowrap">
-                  Can Claim More
+                  Can Create More
                 </td>
                 <td className="py-2">
-                  {account.entitlements.canClaimMore ? (
+                  {account.entitlements.canCreateMore ? (
                     <span className="text-green-600 font-medium">Yes</span>
                   ) : (
                     <span className="text-red-600 font-medium">No</span>

@@ -204,7 +204,7 @@ export type Testimonial = {
 
 export type PlanTier = 'basic' | 'premium' | 'premium_annual'
 
-export type BillingStatus = 'active' | 'trial' | 'billing_suspended'
+export type BillingStatus = 'active' | 'trial' | 'billing_suspended' | 'paused_subscription_expired' | 'paused_payment_failed'
 
 export type Subscription = {
   id: string
@@ -1026,7 +1026,8 @@ export type Database = {
       }
       is_blacklisted: {
         Args: {
-          p_name: string
+          p_value: string
+          p_field_type?: string
         }
         Returns: {
           is_blocked: boolean

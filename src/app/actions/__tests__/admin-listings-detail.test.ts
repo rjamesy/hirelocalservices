@@ -223,6 +223,9 @@ describe('adminTransferOwnership', () => {
       plan: 'premium',
       isActive: true,
       canClaimMore: true,
+      canCreateMore: true,
+      canPublishMore: true,
+      publishedListingCount: 0,
       maxListings: 10,
       currentListingCount: 1,
     })

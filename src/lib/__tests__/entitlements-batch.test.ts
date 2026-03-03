@@ -36,7 +36,7 @@ function createBatchMockSupabase(opts: {
 
   function buildChainable(data: unknown, isCount = false): any {
     const chain: any = {}
-    const chainingMethods = ['select', 'eq', 'neq', 'order', 'limit', 'range', 'in', 'ilike']
+    const chainingMethods = ['select', 'eq', 'neq', 'is', 'order', 'limit', 'range', 'in', 'ilike']
 
     for (const m of chainingMethods) {
       chain[m] = vi.fn(() => chain)
@@ -100,9 +100,9 @@ describe('getBatchUserEntitlements', () => {
         },
       ],
       bizRows: [
-        { owner_id: 'user-1' },
-        { owner_id: 'user-1' },
-        { owner_id: 'user-2' },
+        { owner_id: 'user-1', status: 'published' },
+        { owner_id: 'user-1', status: 'draft' },
+        { owner_id: 'user-2', status: 'published' },
       ],
     })
 

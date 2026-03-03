@@ -35,7 +35,8 @@ export async function isBlacklisted(
 
   // 2. Check general blacklist via the is_blacklisted() RPC
   const { data: nameCheck } = await supabase.rpc('is_blacklisted', {
-    p_name: businessName,
+    p_value: businessName,
+    p_field_type: 'business_name',
   })
 
   if (nameCheck && nameCheck.length > 0 && nameCheck[0].is_blocked) {
