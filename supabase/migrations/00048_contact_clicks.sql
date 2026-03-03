@@ -43,7 +43,10 @@ BEGIN
 END;
 $$;
 
--- Update get_business_metrics to include click data
+-- Drop old get_business_metrics (return type is changing — PG requires DROP first)
+DROP FUNCTION IF EXISTS public.get_business_metrics(uuid, integer);
+
+-- Recreate get_business_metrics with click data columns
 CREATE OR REPLACE FUNCTION public.get_business_metrics(
   p_business_id uuid,
   p_days integer DEFAULT 30
