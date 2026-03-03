@@ -181,11 +181,12 @@ function ListingContent() {
   const [publishDisabled, setPublishDisabled] = useState(false)
   const [upgradeGating, setUpgradeGating] = useState<{
     code: string
-    requiredPlan: string
+    minimumPlan: string
     currentPlan: string | null
-    eligiblePlans: string[]
+    allowedPlans: string[]
     photoCount: number
     testimonialCount: number
+    returnTo: string
   } | null>(null)
 
   // Duplicate detection state
@@ -845,8 +846,9 @@ function ListingContent() {
         }
         if (result.error === 'upgrade_required' && 'gating' in result) {
           const g = (result as any).gating as {
-            code: string; requiredPlan: string; currentPlan: string | null
-            eligiblePlans: string[]; photoCount: number; testimonialCount: number
+            code: string; minimumPlan: string; currentPlan: string | null
+            allowedPlans: string[]; photoCount: number; testimonialCount: number
+            returnTo: string
           }
           const parts: string[] = []
           if (g.photoCount > 0) parts.push(`${g.photoCount} photo${g.photoCount > 1 ? 's' : ''}`)
@@ -1798,19 +1800,25 @@ function ListingContent() {
                             Photos and testimonials require a Premium plan.
                           </p>
                           <div className="mt-3 flex flex-wrap gap-2">
-                            {upgradeGating.eligiblePlans.includes('premium') && (
+                            {upgradeGating.allowedPlans.includes('premium') && (
                               <button
                                 type="button"
-                                onClick={() => router.push('/dashboard/billing?upgrade=premium')}
+                                onClick={() => {
+                                  const returnTo = `/dashboard/listing?bid=${business?.id}&step=6`
+                                  router.push(`/dashboard/billing?returnTo=${encodeURIComponent(returnTo)}&requiredPlan=premium`)
+                                }}
                                 className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
                               >
                                 Premium - $10/month
                               </button>
                             )}
-                            {upgradeGating.eligiblePlans.includes('premium_annual') && (
+                            {upgradeGating.allowedPlans.includes('premium_annual') && (
                               <button
                                 type="button"
-                                onClick={() => router.push('/dashboard/billing?upgrade=premium_annual')}
+                                onClick={() => {
+                                  const returnTo = `/dashboard/listing?bid=${business?.id}&step=6`
+                                  router.push(`/dashboard/billing?returnTo=${encodeURIComponent(returnTo)}&requiredPlan=premium`)
+                                }}
                                 className="rounded-lg border border-brand-600 bg-white px-4 py-2 text-sm font-medium text-brand-600 hover:bg-brand-50 transition-colors"
                               >
                                 Annual - $99/year
