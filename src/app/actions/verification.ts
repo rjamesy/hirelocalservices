@@ -10,6 +10,7 @@ import {
 } from '@/lib/verification'
 import { createNotification } from '@/app/actions/notifications'
 import * as pwService from '@/lib/pw-service'
+import { getBatchUserEntitlements } from '@/lib/entitlements'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -148,7 +149,7 @@ export async function getAdminVerificationQueue(page = 1) {
   const [bizRes, pRes, jobsRes, photosRes, testimonialsRes] = await Promise.all([
     supabase
       .from('businesses')
-      .select('id, slug, listing_source, duplicate_user_choice, duplicate_of_business_id, duplicate_confidence')
+      .select('id, owner_id, slug, listing_source, duplicate_user_choice, duplicate_of_business_id, duplicate_confidence')
       .in('id', bizIds),
     supabase
       .from('published_listings')
@@ -193,6 +194,14 @@ export async function getAdminVerificationQueue(page = 1) {
     arr.push(t)
   }
 
+  // Batch-fetch subscription entitlements for all owners
+  const ownerIds = Array.from(new Set(
+    (bizRes.data ?? []).map((b: any) => b.owner_id).filter(Boolean) as string[]
+  ))
+  const entitlementsByOwner = ownerIds.length > 0
+    ? await getBatchUserEntitlements(supabase, ownerIds)
+    : new Map()
+
   // Hardcoded diff fields for pending_changes
   const DIFF_FIELDS = ['name', 'description', 'phone', 'email_contact', 'website', 'abn'] as const
 
@@ -235,6 +244,28 @@ export async function getAdminVerificationQueue(page = 1) {
     }
 
     const bid = w.business_id
+
+    // Compute subscription warning from already-fetched data
+    const ownerId = biz?.owner_id as string | undefined
+    let subscriptionWarning: string | null = null
+    if (ownerId) {
+      const ent = entitlementsByOwner.get(ownerId)
+      if (!ent || ent.plan === null) {
+        subscriptionWarning = 'no_subscription'
+      } else if (!ent.isActive) {
+        subscriptionWarning = 'subscription_inactive'
+      } else {
+        // Check if plan is sufficient for listing content
+        const activePhotos = (photosByBiz.get(bid) ?? []).filter(p => p.status !== 'pending_delete')
+        const activeTestimonials = (testimonialsByBiz.get(bid) ?? []).filter(t => t.status !== 'pending_delete')
+        if ((activePhotos.length > 0 || activeTestimonials.length > 0) && ent.plan === 'basic') {
+          subscriptionWarning = 'plan_insufficient'
+        }
+      }
+    } else {
+      subscriptionWarning = 'no_subscription'
+    }
+
     return {
       id: bid,
       name,
@@ -248,6 +279,7 @@ export async function getAdminVerificationQueue(page = 1) {
       verification_status: 'pending' as string,
       created_at: w.submitted_at ?? w.created_at,
       pending_changes,
+      subscriptionWarning,
       duplicate_user_choice: biz?.duplicate_user_choice ?? null,
       duplicate_of_business_id: biz?.duplicate_of_business_id ?? null,
       duplicate_confidence: biz?.duplicate_confidence ?? null,

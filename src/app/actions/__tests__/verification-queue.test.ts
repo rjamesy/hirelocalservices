@@ -30,14 +30,60 @@ vi.mock('@/lib/pw-service', () => ({
   rejectWorking: vi.fn(),
 }))
 
+const mockGetBatchEntitlements = vi.fn(() => Promise.resolve(new Map()))
+
+vi.mock('@/lib/entitlements', () => ({
+  getBatchUserEntitlements: (...args: any[]) => mockGetBatchEntitlements(...args),
+}))
+
 // Import after mocks
 import { getAdminVerificationQueue } from '../verification'
+
+/** Helper: create a minimal entitlements object for testing */
+function makeEntitlements(overrides: { plan?: string | null; isActive?: boolean } = {}) {
+  const plan = 'plan' in overrides ? overrides.plan : 'premium'
+  return {
+    userId: '',
+    plan,
+    subscriptionStatus: plan ? 'active' : null,
+    isActive: overrides.isActive ?? true,
+    isTrial: false,
+    maxListings: 10,
+    currentListingCount: 0,
+    publishedListingCount: 0,
+    canClaimMore: true,
+    canCreateMore: true,
+    canPublishMore: true,
+    canPublish: overrides.isActive ?? true,
+    canEdit: true,
+    canUploadPhotos: overrides.isActive ?? true,
+    canAddTestimonials: overrides.isActive ?? true,
+    canViewMetrics: overrides.isActive ?? true,
+    maxPhotos: 10,
+    maxTestimonials: 20,
+    descriptionLimit: 1500,
+    trialEndsAt: null,
+    cancelAtPeriodEnd: false,
+    currentPeriodEnd: null,
+    effectiveState: (overrides.isActive ?? true) ? 'ok' : 'blocked',
+    reasonCodes: [],
+  }
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
   // Admin auth: getUser + profile check
   mockSupabase.auth.getUser.mockResolvedValue({ data: { user: mockAdminUser }, error: null })
   single.mockResolvedValueOnce({ data: { role: 'admin' }, error: null })
+
+  // Default: all owners have active premium subscriptions
+  mockGetBatchEntitlements.mockImplementation((_supabase: any, userIds: string[]) => {
+    const map = new Map()
+    for (const uid of userIds) {
+      map.set(uid, makeEntitlements({ plan: 'premium', isActive: true }))
+    }
+    return Promise.resolve(map)
+  })
 })
 
 // ─── Test data ─────────────────────────────────────────────────────────────
@@ -81,8 +127,8 @@ const pForEdit = {
 }
 
 const bizRows = [
-  { id: 'biz-1', slug: 'new-biz', listing_source: 'manual', duplicate_user_choice: null, duplicate_of_business_id: null, duplicate_confidence: null },
-  { id: 'biz-2', slug: 'edited-biz', listing_source: 'manual', duplicate_user_choice: 'matched', duplicate_of_business_id: 'seed-1', duplicate_confidence: 85 },
+  { id: 'biz-1', owner_id: 'owner-1', slug: 'new-biz', listing_source: 'manual', duplicate_user_choice: null, duplicate_of_business_id: null, duplicate_confidence: null },
+  { id: 'biz-2', owner_id: 'owner-2', slug: 'edited-biz', listing_source: 'manual', duplicate_user_choice: 'matched', duplicate_of_business_id: 'seed-1', duplicate_confidence: 85 },
 ]
 
 const jobRows = [
@@ -188,5 +234,97 @@ describe('getAdminVerificationQueue — W-based', () => {
     expect(item.photos[0].status).toBe('pending_add')
     expect(item.testimonials).toHaveLength(1)
     expect(item.testimonials[0].author_name).toBe('Jane')
+  })
+})
+
+describe('getAdminVerificationQueue — subscriptionWarning', () => {
+  it('returns no_subscription when owner has no entitlements', async () => {
+    mockGetBatchEntitlements.mockResolvedValue(new Map())
+    mockQueueQueries([wNew])
+
+    const result = await getAdminVerificationQueue()
+    expect(result.data[0].subscriptionWarning).toBe('no_subscription')
+  })
+
+  it('returns no_subscription when owner plan is null', async () => {
+    mockGetBatchEntitlements.mockResolvedValue(
+      new Map([['owner-1', makeEntitlements({ plan: null, isActive: false })]])
+    )
+    mockQueueQueries([wNew])
+
+    const result = await getAdminVerificationQueue()
+    expect(result.data[0].subscriptionWarning).toBe('no_subscription')
+  })
+
+  it('returns subscription_inactive when owner has plan but is not active', async () => {
+    mockGetBatchEntitlements.mockResolvedValue(
+      new Map([['owner-1', makeEntitlements({ plan: 'premium', isActive: false })]])
+    )
+    mockQueueQueries([wNew])
+
+    const result = await getAdminVerificationQueue()
+    expect(result.data[0].subscriptionWarning).toBe('subscription_inactive')
+  })
+
+  it('returns plan_insufficient when basic plan but listing has photos', async () => {
+    mockGetBatchEntitlements.mockResolvedValue(
+      new Map([['owner-1', makeEntitlements({ plan: 'basic', isActive: true })]])
+    )
+    mockQueueQueries([wNew], { photos: photoRows })
+
+    const result = await getAdminVerificationQueue()
+    expect(result.data[0].subscriptionWarning).toBe('plan_insufficient')
+  })
+
+  it('returns plan_insufficient when basic plan but listing has testimonials', async () => {
+    mockGetBatchEntitlements.mockResolvedValue(
+      new Map([['owner-1', makeEntitlements({ plan: 'basic', isActive: true })]])
+    )
+    mockQueueQueries([wNew], { testimonials: testimonialRows })
+
+    const result = await getAdminVerificationQueue()
+    expect(result.data[0].subscriptionWarning).toBe('plan_insufficient')
+  })
+
+  it('returns null when premium plan with photos (sufficient)', async () => {
+    mockGetBatchEntitlements.mockResolvedValue(
+      new Map([['owner-1', makeEntitlements({ plan: 'premium', isActive: true })]])
+    )
+    mockQueueQueries([wNew], { photos: photoRows })
+
+    const result = await getAdminVerificationQueue()
+    expect(result.data[0].subscriptionWarning).toBeNull()
+  })
+
+  it('returns null when basic plan and no photos/testimonials', async () => {
+    mockGetBatchEntitlements.mockResolvedValue(
+      new Map([['owner-1', makeEntitlements({ plan: 'basic', isActive: true })]])
+    )
+    mockQueueQueries([wNew])
+
+    const result = await getAdminVerificationQueue()
+    expect(result.data[0].subscriptionWarning).toBeNull()
+  })
+
+  it('returns no_subscription when business has no owner_id', async () => {
+    mockQueueQueries([wNew], {
+      businesses: [{ ...bizRows[0], owner_id: null }],
+    })
+
+    const result = await getAdminVerificationQueue()
+    expect(result.data[0].subscriptionWarning).toBe('no_subscription')
+  })
+
+  it('excludes pending_delete items from plan insufficiency check', async () => {
+    mockGetBatchEntitlements.mockResolvedValue(
+      new Map([['owner-1', makeEntitlements({ plan: 'basic', isActive: true })]])
+    )
+    // All photos are pending_delete, so they shouldn't count
+    mockQueueQueries([wNew], {
+      photos: [{ id: 'ph-1', business_id: 'biz-1', url: 'https://img/1.jpg', sort_order: 0, status: 'pending_delete' }],
+    })
+
+    const result = await getAdminVerificationQueue()
+    expect(result.data[0].subscriptionWarning).toBeNull()
   })
 })

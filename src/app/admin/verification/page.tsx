@@ -38,6 +38,7 @@ type VerificationRow = {
   verification_status: string
   created_at: string
   pending_changes: PendingChanges | null
+  subscriptionWarning: string | null
   duplicate_user_choice: string | null
   duplicate_of_business_id: string | null
   duplicate_confidence: number | null
@@ -170,6 +171,21 @@ export default function AdminVerificationPage() {
                       <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
                         {item.listing_source}
                       </span>
+                      {item.subscriptionWarning === 'no_subscription' && (
+                        <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                          No subscription
+                        </span>
+                      )}
+                      {item.subscriptionWarning === 'subscription_inactive' && (
+                        <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
+                          Subscription inactive
+                        </span>
+                      )}
+                      {item.subscriptionWarning === 'plan_insufficient' && (
+                        <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
+                          Plan insufficient
+                        </span>
+                      )}
                       <span>{new Date(item.created_at).toLocaleDateString()}</span>
                     </div>
                   </div>
