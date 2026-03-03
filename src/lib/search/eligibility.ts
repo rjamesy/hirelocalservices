@@ -77,7 +77,7 @@ export async function getListingEligibility(
 
   const statusOk = p?.visibility_status === 'live'
   const verificationOk = !!p
-  const billingOk = biz.billing_status !== 'billing_suspended'
+  const billingOk = ['active', 'trial', 'seed'].includes(biz.billing_status)
   const notDeleted = biz.deleted_at === null
   const notSuspended = p?.visibility_status !== 'suspended'
 

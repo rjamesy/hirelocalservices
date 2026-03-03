@@ -13,7 +13,7 @@ export async function GET() {
     .from('businesses')
     .select('slug, updated_at')
     .eq('status', 'published')
-    .neq('billing_status', 'billing_suspended')
+    .in('billing_status', ['active', 'trial', 'seed'] as any[])
 
   // Fetch all categories for category pages
   const { data: categories } = await supabase

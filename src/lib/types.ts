@@ -1116,6 +1116,18 @@ export type Database = {
         }
         Returns: unknown
       }
+      blacklist_on_delete: {
+        Args: {
+          p_identifiers: { term: string; field_type: string }[]
+        }
+        Returns: undefined
+      }
+      claim_publish_lock: {
+        Args: {
+          p_business_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       subscription_status: SubscriptionStatus

@@ -8,11 +8,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock Supabase
 const mockRpc = vi.fn()
+const mockFrom = vi.fn()
 const mockSupabase = {
   rpc: mockRpc,
+  from: mockFrom,
   auth: {
-    getUser: vi.fn(() => Promise.resolve({ data: { user: null }, error: null })),
+    getUser: vi.fn(() => Promise.resolve({ data: { user: { id: 'user-1' } }, error: null })),
   },
+}
+
+// Helper to set up ownership mock for getBusinessMetrics
+function mockOwnership(ownerId = 'user-1') {
+  mockFrom.mockReturnValue({
+    select: vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({ data: { owner_id: ownerId }, error: null }),
+      }),
+    }),
+  })
 }
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -71,6 +84,7 @@ describe('Contact Click Tracking', () => {
 
   describe('getBusinessMetrics with click data', () => {
     it('should return click metrics from RPC', async () => {
+      mockOwnership('user-1')
       mockRpc.mockResolvedValue({
         data: [{
           total_impressions: 150,
@@ -93,6 +107,7 @@ describe('Contact Click Tracking', () => {
     })
 
     it('should return zero click metrics on error', async () => {
+      mockOwnership('user-1')
       mockRpc.mockResolvedValue({ data: null, error: { message: 'error' } })
       const { getBusinessMetrics } = await import('@/app/actions/metrics')
 

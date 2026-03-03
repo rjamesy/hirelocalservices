@@ -111,40 +111,57 @@ export async function createBusinessDraft(formData: FormData) {
     return { error: `Business name contains a blocked term: "${blockedTerm}". This type of business is not permitted on our platform.` }
   }
 
-  // Generate a unique slug
+  // Generate a unique slug with retry on conflict (prevents TOCTOU race)
   let slug = slugify(parsed.data.name)
+  let business: any = null
 
-  const { data: slugExists } = await supabase
-    .from('businesses')
-    .select('id')
-    .eq('slug', slug)
-    .maybeSingle()
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      slug = `${slugify(parsed.data.name)}-${generateRandomSuffix()}`
+    } else {
+      const { data: slugExists } = await supabase
+        .from('businesses')
+        .select('id')
+        .eq('slug', slug)
+        .maybeSingle()
+      if (slugExists) {
+        slug = `${slug}-${generateRandomSuffix()}`
+      }
+    }
 
-  if (slugExists) {
-    slug = `${slug}-${generateRandomSuffix()}`
+    const { data, error: insertError } = await supabase
+      .from('businesses')
+      .insert({
+        owner_id: user.id,
+        name: parsed.data.name,
+        slug,
+        description: parsed.data.description || null,
+        phone: parsed.data.phone || null,
+        email_contact: parsed.data.email_contact || null,
+        website: parsed.data.website || null,
+        abn: parsed.data.abn || null,
+        status: 'draft',
+        claim_status: 'claimed',
+        listing_source: 'manual',
+      })
+      .select()
+      .single()
+
+    if (!insertError) {
+      business = data
+      break
+    }
+
+    // Retry on unique constraint violation (slug collision)
+    if (insertError.code === '23505' && insertError.message?.includes('slug')) {
+      continue
+    }
+
+    return { error: 'Failed to create business. Please try again.' }
   }
 
-  // Insert the business as draft
-  const { data: business, error } = await supabase
-    .from('businesses')
-    .insert({
-      owner_id: user.id,
-      name: parsed.data.name,
-      slug,
-      description: parsed.data.description || null,
-      phone: parsed.data.phone || null,
-      email_contact: parsed.data.email_contact || null,
-      website: parsed.data.website || null,
-      abn: parsed.data.abn || null,
-      status: 'draft',
-      claim_status: 'claimed',
-      listing_source: 'manual',
-    })
-    .select()
-    .single()
-
-  if (error) {
-    return { error: 'Failed to create business. Please try again.' }
+  if (!business) {
+    return { error: 'Failed to generate a unique URL for your business. Please try again.' }
   }
 
   // Insert business_contacts row
@@ -576,6 +593,14 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
     }
   }
 
+  // Atomic publish lock — prevents concurrent publish attempts (TOCTOU race)
+  const { data: lockAcquired } = await supabase.rpc('claim_publish_lock', {
+    p_business_id: businessId,
+  })
+  if (!lockAcquired) {
+    return { error: 'A publish is already in progress for this listing. Please wait and try again.' }
+  }
+
   // Guard: block resubmission while under review
   const guard = await pwService.getEditGuard(businessId)
   if (guard.underReview) {
@@ -643,25 +668,16 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
 
     const row = Array.isArray(blResult) ? blResult[0] : blResult
     if (row?.is_blocked) {
-      // Blacklist match → suspend account + cancel subscription
-      const { adminSuspendAccount } = await import('@/app/actions/admin-accounts')
-      await adminSuspendAccount(user.id, `Blacklist match: ${fieldType} "${normalized}" matched "${row.matched_term}" (${row.reason || 'no reason'})`)
-
-      // Cancel Stripe subscription
-      const { data: userSub } = await supabase
-        .from('user_subscriptions')
-        .select('stripe_subscription_id')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (userSub?.stripe_subscription_id) {
-        try {
-          const { stripe } = await import('@/lib/stripe')
-          await stripe.subscriptions.cancel(userSub.stripe_subscription_id)
-        } catch (e) {
-          console.error('Failed to cancel Stripe subscription after blacklist match:', e)
-        }
-      }
+      // Blacklist match → full account suspension using admin client (bypasses admin auth)
+      const { createAdminClient } = await import('@/lib/supabase/admin')
+      const { internalSuspendAccount } = await import('@/app/actions/admin-accounts')
+      const adminDb = createAdminClient()
+      await internalSuspendAccount(
+        adminDb,
+        user.id,
+        `Blacklist match: ${fieldType} "${normalized}" matched "${row.matched_term}" (${row.reason || 'no reason'})`,
+        user.id
+      )
 
       return { error: 'Your account has been suspended due to a policy violation.' }
     }

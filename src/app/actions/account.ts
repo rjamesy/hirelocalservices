@@ -158,21 +158,7 @@ export async function deleteMyAccount(): Promise<{ success?: boolean; error?: st
       .eq('business_id', biz.id)
   }
 
-  // 4. Blacklist identifiers (insert, ignore duplicates — already blacklisted is fine)
-  for (const { term, field_type } of identifiersToBlacklist) {
-    await supabase
-      .from('blacklist')
-      .insert({
-        term,
-        match_type: 'exact' as const,
-        field_type,
-        reason: 'Account self-deleted',
-        added_by: user.id,
-        is_active: true,
-      })
-  }
-
-  // 5. Suspend profile
+  // 4. Suspend profile (must happen before blacklist RPC which validates suspended_at)
   await supabase
     .from('profiles')
     .update({
@@ -180,6 +166,13 @@ export async function deleteMyAccount(): Promise<{ success?: boolean; error?: st
       suspended_reason: 'Account self-deleted',
     })
     .eq('id', user.id)
+
+  // 5. Blacklist identifiers via SECURITY DEFINER RPC (bypasses admin-only RLS)
+  if (identifiersToBlacklist.length > 0) {
+    await supabase.rpc('blacklist_on_delete', {
+      p_identifiers: identifiersToBlacklist.map(({ term, field_type }) => ({ term, field_type })),
+    })
+  }
 
   // 6. Log audit event
   await supabase.rpc('insert_audit_log', {

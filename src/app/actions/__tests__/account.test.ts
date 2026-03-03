@@ -183,23 +183,9 @@ describe('deleteMyAccount', () => {
     ]
     chainResult.mockReturnValueOnce({ data: bizData, error: null })
 
-    // Business update (soft-delete)
-    chainResult.mockReturnValueOnce({ data: null, error: null })
-    // refresh_search_index
-    rpc.mockResolvedValueOnce({ data: null, error: null })
-    // Working listings delete
-    chainResult.mockReturnValueOnce({ data: null, error: null })
-
-    // Blacklist inserts (email + phone + website + abn = 4 entries)
-    chainResult.mockReturnValueOnce({ data: null, error: null })
-    chainResult.mockReturnValueOnce({ data: null, error: null })
-    chainResult.mockReturnValueOnce({ data: null, error: null })
-    chainResult.mockReturnValueOnce({ data: null, error: null })
-
-    // Profile update (suspend)
-    chainResult.mockReturnValueOnce({ data: null, error: null })
-
-    // Audit log RPC
+    // Business update (soft-delete), working listings delete, profile update
+    chainResult.mockReturnValue({ data: null, error: null })
+    // RPCs: refresh_search_index, blacklist_on_delete, insert_audit_log
     rpc.mockResolvedValue({ data: null, error: null })
 
     const result = await deleteMyAccount()
@@ -207,7 +193,7 @@ describe('deleteMyAccount', () => {
     expect(mockSupabase.auth.signOut).toHaveBeenCalled()
   })
 
-  it('blacklists normalized identifiers', async () => {
+  it('blacklists normalized identifiers via RPC', async () => {
     // No subscription
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
 
@@ -233,11 +219,20 @@ describe('deleteMyAccount', () => {
     const result = await deleteMyAccount()
     expect(result.success).toBe(true)
 
-    // Verify upsert calls were made (we check that from was called with 'blacklist')
-    const fromCalls = mockSupabase.from.mock.calls
-    const blacklistCalls = fromCalls.filter((c: any[]) => c[0] === 'blacklist')
-    // email + phone + website + abn = 4 blacklist entries
-    expect(blacklistCalls.length).toBeGreaterThanOrEqual(4)
+    // Verify blacklist_on_delete RPC was called with identifiers
+    const rpcCalls = rpc.mock.calls
+    const blacklistRpc = rpcCalls.find((c: any[]) => c[0] === 'blacklist_on_delete')
+    expect(blacklistRpc).toBeTruthy()
+    const identifiers = blacklistRpc![1].p_identifiers
+    // email + phone + website + abn = 4 identifiers
+    expect(identifiers.length).toBeGreaterThanOrEqual(4)
+    // Verify normalization: phone stripped of non-digits, website lowercased
+    const phoneTerm = identifiers.find((i: any) => i.field_type === 'phone')
+    expect(phoneTerm?.term).toBe('0412345678')
+    const websiteTerm = identifiers.find((i: any) => i.field_type === 'website')
+    expect(websiteTerm?.term).toBe('mybiz.com.au')
+    const abnTerm = identifiers.find((i: any) => i.field_type === 'abn')
+    expect(abnTerm?.term).toBe('12345678901')
   })
 
   it('signs out user after deletion', async () => {

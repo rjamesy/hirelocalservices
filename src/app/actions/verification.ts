@@ -433,15 +433,18 @@ export async function adminApproveVerification(
 
     await supabase.from('businesses').update(updateData).eq('id', businessId)
 
-    // Sync business_contacts with new values
-    await supabase
-      .from('business_contacts')
-      .upsert({
-        business_id: businessId,
-        phone: (pending.phone as string) || null,
-        email: (pending.email_contact as string) || null,
-        website: (pending.website as string) || null,
-      }, { onConflict: 'business_id' })
+    // Sync business_contacts — only write fields that were in pending_changes
+    // to avoid overwriting unchanged values with null
+    const contactUpdate: Record<string, unknown> = { business_id: businessId }
+    if (pending.phone !== undefined) contactUpdate.phone = (pending.phone as string) || null
+    if (pending.email_contact !== undefined) contactUpdate.email = (pending.email_contact as string) || null
+    if (pending.website !== undefined) contactUpdate.website = (pending.website as string) || null
+
+    if (Object.keys(contactUpdate).length > 1) {
+      await supabase
+        .from('business_contacts')
+        .upsert(contactUpdate as any, { onConflict: 'business_id' })
+    }
 
     // Refresh search index
     await supabase.rpc('refresh_search_index', { p_business_id: businessId })

@@ -4,7 +4,10 @@ import { NextResponse } from 'next/server'
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/dashboard'
+  // Validate redirect target — only allow safe relative paths to prevent open redirect
+  const rawNext = searchParams.get('next') ?? '/dashboard'
+  const isSafePath = rawNext.startsWith('/') && !rawNext.startsWith('//') && !rawNext.includes('\\') && !/[\x00-\x1f]/.test(rawNext)
+  const next = isSafePath ? rawNext : '/dashboard'
 
   if (code) {
     const supabase = await createClient()

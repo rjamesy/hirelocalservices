@@ -439,53 +439,108 @@ export async function adminSetTrialEnd(userId: string, trialEndsAt: string) {
 }
 
 /**
- * adminSuspendAccount — suspend a user account (set suspended_at and reason on profile).
+ * internalSuspendAccount — full account suspension (no admin auth check).
+ * Called by adminSuspendAccount (admin context) and publishChanges (blacklist match).
+ * Performs: profile suspend + Stripe cancel + listing suspension + email blacklist.
  */
-export async function adminSuspendAccount(userId: string, reason: string) {
-  const { supabase, user } = await verifyAdmin()
+export async function internalSuspendAccount(
+  supabase: { from: (table: string) => any; rpc: (...args: any[]) => any },
+  userId: string,
+  reason: string,
+  actorId: string
+): Promise<{ success?: boolean; error?: string }> {
+  const now = new Date().toISOString()
 
-  // Fetch before_state
-  const { data: profile, error: fetchError } = await supabase
+  // 1. Suspend profile
+  const { error: profileError } = await supabase
     .from('profiles')
-    .select('id, suspended_at, suspended_reason')
+    .update({ suspended_at: now, suspended_reason: reason })
+    .eq('id', userId)
+
+  if (profileError) {
+    return { error: 'Failed to suspend account.' }
+  }
+
+  // 2. Cancel Stripe subscription
+  const { data: sub } = await supabase
+    .from('user_subscriptions')
+    .select('stripe_subscription_id')
+    .eq('user_id', userId)
+    .neq('status', 'canceled')
+    .limit(1)
+    .maybeSingle()
+
+  if (sub?.stripe_subscription_id) {
+    try {
+      const { stripe } = await import('@/lib/stripe')
+      await stripe.subscriptions.cancel(sub.stripe_subscription_id)
+    } catch (e) {
+      console.error('Failed to cancel Stripe subscription during suspension:', e)
+    }
+  }
+
+  // 3. Suspend all published listings
+  const { data: businesses } = await supabase
+    .from('businesses')
+    .select('id, name, status')
+    .eq('owner_id', userId)
+    .eq('is_seed', false)
+    .eq('status', 'published')
+
+  for (const biz of businesses ?? []) {
+    await supabase
+      .from('businesses')
+      .update({ status: 'suspended', suspended_at: now, suspended_reason: reason })
+      .eq('id', biz.id)
+
+    await supabase.rpc('refresh_search_index', { p_business_id: biz.id })
+  }
+
+  // 4. Blacklist user's email
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('email')
     .eq('id', userId)
     .single()
 
-  if (fetchError || !profile) {
-    return { error: 'User not found' }
-  }
-
-  const beforeState = {
-    suspended_at: profile.suspended_at,
-    suspended_reason: profile.suspended_reason,
-  }
-
-  const now = new Date().toISOString()
-  const { error } = await supabase
-    .from('profiles')
-    .update({
-      suspended_at: now,
-      suspended_reason: reason,
+  if (profile?.email) {
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const adminDb = createAdminClient()
+    await adminDb.from('blacklist').insert({
+      term: profile.email.toLowerCase(),
+      match_type: 'exact',
+      field_type: 'email',
+      reason,
+      added_by: actorId,
+      is_active: true,
     })
-    .eq('id', userId)
-
-  if (error) {
-    return { error: 'Failed to suspend account. Please try again.' }
   }
 
-  await logAudit(supabase, {
+  // 5. Audit log
+  await logAudit(supabase as any, {
     action: 'account_suspended',
     entityType: 'account',
     entityId: userId,
-    actorId: user.id,
+    actorId,
     details: {
-      before_state: beforeState,
-      after_state: { suspended_at: now, suspended_reason: reason },
+      reason,
+      stripe_cancelled: !!sub?.stripe_subscription_id,
+      listings_suspended: (businesses ?? []).length,
+      email_blacklisted: !!profile?.email,
     },
   })
 
   revalidatePath('/admin')
   return { success: true }
+}
+
+/**
+ * adminSuspendAccount — full account lockdown (admin only).
+ * Suspends profile, cancels Stripe, suspends listings, blacklists email.
+ */
+export async function adminSuspendAccount(userId: string, reason: string) {
+  const { supabase, user } = await verifyAdmin()
+  return internalSuspendAccount(supabase, userId, reason, user.id)
 }
 
 /**

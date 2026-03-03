@@ -218,7 +218,7 @@ describe('POST /api/stripe/webhook', () => {
     expect(response.status).toBe(200)
   })
 
-  it('returns 200 even on processing errors', async () => {
+  it('returns 500 on processing errors so Stripe retries', async () => {
     mockConstructEvent.mockReturnValue({
       type: 'checkout.session.completed',
       data: {
@@ -226,14 +226,14 @@ describe('POST /api/stripe/webhook', () => {
           mode: 'subscription',
           subscription: 'sub_123',
           customer: 'cus_123',
-          metadata: { business_id: 'biz-123' },
+          metadata: { user_id: 'user-123' },
         },
       },
     })
     mockSubscriptionsRetrieve.mockRejectedValue(new Error('Stripe API error'))
 
     const response = await POST(makeWebhookRequest('{}'))
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(500)
   })
 
   it('ignores non-subscription checkout sessions', async () => {

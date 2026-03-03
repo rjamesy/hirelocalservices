@@ -59,6 +59,29 @@ export async function trackContactClick(
 export async function getBusinessMetrics(businessId: string, days = 30) {
   const supabase = await createClient()
 
+  // Verify caller is the business owner or an admin
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { total_impressions: 0, total_views: 0, total_phone_clicks: 0, total_email_clicks: 0, total_website_clicks: 0, daily_impressions: [], daily_views: [] }
+  }
+
+  const { data: biz } = await supabase
+    .from('businesses')
+    .select('owner_id')
+    .eq('id', businessId)
+    .single()
+
+  if (!biz) {
+    return { total_impressions: 0, total_views: 0, total_phone_clicks: 0, total_email_clicks: 0, total_website_clicks: 0, daily_impressions: [], daily_views: [] }
+  }
+
+  if (biz.owner_id !== user.id) {
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+    if (!profile || profile.role !== 'admin') {
+      return { total_impressions: 0, total_views: 0, total_phone_clicks: 0, total_email_clicks: 0, total_website_clicks: 0, daily_impressions: [], daily_views: [] }
+    }
+  }
+
   const { data, error } = await supabase.rpc('get_business_metrics', {
     p_business_id: businessId,
     p_days: days,

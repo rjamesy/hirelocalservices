@@ -11,11 +11,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock Supabase
 const mockRpc = vi.fn()
+const mockFrom = vi.fn()
 const mockSupabase = {
   rpc: mockRpc,
+  from: mockFrom,
   auth: {
-    getUser: vi.fn(() => Promise.resolve({ data: { user: null }, error: null })),
+    getUser: vi.fn(() => Promise.resolve({ data: { user: { id: 'user-1' } }, error: null })),
   },
+}
+
+// Helper to set up ownership mock for getBusinessMetrics tests
+function mockOwnership(ownerId = 'user-1') {
+  mockFrom.mockReturnValue({
+    select: vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({ data: { owner_id: ownerId }, error: null }),
+      }),
+    }),
+  })
 }
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -85,6 +98,7 @@ describe('Business Metrics', () => {
 
   describe('getBusinessMetrics', () => {
     it('should return metrics from RPC', async () => {
+      mockOwnership('user-1')
       mockRpc.mockResolvedValue({
         data: [{
           total_impressions: 150,
@@ -107,6 +121,7 @@ describe('Business Metrics', () => {
     })
 
     it('should support custom day range', async () => {
+      mockOwnership('user-1')
       mockRpc.mockResolvedValue({
         data: [{ total_impressions: 50, total_views: 10, daily_impressions: [], daily_views: [] }],
         error: null,
@@ -122,6 +137,7 @@ describe('Business Metrics', () => {
     })
 
     it('should return zero metrics on error', async () => {
+      mockOwnership('user-1')
       mockRpc.mockResolvedValue({ data: null, error: { message: 'Not found' } })
       const { getBusinessMetrics } = await import('@/app/actions/metrics')
 
@@ -134,6 +150,7 @@ describe('Business Metrics', () => {
     })
 
     it('should handle empty result array', async () => {
+      mockOwnership('user-1')
       mockRpc.mockResolvedValue({ data: [], error: null })
       const { getBusinessMetrics } = await import('@/app/actions/metrics')
 
@@ -141,6 +158,40 @@ describe('Business Metrics', () => {
 
       expect(result.total_impressions).toBe(0)
       expect(result.total_views).toBe(0)
+    })
+
+    it('should return zero metrics for unauthenticated user', async () => {
+      mockSupabase.auth.getUser.mockResolvedValueOnce({ data: { user: null }, error: null })
+      const { getBusinessMetrics } = await import('@/app/actions/metrics')
+
+      const result = await getBusinessMetrics('business-id-1')
+
+      expect(result.total_impressions).toBe(0)
+      expect(result.total_views).toBe(0)
+    })
+
+    it('should return zero metrics for non-owner non-admin', async () => {
+      // Business owned by someone else
+      mockFrom.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: { owner_id: 'other-user' }, error: null }),
+          }),
+        }),
+      })
+      // Profile check returns non-admin
+      mockFrom.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: { role: 'business' }, error: null }),
+          }),
+        }),
+      })
+      const { getBusinessMetrics } = await import('@/app/actions/metrics')
+
+      const result = await getBusinessMetrics('business-id-1')
+
+      expect(result.total_impressions).toBe(0)
     })
   })
 
