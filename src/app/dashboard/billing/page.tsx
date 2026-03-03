@@ -187,18 +187,24 @@ function BillingContent() {
   const [redirecting, setRedirecting] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
+  const requiredPlan = searchParams.get('requiredPlan') as 'basic' | 'premium' | null
+  const returnTo = searchParams.get('returnTo')
+
   // ─── Check for Stripe success redirect ──────────────────────────
 
   useEffect(() => {
     const sessionId = searchParams.get('session_id')
-    if (sessionId) {
-      setToast({
-        message: 'Subscription activated successfully! Your listings can now be published.',
-        type: 'success',
-      })
-      window.history.replaceState({}, '', '/dashboard/billing')
+    if (sessionId && returnTo) {
+      // Redirect back to the listing preview (returnTo already has bid & step)
+      window.location.replace(returnTo)
+      return
     }
-  }, [searchParams])
+    if (sessionId) {
+      // No returnTo — redirect to My Listings
+      window.location.replace('/dashboard/listing')
+      return
+    }
+  }, [searchParams, returnTo])
 
   // ─── Fetch subscription on mount ────────────────────────────────
 
@@ -240,7 +246,7 @@ function BillingContent() {
       const response = await fetch('/api/stripe/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({ planId, ...(returnTo ? { returnTo } : {}) }),
       })
 
       if (!response.ok) {
@@ -323,6 +329,8 @@ function BillingContent() {
   // ─── No subscription / cancelled ──────────────────────────────
 
   if (!subscription || subscription.status === 'canceled' || subscription.status === 'incomplete_expired') {
+    const plansToShow = requiredPlan === 'premium' ? PLANS.filter(p => p.id !== 'basic') : PLANS
+
     return (
       <div className="mx-auto max-w-4xl">
         <h1 className="text-2xl font-bold text-gray-900">Choose a Plan</h1>
@@ -330,9 +338,30 @@ function BillingContent() {
           Select a plan to publish your listing and start attracting customers.
         </p>
 
+        {requiredPlan === 'premium' && (
+          <div className="mt-4 rounded-lg border border-brand-200 bg-brand-50 p-4">
+            <p className="text-sm font-medium text-brand-900">
+              Your listing requires a Premium plan
+            </p>
+            <p className="mt-1 text-xs text-brand-700">
+              Photos and testimonials are only available on Premium and Annual Premium plans.
+            </p>
+          </div>
+        )}
+        {requiredPlan === 'basic' && (
+          <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <p className="text-sm font-medium text-blue-900">
+              Choose a plan to publish your listing
+            </p>
+            <p className="mt-1 text-xs text-blue-700">
+              A subscription is required to submit your listing for review.
+            </p>
+          </div>
+        )}
+
         {/* Plan cards */}
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {PLANS.map((plan) => (
+          {plansToShow.map((plan) => (
             <PlanCard
               key={plan.id}
               plan={plan}

@@ -497,8 +497,14 @@ describe('publishChanges', () => {
     chainResult.mockReturnValueOnce({ count: 0, error: null })
     // getUserEntitlements: canceled sub check
     maybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    // computeCheckoutGate: other businesses, photos, testimonials
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
     const result = await publishChanges('biz-123')
-    expect(result).toEqual({ error: 'subscription_required' })
+    expect(result).toMatchObject({ error: 'subscription_required' })
+    expect((result as any).gating.code).toBe('SUBSCRIPTION_REQUIRED')
+    expect((result as any).gating.allowedPlans).toEqual(['basic', 'premium', 'premium_annual'])
   })
 
   it('rejects canceled user subscription', async () => {
@@ -511,8 +517,13 @@ describe('publishChanges', () => {
       data: { status: 'canceled', current_period_end: '2020-01-01T00:00:00Z', updated_at: '2020-01-01T00:00:00Z' },
       error: null,
     })
+    // computeCheckoutGate: other businesses, photos, testimonials
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
+    chainResult.mockReturnValueOnce({ count: 0, error: null })
     const result = await publishChanges('biz-123')
-    expect(result).toEqual({ error: 'subscription_required' })
+    expect(result).toMatchObject({ error: 'subscription_required' })
+    expect((result as any).gating.code).toBe('SUBSCRIPTION_REQUIRED')
   })
 })
 

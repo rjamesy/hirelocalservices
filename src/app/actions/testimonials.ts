@@ -63,12 +63,6 @@ export async function addTestimonial(
     return { error: 'This listing is currently under review and cannot be edited.' }
   }
 
-  // Check plan tier via canonical entitlements — testimonials require premium
-  const entitlements = await getUserEntitlements(supabase, user.id)
-  if (!entitlements.canAddTestimonials) {
-    return { error: 'premium_required' }
-  }
-
   // Check max testimonials limit (exclude pending_delete)
   const { count, error: countError } = await supabase
     .from('testimonials')

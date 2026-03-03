@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
     // Parse request body — accepts either priceId or planId
     const body = await request.json()
-    const { businessId, planId } = body
+    const { businessId, planId, returnTo } = body
     let { priceId } = body
 
     // Resolve planId to priceId if needed
@@ -115,8 +115,21 @@ export async function POST(request: NextRequest) {
 
     const baseUrl = getBaseUrl()
 
+    // Sanitize returnTo: must be a relative path under /dashboard to prevent open redirect
+    const ALLOWED_RETURN_PREFIXES = ['/dashboard/']
+    const safeReturnTo =
+      typeof returnTo === 'string' &&
+      ALLOWED_RETURN_PREFIXES.some((p) => returnTo.startsWith(p)) &&
+      !returnTo.includes('//') &&
+      !returnTo.includes('\\')
+        ? returnTo
+        : '/dashboard/listing'
+
     // Stripe-native trial: basic & premium get 30-day trial, annual has no trial
     const trialDays = plan.trialDays
+
+    // Use & if returnTo already has query params, otherwise ?
+    const separator = safeReturnTo.includes('?') ? '&' : '?'
 
     // Create the Stripe Checkout session (per-user, not per-business)
     const sessionConfig: Record<string, unknown> = {
@@ -129,8 +142,8 @@ export async function POST(request: NextRequest) {
           quantity: 1,
         },
       ],
-      success_url: `${baseUrl}/dashboard/billing?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/dashboard/billing`,
+      success_url: `${baseUrl}${safeReturnTo}${separator}session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}${safeReturnTo}`,
       metadata: {
         user_id: user.id,
         plan_tier: plan.id,

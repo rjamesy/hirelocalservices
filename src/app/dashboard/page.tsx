@@ -97,7 +97,7 @@ export default async function DashboardPage() {
             attracting local customers. Plans start from $4/month.
           </p>
           <Link
-            href="/dashboard/listing"
+            href="/dashboard/listing?bid=new"
             data-testid="dashboard-create-link"
             className="mt-6 inline-flex items-center rounded-lg bg-brand-600 px-6 py-3 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
           >

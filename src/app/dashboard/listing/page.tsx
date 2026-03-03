@@ -179,6 +179,14 @@ function ListingContent() {
   // Publish rejection state
   const [publishError, setPublishError] = useState<string | null>(null)
   const [publishDisabled, setPublishDisabled] = useState(false)
+  const [upgradeGating, setUpgradeGating] = useState<{
+    code: string
+    requiredPlan: string
+    currentPlan: string | null
+    eligiblePlans: string[]
+    photoCount: number
+    testimonialCount: number
+  } | null>(null)
 
   // Duplicate detection state
   const [dupeCandidates, setDupeCandidates] = useState<DuplicateCandidate[]>([])
@@ -735,6 +743,22 @@ function ListingContent() {
     return () => { cancelled = true }
   }, [currentStep, business, isUnderReview])
 
+  // Handle post-checkout return (redirect back from Stripe after subscribing/upgrading)
+  useEffect(() => {
+    const sessionId = searchParams.get('session_id')
+    if (sessionId) {
+      setToast({ message: 'Subscription activated! You can now submit your listing.', type: 'success' })
+      setUpgradeGating(null)
+      setPublishError(null)
+      setPublishDisabled(false)
+      // Clean URL, keep bid + step so fetchData reloads correctly
+      window.history.replaceState({}, '', `/dashboard/listing${bid ? `?bid=${bid}&step=6` : ''}`)
+      // Re-fetch to reconcile subscription state (entitlements, billing_status)
+      fetchData()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   async function handleDupeSelect(choice: 'matched' | 'not_matched', matchedId?: string) {
     if (!business) return
     setDupeSaving(true)
@@ -791,16 +815,47 @@ function ListingContent() {
       return
     }
 
+    // ── Client-side subscription gate ──────────────────────────────────
+    // If user has no active subscription, redirect to billing before calling the server.
+    if (!entitlements?.isActive) {
+      const activePhotos = photos.filter(p => p.status !== 'pending_delete').length
+      const activeTestimonials = testimonials.filter(t => t.status !== 'pending_delete').length
+      const requiredPlan = (activePhotos > 0 || activeTestimonials > 0) ? 'premium' : 'basic'
+      const returnTo = `/dashboard/listing?bid=${business.id}&step=6`
+      router.push(
+        `/dashboard/billing?returnTo=${encodeURIComponent(returnTo)}&requiredPlan=${requiredPlan}`
+      )
+      return
+    }
+
     setSaving(true)
     try {
       const result = await publishChanges(business.id, captchaToken ?? undefined)
       if ('error' in result && result.error) {
         if (result.error === 'subscription_required') {
-          setToast({
-            message: 'You need an active subscription to publish. Redirecting to billing...',
-            type: 'error',
-          })
-          setTimeout(() => router.push('/dashboard/billing'), 2000)
+          // Fallback: server also caught it (e.g. subscription expired between page load and click)
+          const activePhotos = photos.filter(p => p.status !== 'pending_delete').length
+          const activeTestimonials = testimonials.filter(t => t.status !== 'pending_delete').length
+          const requiredPlan = (activePhotos > 0 || activeTestimonials > 0) ? 'premium' : 'basic'
+          const returnTo = `/dashboard/listing?bid=${business.id}&step=6`
+          router.push(
+            `/dashboard/billing?returnTo=${encodeURIComponent(returnTo)}&requiredPlan=${requiredPlan}`
+          )
+          return
+        }
+        if (result.error === 'upgrade_required' && 'gating' in result) {
+          const g = (result as any).gating as {
+            code: string; requiredPlan: string; currentPlan: string | null
+            eligiblePlans: string[]; photoCount: number; testimonialCount: number
+          }
+          const parts: string[] = []
+          if (g.photoCount > 0) parts.push(`${g.photoCount} photo${g.photoCount > 1 ? 's' : ''}`)
+          if (g.testimonialCount > 0) parts.push(`${g.testimonialCount} testimonial${g.testimonialCount > 1 ? 's' : ''}`)
+          setPublishError(
+            `Your listing has ${parts.join(' and ')}, which requires a Premium plan. ` +
+            `Your current plan is Basic. Please upgrade to publish.`
+          )
+          setUpgradeGating(g)
           return
         }
         setPublishError(typeof result.error === 'string' ? result.error : 'Failed to publish.')
@@ -1249,7 +1304,7 @@ function ListingContent() {
               </p>
             </div>
 
-            {canUploadPhotos ? (() => {
+            {(() => {
               // Filter out pending_delete photos from visible list
               const visiblePhotos = photos.filter(p => p.status !== 'pending_delete')
               const hasPendingChanges = photos.some(p => p.status === 'pending_add' || p.status === 'pending_delete')
@@ -1354,23 +1409,7 @@ function ListingContent() {
                 )}
               </>
               )
-            })() : (
-              <div className="rounded-xl border-2 border-dashed border-brand-300 bg-brand-50 p-10 text-center">
-                <svg className="mx-auto h-10 w-10 text-brand-400" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v13.5A1.5 1.5 0 003.75 21z" />
-                </svg>
-                <h3 className="mt-3 text-lg font-semibold text-brand-900">Premium Feature</h3>
-                <p className="mt-2 text-sm text-brand-700">
-                  Photos are a Premium feature. Upgrade to showcase your work with up to {MAX_PHOTOS} photos.
-                </p>
-                <a
-                  href="/dashboard/billing"
-                  className="mt-4 inline-flex items-center rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
-                >
-                  Upgrade to Premium
-                </a>
-              </div>
-            )}
+            })()}
           </div>
         )}
 
@@ -1384,7 +1423,7 @@ function ListingContent() {
               </p>
             </div>
 
-            {canAddTestimonials ? (() => {
+            {(() => {
               const visibleTestimonials = testimonials.filter(t => t.status !== 'pending_delete')
               const hasPendingTestimonialChanges = testimonials.some(t => t.status === 'pending_add' || t.status === 'pending_delete')
 
@@ -1460,23 +1499,7 @@ function ListingContent() {
                 )}
               </>
               )
-            })() : (
-              <div className="rounded-xl border-2 border-dashed border-brand-300 bg-brand-50 p-10 text-center">
-                <svg className="mx-auto h-10 w-10 text-brand-400" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-                </svg>
-                <h3 className="mt-3 text-lg font-semibold text-brand-900">Premium Feature</h3>
-                <p className="mt-2 text-sm text-brand-700">
-                  Testimonials are a Premium feature. Upgrade to display up to {MAX_TESTIMONIALS} customer reviews.
-                </p>
-                <a
-                  href="/dashboard/billing"
-                  className="mt-4 inline-flex items-center rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
-                >
-                  Upgrade to Premium
-                </a>
-              </div>
-            )}
+            })()}
           </div>
         )}
 
@@ -1491,7 +1514,7 @@ function ListingContent() {
             </div>
 
             {/* Verification status banners */}
-            {business?.verification_status === 'pending' && (
+            {isUnderReview && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                 <div className="flex items-start gap-3">
                   <svg className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -1703,9 +1726,7 @@ function ListingContent() {
               const isDraft = business.status === 'draft'
               const isLive = business.status === 'published' || business.status === 'paused'
               const hasPending = !!business.pending_changes
-              const isPendingReview = business.verification_status === 'pending'
-
-              if (isPendingReview) {
+              if (isUnderReview) {
                 return (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                     <p className="text-sm font-medium text-amber-800">
@@ -1768,6 +1789,34 @@ function ListingContent() {
                           role="alert"
                         >
                           {publishError}
+                        </div>
+                      )}
+                      {upgradeGating && (
+                        <div className="mt-3 rounded-lg border border-brand-200 bg-brand-50 p-4">
+                          <p className="text-sm font-medium text-brand-900">Upgrade to publish</p>
+                          <p className="mt-1 text-xs text-brand-700">
+                            Photos and testimonials require a Premium plan.
+                          </p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {upgradeGating.eligiblePlans.includes('premium') && (
+                              <button
+                                type="button"
+                                onClick={() => router.push('/dashboard/billing?upgrade=premium')}
+                                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
+                              >
+                                Premium - $10/month
+                              </button>
+                            )}
+                            {upgradeGating.eligiblePlans.includes('premium_annual') && (
+                              <button
+                                type="button"
+                                onClick={() => router.push('/dashboard/billing?upgrade=premium_annual')}
+                                className="rounded-lg border border-brand-600 bg-white px-4 py-2 text-sm font-medium text-brand-600 hover:bg-brand-50 transition-colors"
+                              >
+                                Annual - $99/year
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>

@@ -1,0 +1,114 @@
+
+> hire-local-services@0.1.0 test
+> vitest run tests/verification-approval.test.ts
+
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90m/Users/rjamesy/AndroidStudioProjects/HireLocalServices[39m
+
+(node:72841) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+[90mstderr[2m | tests/verification-approval.test.ts[2m > [22m[2madminApproveVerification[2m > [22m[2mapproves business without pending changes
+[22m[39m[pw-service] adminApproveVerification failed (non-blocking): Error: supabaseUrl is required.
+    at validateSupabaseUrl [90m(file:///Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39mnode_modules/[4m@supabase/supabase-js[24m/dist/index.mjs:150:25[90m)[39m
+    at new SupabaseClient [90m(file:///Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39mnode_modules/[4m@supabase/supabase-js[24m/dist/index.mjs:199:19[90m)[39m
+    at createClient [90m(file:///Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39mnode_modules/[4m@supabase/supabase-js[24m/dist/index.mjs:392:9[90m)[39m
+    at createAdminClient [90m(/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39msrc/lib/supabase/admin.ts:10:10[90m)[39m
+    at Module.approveWorking [90m(/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39msrc/lib/pw-service.ts:191:17[90m)[39m
+    at [90m/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39msrc/app/actions/verification.ts:515:15
+    at Module.dualWrite [90m(/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39msrc/lib/pw-service.ts:50:11[90m)[39m
+    at Module.adminApproveVerification [90m(/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39msrc/app/actions/verification.ts:514:19[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m
+    at [90m/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39mtests/verification-approval.test.ts:87:20
+
+[90mstderr[2m | tests/verification-approval.test.ts[2m > [22m[2madminApproveVerification[2m > [22m[2mapplies pending changes on approval
+[22m[39m[pw-service] adminApproveVerification failed (non-blocking): Error: supabaseUrl is required.
+    at validateSupabaseUrl [90m(file:///Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39mnode_modules/[4m@supabase/supabase-js[24m/dist/index.mjs:150:25[90m)[39m
+    at new SupabaseClient [90m(file:///Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39mnode_modules/[4m@supabase/supabase-js[24m/dist/index.mjs:199:19[90m)[39m
+    at createClient [90m(file:///Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39mnode_modules/[4m@supabase/supabase-js[24m/dist/index.mjs:392:9[90m)[39m
+    at createAdminClient [90m(/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39msrc/lib/supabase/admin.ts:10:10[90m)[39m
+    at Module.approveWorking [90m(/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39msrc/lib/pw-service.ts:191:17[90m)[39m
+    at [90m/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39msrc/app/actions/verification.ts:515:15
+    at Module.dualWrite [90m(/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39msrc/lib/pw-service.ts:50:11[90m)[39m
+    at Module.adminApproveVerification [90m(/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39msrc/app/actions/verification.ts:514:19[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m
+    at [90m/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39mtests/verification-approval.test.ts:110:20
+
+[90mstderr[2m | tests/verification-approval.test.ts[2m > [22m[2madminApproveVerification[2m > [22m[2mreturns success even without verification job
+[22m[39m[pw-service] adminApproveVerification failed (non-blocking): Error: supabaseUrl is required.
+    at validateSupabaseUrl [90m(file:///Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39mnode_modules/[4m@supabase/supabase-js[24m/dist/index.mjs:150:25[90m)[39m
+    at new SupabaseClient [90m(file:///Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39mnode_modules/[4m@supabase/supabase-js[24m/dist/index.mjs:199:19[90m)[39m
+    at createClient [90m(file:///Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39mnode_modules/[4m@supabase/supabase-js[24m/dist/index.mjs:392:9[90m)[39m
+    at createAdminClient [90m(/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39msrc/lib/supabase/admin.ts:10:10[90m)[39m
+    at Module.approveWorking [90m(/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39msrc/lib/pw-service.ts:191:17[90m)[39m
+    at [90m/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39msrc/app/actions/verification.ts:515:15
+    at Module.dualWrite [90m(/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39msrc/lib/pw-service.ts:50:11[90m)[39m
+    at Module.adminApproveVerification [90m(/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39msrc/app/actions/verification.ts:514:19[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:104:5)[39m
+    at [90m/Users/rjamesy/AndroidStudioProjects/HireLocalServices/[39mtests/verification-approval.test.ts:127:20
+
+[90mstderr[2m | tests/verification-approval.test.ts[2m > [22m[2madminRejectVerification[2m > [22m[2mrejects business and returns success
+[22m[39m[adminRejectVerification] Write did not stick. DB has: [90mundefined[39m
+
+[90mstderr[2m | tests/verification-approval.test.ts[2m > [22m[2madminRejectVerification[2m > [22m[2mreturns success even with no pending photos
+[22m[39m[adminRejectVerification] Write did not stick. DB has: [90mundefined[39m
+
+ [31m❯[39m tests/verification-approval.test.ts [2m([22m[2m8 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 21[2mms[22m[39m
+     [32m✓[39m requires admin role[32m 1[2mms[22m[39m
+     [32m✓[39m requires authentication[32m 0[2mms[22m[39m
+     [32m✓[39m approves business without pending changes[32m 16[2mms[22m[39m
+     [32m✓[39m applies pending changes on approval[32m 1[2mms[22m[39m
+     [32m✓[39m returns success even without verification job[32m 0[2mms[22m[39m
+     [32m✓[39m requires admin role[32m 0[2mms[22m[39m
+[31m     [31m×[31m rejects business and returns success[39m[32m 2[2mms[22m[39m
+[31m     [31m×[31m returns success even with no pending photos[39m[32m 0[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 2 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m tests/verification-approval.test.ts[2m > [22madminRejectVerification[2m > [22mrejects business and returns success
+[31m[1mAssertionError[22m: expected { Object (error) } to deeply equal { success: true }[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "success": true,[39m
+[31m+   "error": "Rejection failed: DB still has verification_status='undefined'. Check RLS policies.",[39m
+[2m  }[22m
+
+[36m [2m❯[22m tests/verification-approval.test.ts:[2m174:20[22m[39m
+    [90m172| [39m
+    [90m173| [39m    const result = await adminRejectVerification('biz-123', 'Bad conte…
+    [90m174| [39m    [34mexpect[39m(result)[33m.[39m[34mtoEqual[39m({ success[33m:[39m [35mtrue[39m })
+    [90m   | [39m                   [31m^[39m
+    [90m175| [39m  })
+    [90m176| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m tests/verification-approval.test.ts[2m > [22madminRejectVerification[2m > [22mreturns success even with no pending photos
+[31m[1mAssertionError[22m: expected { Object (error) } to deeply equal { success: true }[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "success": true,[39m
+[31m+   "error": "Rejection failed: DB still has verification_status='undefined'. Check RLS policies.",[39m
+[2m  }[22m
+
+[36m [2m❯[22m tests/verification-approval.test.ts:[2m185:20[22m[39m
+    [90m183| [39m
+    [90m184| [39m    [35mconst[39m result [33m=[39m [35mawait[39m [34madminRejectVerification[39m([32m'biz-123'[39m)
+    [90m185| [39m    [34mexpect[39m(result)[33m.[39m[34mtoEqual[39m({ success[33m:[39m [35mtrue[39m })
+    [90m   | [39m                   [31m^[39m
+    [90m186| [39m  })
+    [90m187| [39m})
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m6 passed[39m[22m[90m (8)[39m
+[2m   Start at [22m 08:23:20
+[2m   Duration [22m 586ms[2m (transform 71ms, setup 98ms, import 66ms, tests 21ms, environment 304ms)[22m
+

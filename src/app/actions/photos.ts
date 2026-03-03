@@ -79,12 +79,6 @@ function isPublishedOrPaused(status: string): boolean {
 export async function getUploadUrl(businessId: string, fileName: string) {
   const { supabase, user } = await verifyBusinessOwnership(businessId)
 
-  // Check plan tier via canonical entitlements — photos require premium
-  const entitlements = await getUserEntitlements(supabase, user.id)
-  if (!entitlements.canUploadPhotos) {
-    return { error: 'premium_required' }
-  }
-
   // Check current photo count (exclude pending_delete — they'll be removed on approval)
   const { count, error: countError } = await supabase
     .from('photos')
@@ -135,12 +129,6 @@ export async function addPhoto(
   const guard = await pwService.getEditGuard(businessId)
   if (guard.underReview) {
     return { error: 'This listing is currently under review and cannot be edited.' }
-  }
-
-  // Check plan tier via canonical entitlements — photos require premium
-  const entitlements = await getUserEntitlements(supabase, user.id)
-  if (!entitlements.canUploadPhotos) {
-    return { error: 'premium_required' }
   }
 
   // Check current photo count (exclude pending_delete)

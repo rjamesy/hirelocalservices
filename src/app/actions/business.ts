@@ -552,10 +552,28 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
     }
   }
 
-  // Check user subscription via canonical entitlements
+  // Check user subscription + plan tier gating via canonical gate
   const entitlements = await getUserEntitlements(supabase, user.id)
-  if (!entitlements.canPublish) {
-    return { error: 'subscription_required' }
+  const { computeCheckoutGate, checkPlanSufficiency } = await import('@/lib/required-plan')
+  const gateResult = await computeCheckoutGate(supabase, user.id, businessId)
+  const gatingError = checkPlanSufficiency(entitlements.plan, gateResult)
+  if (gatingError) {
+    return {
+      error: gatingError.code === 'SUBSCRIPTION_REQUIRED'
+        ? 'subscription_required'
+        : 'upgrade_required',
+      gating: {
+        code: gatingError.code,
+        minimumPlan: gatingError.minimumPlan,
+        currentPlan: gatingError.currentPlan,
+        allowedPlans: gatingError.allowedPlans,
+        reasons: gatingError.reasons,
+        photoCount: gateResult.photoCount,
+        testimonialCount: gateResult.testimonialCount,
+        otherListingsCount: gateResult.otherListingsCount,
+        returnTo: gateResult.returnTo,
+      },
+    }
   }
 
   // Guard: block resubmission while under review
@@ -1317,7 +1335,9 @@ export async function getListingsPageData() {
     getUserEntitlements(supabase, user.id),
   ])
 
-  const canCreateMore = businesses.length < entitlements.maxListings && entitlements.isActive
+  // Allow draft creation without subscription — gate is at submit/publish only.
+  // Still enforce listing slot limit (1 for unsub/basic, 10 for premium).
+  const canCreateMore = businesses.length < entitlements.maxListings
 
   return { businesses, canCreateMore, entitlements }
 }
