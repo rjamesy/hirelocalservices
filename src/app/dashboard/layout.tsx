@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { DashboardSidebarClient } from './DashboardSidebarClient'
 import NotificationBell from '@/components/NotificationBell'
+import { createClient } from '@/lib/supabase/server'
 
 export const metadata = {
   title: 'Dashboard | HireLocalServices',
@@ -67,6 +68,54 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
+  // Check if user is suspended — show notice instead of dashboard
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('suspended_at, suspended_reason')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.suspended_at) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+          <div className="w-full max-w-md bg-white rounded-lg shadow-md p-8 text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+              <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Account Suspended</h2>
+            <p className="text-gray-600 mb-4">
+              Your account has been suspended and you are unable to access the dashboard.
+            </p>
+            {profile.suspended_reason && (
+              <p className="text-sm text-gray-500 mb-6">
+                Reason: {profile.suspended_reason}
+              </p>
+            )}
+            <p className="text-sm text-gray-500">
+              If you believe this is an error, please contact support at{' '}
+              <a href="mailto:support@hirelocalservices.com.au" className="text-brand-600 hover:text-brand-700">
+                support@hirelocalservices.com.au
+              </a>
+            </p>
+            <form action="/auth/signout" method="POST" className="mt-6">
+              <button
+                type="submit"
+                className="text-sm font-medium text-gray-500 hover:text-gray-700"
+              >
+                Sign out
+              </button>
+            </form>
+          </div>
+        </div>
+      )
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardSidebarClient

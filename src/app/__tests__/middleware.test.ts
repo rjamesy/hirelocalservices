@@ -87,13 +87,69 @@ describe('middleware', () => {
 
   it('allows authenticated users to access /dashboard', async () => {
     const supabaseResponse = NextResponse.next()
+    const mockFrom = vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          single: vi.fn(() =>
+            Promise.resolve({ data: { suspended_at: null }, error: null })
+          ),
+        })),
+      })),
+    }))
     mockUpdateSession.mockResolvedValue({
       supabaseResponse,
       user: { id: 'user-1' },
-      supabase: { from: vi.fn() },
+      supabase: { from: mockFrom },
     })
 
     const response = await middleware(makeRequest('/dashboard'))
+    expect(response.status).not.toBe(307)
+  })
+
+  it('blocks suspended users from dashboard POST requests with 403', async () => {
+    const supabaseResponse = NextResponse.next()
+    const mockFrom = vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          single: vi.fn(() =>
+            Promise.resolve({ data: { suspended_at: '2026-01-01T00:00:00Z' }, error: null })
+          ),
+        })),
+      })),
+    }))
+    mockUpdateSession.mockResolvedValue({
+      supabaseResponse,
+      user: { id: 'user-1' },
+      supabase: { from: mockFrom },
+    })
+
+    const request = new NextRequest(new URL('/dashboard/listing', 'http://localhost:3000'), {
+      method: 'POST',
+    })
+    const response = await middleware(request)
+    expect(response.status).toBe(403)
+  })
+
+  it('allows suspended users to view dashboard pages (layout shows notice)', async () => {
+    const supabaseResponse = NextResponse.next()
+    const mockFrom = vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          single: vi.fn(() =>
+            Promise.resolve({ data: { suspended_at: '2026-01-01T00:00:00Z' }, error: null })
+          ),
+        })),
+      })),
+    }))
+    mockUpdateSession.mockResolvedValue({
+      supabaseResponse,
+      user: { id: 'user-1' },
+      supabase: { from: mockFrom },
+    })
+
+    const response = await middleware(makeRequest('/dashboard'))
+    // GET requests pass through to layout (which shows SuspensionNotice)
+    expect(response.status).not.toBe(403)
     expect(response.status).not.toBe(307)
   })
 

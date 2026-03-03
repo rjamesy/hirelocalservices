@@ -35,8 +35,9 @@ export default function SignUpPage() {
       return
     }
 
-    // Pre-signup protection check
+    // Pre-signup protection check (includes email blacklist)
     const check = await checkRegistrationAllowed(
+      email,
       captchaToken ?? undefined
     )
     if (!check.allowed) {

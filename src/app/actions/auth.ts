@@ -3,12 +3,14 @@
 import { getSystemFlagsSafe, verifyCaptcha, logAbuseEvent } from '@/lib/protection'
 import { checkRateLimit, registrationLimiter, loginLimiter } from '@/lib/rate-limiter'
 import { getClientIp } from '@/lib/ip'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
  * Pre-signup check. Client calls this BEFORE supabase.auth.signUp().
- * Enforces: registrations_enabled flag, rate limit, captcha.
+ * Enforces: registrations_enabled flag, rate limit, captcha, email blacklist.
  */
 export async function checkRegistrationAllowed(
+  email?: string,
   captchaToken?: string
 ): Promise<{ allowed: boolean; error?: string }> {
   try {
@@ -36,6 +38,23 @@ export async function checkRegistrationAllowed(
       }
     } else if (flags.captcha_required && !captchaToken) {
       return { allowed: false, error: 'Please complete the captcha verification.' }
+    }
+
+    // Check email blacklist — blocks re-registration by deleted/suspended accounts
+    if (email) {
+      try {
+        const adminSupabase = createAdminClient()
+        const { data: blResult } = await adminSupabase.rpc('is_blacklisted', {
+          p_value: email.toLowerCase(),
+          p_field_type: 'email',
+        })
+        const row = Array.isArray(blResult) ? blResult[0] : blResult
+        if (row?.is_blocked) {
+          return { allowed: false, error: 'This email address cannot be used for registration.' }
+        }
+      } catch {
+        // Fail open on blacklist check error — don't block legitimate registrations
+      }
     }
 
     return { allowed: true }

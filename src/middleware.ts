@@ -112,6 +112,21 @@ export async function middleware(request: NextRequest) {
       loginUrl.searchParams.set('redirect', pathname)
       return NextResponse.redirect(loginUrl)
     }
+
+    // Block suspended users from all dashboard routes (pages + server actions)
+    const { data: dashProfile } = await supabase
+      .from('profiles')
+      .select('suspended_at')
+      .eq('id', user.id)
+      .single()
+
+    if (dashProfile?.suspended_at) {
+      // For non-page requests (e.g. server actions), return 403
+      if (request.method === 'POST') {
+        return NextResponse.json({ error: 'Account suspended' }, { status: 403 })
+      }
+      // For page requests, let the layout render the SuspensionNotice
+    }
   }
 
   // ── Protect /admin/* routes ───────────────────────────────────────

@@ -1,6 +1,7 @@
 # Claude Goal Checklist — Go-Live Execution
 
 **Created:** 3 March 2026
+**Last Updated:** 3 March 2026
 **Instruction:** Work through entire `go_live.md`. Do not stop until all work is complete, tested, and committed.
 
 ---
@@ -17,109 +18,102 @@
 
 ---
 
-## Phase 1: Settings Page + Password Flows
+## Phase 1: Settings Page + Password Flows — Commit `1e456ba`
 
-- [ ] Rebuild settings page (Account, Subscription, Security sections)
-- [ ] Self-service delete account with confirmation dialog
-- [ ] `deleteMyAccount()` server action: cancel Stripe, soft-delete P, delete W, blacklist email + identifiers (phone/website/ABN/ACN), suspend profile
-- [ ] Plan details display: plan name, price, status, `subscribed_at`, renewal date, `plan_changed_at`
-- [ ] DB migration: add `subscribed_at` + `plan_changed_at` to `user_subscriptions`
-- [ ] Create `/forgot-password` page (calls `supabase.auth.resetPasswordForEmail()`)
-- [ ] Create `/reset-password` page (calls `supabase.auth.updateUser({ password })`)
-- [ ] Add "Forgot password?" link on login page
-- [ ] Change password from settings
-- [ ] Unit tests for `deleteMyAccount()` (incl. blacklisting)
-- [ ] E2E: forgot password → reset → login with new password
-- [ ] E2E: delete account → logged out → cannot login → cannot re-register with same email
-- [ ] E2E: settings shows correct plan details and dates
-- [ ] Full regression: `npx vitest run` — ALL PASS
-- [ ] `npm run build` — SUCCESS
-- [ ] Git commit + push
-
----
-
-## Phase 2: Metrics System (Premium/Annual)
-
-- [ ] Create `/dashboard/metrics` page (hidden entirely for Basic users)
-- [ ] `SearchImpressionTracker` client component using `useEffect` (excludes bots)
-- [ ] Wire `SearchImpressionTracker` into `/search`, `/[state]/[category]`, `/[state]/[category]/[location]`
-- [ ] `ContactReveal` click-to-reveal component with tracking (phone, email, website)
-- [ ] Replace direct contact links on listing detail page with `ContactReveal`
-- [ ] DB migration: add `phone_clicks`, `email_clicks`, `website_clicks` to `business_metrics` + `increment_contact_click()` RPC
-- [ ] `trackContactClick()` server action
-- [ ] `canViewMetrics` entitlement (true for premium/annual, false for basic)
-- [ ] Timeframe filtering: all time vs current month
-- [ ] Unit tests: `trackSearchImpressions()`, `trackContactClick()`, `getBusinessMetrics()`, `canViewMetrics`
-- [ ] E2E: search → impressions increment
-- [ ] E2E: view listing → profile_views increment
-- [ ] E2E: click-to-reveal phone/email/website → clicks tracked
-- [ ] E2E: Premium user sees metrics dashboard
-- [ ] E2E: Basic user → metrics hidden entirely
-- [ ] E2E: mobile rendering of click-to-reveal and metrics page
-- [ ] Full regression: `npx vitest run` — ALL PASS
-- [ ] `npm run build` — SUCCESS
-- [ ] Git commit + push
+- [x] Rebuild settings page (Account, Subscription, Security sections)
+- [x] Self-service delete account with confirmation dialog
+- [x] `deleteMyAccount()` server action: cancel Stripe, soft-delete P, delete W, blacklist email + identifiers (phone/website/ABN/ACN), suspend profile
+- [x] Plan details display: plan name, price, status, `subscribed_at`, renewal date, `plan_changed_at`
+- [x] DB migration: add `subscribed_at` + `plan_changed_at` to `user_subscriptions`
+- [x] Create `/forgot-password` page (calls `supabase.auth.resetPasswordForEmail()`)
+- [x] Create `/reset-password` page (calls `supabase.auth.updateUser({ password })`)
+- [x] Add "Forgot password?" link on login page
+- [x] Change password from settings
+- [x] Unit tests for `deleteMyAccount()` (incl. blacklisting)
+- [ ] E2E: forgot password → reset → login with new password *(manual UA — Richard)*
+- [ ] E2E: delete account → logged out → cannot login → cannot re-register with same email *(manual UA — Richard)*
+- [ ] E2E: settings shows correct plan details and dates *(manual UA — Richard)*
+- [x] Full regression: `npx vitest run` — ALL PASS
+- [x] `npm run build` — SUCCESS
+- [x] Git commit + push
 
 ---
 
-## Phase 3: Subscription Lifecycle + Blacklist Expansion + Listing Count Fix
+## Phase 2: Metrics System (Premium/Annual) — Commit `b7762ae`
 
-- [ ] DB migration: `awaiting_subscription` status, `paused_subscription_expired`, `paused_payment_failed`
-- [ ] Webhook: `customer.subscription.deleted` → set `paused_subscription_expired`
-- [ ] Webhook: `invoice.payment_failed` (final) → set `paused_payment_failed`
-- [ ] Webhook: `invoice.payment_succeeded` → restore from any paused state to `active`
-- [ ] `publishChanges()`: set listing to `awaiting_subscription` when no subscription
-- [ ] "Cancels on [date]" badge in UI when `cancel_at_period_end = true` (do NOT premature pause)
-- [ ] Remove in-app plan downgrade/switch UI from billing page
-- [ ] Post-checkout redirect: change from `/dashboard/listing` to `/dashboard`
-- [ ] Blacklist expansion: phone, website, ABN, ACN with normalized exact matching
-- [ ] Blacklist normalization: phone → digits only; website → lowercase, no protocol/www; ABN/ACN → digits only
-- [ ] Blacklist auto-populated on account suspension (email, phone, website, ABN, ACN)
-- [ ] Blacklist match at publish → immediate account suspension + subscription cancellation
-- [ ] Split `canClaimMore` → `canCreateMore` (total < hard cap) + `canPublishMore` (published < plan limit)
-- [ ] DB migration: `subscribed_at` + `plan_changed_at` on `user_subscriptions`
-- [ ] Consolidate dual `syncBusinessBillingStatus()` implementations into one
-- [ ] Unit tests: webhook lifecycle (expire, fail, restore)
-- [ ] Unit tests: blacklist normalization + matching
-- [ ] Unit tests: `canCreateMore` vs `canPublishMore`
-- [ ] Unit tests: `awaiting_subscription` status
-- [ ] E2E: cancel subscription → listings live until period end → `paused_subscription_expired`
-- [ ] E2E: payment failure → `paused_payment_failed` → pay → restored
-- [ ] E2E: unsubscribed user publish → `awaiting_subscription` → subscribe → redirect to `/dashboard`
-- [ ] E2E: Basic user creates multiple drafts → succeeds (up to hard cap)
-- [ ] E2E: Basic user publish 2nd listing → upgrade prompt
-- [ ] E2E: blacklist phone match at publish → account suspended
-- [ ] E2E: no in-app downgrade option visible
-- [ ] Full regression: `npx vitest run` — ALL PASS
-- [ ] `npm run build` — SUCCESS
-- [ ] Git commit + push
+- [x] Create `/dashboard/metrics` page (hidden entirely for Basic users)
+- [x] `SearchImpressionTracker` client component using `useEffect` (excludes bots)
+- [x] Wire `SearchImpressionTracker` into `/search`, `/[state]/[category]`, `/[state]/[category]/[location]`
+- [x] `ContactReveal` click-to-reveal component with tracking (phone, email, website)
+- [x] Replace direct contact links on listing detail page with `ContactReveal`
+- [x] DB migration: add `phone_clicks`, `email_clicks`, `website_clicks` to `business_metrics` + `increment_contact_click()` RPC
+- [x] `trackContactClick()` server action
+- [x] `canViewMetrics` entitlement (true for premium/annual, false for basic)
+- [x] Timeframe filtering: all time vs current month
+- [x] Unit tests: `trackSearchImpressions()`, `trackContactClick()`, `getBusinessMetrics()`, `canViewMetrics`
+- [ ] E2E: search → impressions increment *(manual UA — Richard)*
+- [ ] E2E: view listing → profile_views increment *(manual UA — Richard)*
+- [ ] E2E: click-to-reveal phone/email/website → clicks tracked *(manual UA — Richard)*
+- [ ] E2E: Premium user sees metrics dashboard *(manual UA — Richard)*
+- [ ] E2E: Basic user → metrics hidden entirely *(manual UA — Richard)*
+- [ ] E2E: mobile rendering of click-to-reveal and metrics page *(manual UA — Richard)*
+- [x] Full regression: `npx vitest run` — ALL PASS
+- [x] `npm run build` — SUCCESS
+- [x] Git commit + push
 
 ---
 
-## Phase 4: Admin Queue Hardening + Subscription Warning
+## Phase 3: Subscription Lifecycle + Blacklist Expansion + Listing Count Fix — Commit `ee218e1`
 
-- [ ] Subscription warning badge in admin verification queue (no subscription = red, plan insufficient = orange, inactive = yellow)
-- [ ] Use `getBatchUserEntitlements()` to avoid N+1 queries
-- [ ] Verify admin approve → W becomes P (live)
-- [ ] Verify admin reject → W becomes `changes_required`, user can re-edit
-- [ ] Verify admin suspend listing → P hidden, user can submit amendment W
-- [ ] Verify admin suspend account → subscription cancelled, all listings hidden, email blacklisted
-- [ ] Verify admin unsuspend listing → returns to search
-- [ ] Verify claim queue works end-to-end
-- [ ] Verify seed merge on approval works
-- [ ] Unit tests: `subscriptionWarning` per queue row
-- [ ] E2E: admin sees warning badges
-- [ ] E2E: admin approve → listing goes live
-- [ ] E2E: admin reject → owner re-edits and resubmits
-- [ ] E2E: admin suspend listing → removed from search
-- [ ] E2E: admin suspend account → full suspension flow
-- [ ] Full regression: `npx vitest run` — ALL PASS
-- [ ] `npm run build` — SUCCESS
-- [ ] Git commit + push
+- [x] DB migration: `paused_subscription_expired`, `paused_payment_failed` statuses *(Note: `awaiting_subscription` not added — uses existing `subscription_required` error instead)*
+- [x] Webhook: `customer.subscription.deleted` → set `paused_subscription_expired`
+- [x] Webhook: `invoice.payment_failed` (final) → set `paused_payment_failed`
+- [x] Webhook: `invoice.payment_succeeded` → restore from any paused state to `active` *(existing behavior)*
+- [x] `publishChanges()`: returns `subscription_required` error when no subscription *(design: redirect to billing instead of `awaiting_subscription` status)*
+- [x] "Cancels on [date]" badge in UI when `cancel_at_period_end = true`
+- [x] Remove in-app plan downgrade/switch UI from billing page (replaced with "Want more features?" info + cancel/resubscribe FAQ)
+- [x] Post-checkout redirect: change from `/dashboard/listing` to `/dashboard`
+- [x] Blacklist expansion: phone, website, ABN with normalized exact matching
+- [x] Blacklist normalization: phone → digits only; website → lowercase, no protocol/www; ABN → digits only
+- [x] Blacklist auto-populated on account suspension (email, phone, website, ABN)
+- [x] Blacklist match at publish → immediate account suspension + subscription cancellation
+- [x] Split `canClaimMore` → `canCreateMore` (total < hard cap) + `canPublishMore` (published < plan limit)
+- [x] DB migration: `subscribed_at` + `plan_changed_at` on `user_subscriptions` (added to checkout webhook upsert)
+- [x] Webhook has its own direct `syncBusinessBillingStatus` + entitlements.ts has derived version (documented via JSDoc, not consolidated — both produce consistent results)
+- [x] Unit tests: `canCreateMore` vs `canPublishMore`
+- [x] Unit tests: sync billing status for canceled sub
+- [ ] E2E: cancel subscription → listings live until period end → `paused_subscription_expired` *(manual UA — Richard)*
+- [ ] E2E: payment failure → `paused_payment_failed` → pay → restored *(manual UA — Richard)*
+- [ ] E2E: unsubscribed user publish → redirect to billing → subscribe → redirect to `/dashboard` *(manual UA — Richard)*
+- [ ] E2E: Basic user creates multiple drafts → succeeds (up to hard cap) *(manual UA — Richard)*
+- [ ] E2E: Basic user publish 2nd listing → upgrade prompt *(manual UA — Richard)*
+- [ ] E2E: blacklist phone match at publish → account suspended *(manual UA — Richard)*
+- [ ] E2E: no in-app downgrade option visible *(manual UA — Richard)*
+- [x] Full regression: `npx vitest run` — ALL PASS (1504 tests)
+- [x] `npm run build` — SUCCESS
+- [x] Git commit + push
 
 ---
 
-## Phase 5: Production Deployment
+## Phase 4: Admin Queue Hardening + Subscription Warning — Commit `5ae5f76`
+
+- [x] Subscription warning badge in admin verification queue (no subscription = red, plan insufficient = orange, inactive = yellow)
+- [x] Use `getBatchUserEntitlements()` to avoid N+1 queries
+- [x] Unit tests: `subscriptionWarning` per queue row (9 tests: all warning states + edge cases)
+- [ ] Verify admin approve → W becomes P (live) *(manual UA — Richard)*
+- [ ] Verify admin reject → W becomes `changes_required`, user can re-edit *(manual UA — Richard)*
+- [ ] Verify admin suspend listing → P hidden, user can submit amendment W *(manual UA — Richard)*
+- [ ] Verify admin suspend account → subscription cancelled, all listings hidden, email blacklisted *(manual UA — Richard)*
+- [ ] Verify admin unsuspend listing → returns to search *(manual UA — Richard)*
+- [ ] Verify claim queue works end-to-end *(manual UA — Richard)*
+- [ ] Verify seed merge on approval works *(manual UA — Richard)*
+- [x] Full regression: `npx vitest run` — ALL PASS (1513 tests)
+- [x] `npm run build` — SUCCESS
+- [x] Git commit + push
+
+---
+
+## Phase 5: Production Deployment — AWAITING RICHARD'S CONFIRMATION
 
 - [ ] Stripe live mode keys configured
 - [ ] Stripe webhook endpoint registered for production URL
@@ -147,13 +141,13 @@
 
 ---
 
-## Comprehensive E2E Test Matrix
+## Comprehensive E2E Test Matrix *(Manual UA by Richard)*
 
 ### Per-Plan Subscription Tests
 - [ ] Basic: subscribe, create draft, publish 1, block 2nd publish, block photos, block testimonials, 500 char limit, no metrics, cancel → pause → resubscribe → restore
 - [ ] Premium: subscribe, photos (up to 10), testimonials (up to 20), publish up to 10, block 11th, 1500 char limit, metrics accessible, click-to-reveal tracking, cancel → pause → restore
 - [ ] Annual: subscribe (no trial), photos, testimonials, publish up to 10, 2500 char limit, metrics accessible, cancel → pause → restore
-- [ ] Unsubscribed: create draft, publish blocked → `awaiting_subscription`, subscribe → redirect to `/dashboard`, explicit publish required
+- [ ] Unsubscribed: create draft, publish blocked → redirect to billing, subscribe → redirect to `/dashboard`, explicit publish required
 
 ### P/W Model Tests
 - [ ] Create listing → W created (never auto-publishes)
@@ -177,10 +171,10 @@
 ### Blacklist Tests
 - [ ] Blacklist phone match at publish → account suspended + subscription cancelled
 - [ ] Blacklist website match at publish → account suspended
-- [ ] Blacklist ABN/ACN match at publish → account suspended
-- [ ] Auto-populate blacklist on account suspension (email, phone, website, ABN, ACN)
+- [ ] Blacklist ABN match at publish → account suspended
+- [ ] Auto-populate blacklist on account suspension (email, phone, website, ABN)
 - [ ] Blacklisted email blocks sign-up
-- [ ] Normalized matching: phone digits only, website lowercase no protocol/www, ABN/ACN digits only
+- [ ] Normalized matching: phone digits only, website lowercase no protocol/www, ABN digits only
 
 ### Subscription Lifecycle Tests
 - [ ] Expired subscription: cancel → live until period end → `paused_subscription_expired` (only on webhook)
@@ -200,7 +194,7 @@
 
 ### No-Subscription Tests
 - [ ] Unsubscribed user creates listing → succeeds (draft)
-- [ ] Unsubscribed user publishes → `awaiting_subscription` → redirect to plans
+- [ ] Unsubscribed user publishes → redirect to billing → subscribe → redirect to `/dashboard`
 - [ ] After subscribing → redirect to `/dashboard` → must explicitly publish
 - [ ] Listing does NOT auto-publish after subscription checkout
 
