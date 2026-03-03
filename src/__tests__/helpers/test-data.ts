@@ -116,6 +116,8 @@ export const mockUserSubscription: UserSubscription = {
   current_period_end: '2025-01-01T00:00:00Z',
   cancel_at_period_end: false,
   trial_ends_at: null,
+  subscribed_at: '2024-06-01T00:00:00Z',
+  plan_changed_at: '2024-06-01T00:00:00Z',
   updated_at: '2024-06-01T00:00:00Z',
 }
 

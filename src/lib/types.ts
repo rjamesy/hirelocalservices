@@ -231,6 +231,8 @@ export type UserSubscription = {
   current_period_end: string | null
   cancel_at_period_end: boolean
   trial_ends_at: string | null
+  subscribed_at: string | null
+  plan_changed_at: string | null
   updated_at: string
 }
 
@@ -257,10 +259,13 @@ export type BusinessMetrics = {
   updated_at: string
 }
 
+export type BlacklistFieldType = 'business_name' | 'email' | 'phone' | 'website' | 'abn' | 'acn'
+
 export type BlacklistEntry = {
   id: string
   term: string
   match_type: 'exact' | 'contains' | 'starts_with'
+  field_type: BlacklistFieldType
   reason: string | null
   added_by: string | null
   is_active: boolean
@@ -712,7 +717,7 @@ export type Database = {
       }
       user_subscriptions: {
         Row: UserSubscription
-        Insert: Pick<UserSubscription, 'user_id'> & Partial<Omit<UserSubscription, 'id' | 'updated_at' | 'user_id'>>
+        Insert: Pick<UserSubscription, 'user_id'> & Partial<Omit<UserSubscription, 'id' | 'updated_at' | 'user_id' | 'subscribed_at' | 'plan_changed_at'>> & Partial<Pick<UserSubscription, 'subscribed_at' | 'plan_changed_at'>>
         Update: Partial<Omit<UserSubscription, 'id' | 'user_id'>>
         Relationships: [
           {
@@ -795,7 +800,7 @@ export type Database = {
       }
       blacklist: {
         Row: BlacklistEntry
-        Insert: Omit<BlacklistEntry, 'id' | 'created_at'>
+        Insert: Omit<BlacklistEntry, 'id' | 'created_at' | 'field_type'> & Partial<Pick<BlacklistEntry, 'field_type'>>
         Update: Partial<Omit<BlacklistEntry, 'id' | 'created_at'>>
         Relationships: []
       }
