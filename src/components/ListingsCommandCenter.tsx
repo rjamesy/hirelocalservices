@@ -31,6 +31,8 @@ function getFilterForBusiness(b: BusinessItem): FilterTab {
   const q = b.quality
   if (!q) return 'all'
   if (q.flag === 'blocked') return 'blocked'
+  if (q.flag === 'draft') return 'action_needed'
+  if (q.flag === 'awaiting_subscription') return 'action_needed'
   if (q.flag === 'under_review') return 'under_review'
   if (q.flag === 'rejected') return 'action_needed'
   if (q.flag === 'edited') return 'complete'

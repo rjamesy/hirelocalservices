@@ -168,7 +168,7 @@ async function buildEntitlements(
     canClaimMore: currentListingCount < maxListings,
     canCreateMore: currentListingCount < maxListings,
     canPublishMore: publishedListingCount < publishLimit,
-    canPublish: effectivelyActive,
+    canPublish: effectivelyActive && status !== 'past_due',
     canEdit: true, // drafts allowed without subscription
     canUploadPhotos: effectivelyActive && planDef.canUploadPhotos,
     canAddTestimonials: effectivelyActive && planDef.canAddTestimonials,

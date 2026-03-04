@@ -156,9 +156,21 @@ export default function AdminAccountsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      {account.billingStatus === 'billing_suspended' || account.billingStatus === 'none' ? (
+                      {account.billingStatus === 'none' ? (
                         <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
-                          {account.billingStatus === 'none' ? 'No Sub' : 'Suspended'}
+                          No Sub
+                        </span>
+                      ) : account.billingStatus === 'billing_suspended' ? (
+                        <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+                          Suspended
+                        </span>
+                      ) : account.billingStatus === 'paused_subscription_expired' ? (
+                        <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+                          Subscription Expired
+                        </span>
+                      ) : account.billingStatus === 'paused_payment_failed' ? (
+                        <span className="inline-flex items-center rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">
+                          Payment Failed
                         </span>
                       ) : (
                         <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">

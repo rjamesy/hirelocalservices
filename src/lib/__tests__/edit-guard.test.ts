@@ -101,13 +101,13 @@ describe('getEditGuard', () => {
     })
   })
 
-  it('no W, P.suspended → verificationOk true, isLive false', async () => {
+  it('no W, P.suspended → verificationOk true, isLive true (amendment path)', async () => {
     mockPRow = { visibility_status: 'suspended' } as Partial<PublishedListing>
     const g = await getEditGuard('biz-1')
     expect(g).toEqual({
       underReview: false,
       verificationOk: true,
-      isLive: false,
+      isLive: true,
       visibilityStatus: 'suspended',
     })
   })

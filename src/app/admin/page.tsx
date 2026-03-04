@@ -50,6 +50,7 @@ export default async function AdminDashboardPage() {
     supabase
       .from('businesses')
       .select('*', { count: 'exact', head: true })
+      .eq('is_seed', true)
       .eq('claim_status', 'claimed'),
     supabase
       .from('businesses')

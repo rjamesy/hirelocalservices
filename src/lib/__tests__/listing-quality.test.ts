@@ -22,6 +22,7 @@ function makeListing(overrides: Partial<ListingForQuality> = {}): ListingForQual
     deleted_at: null,
     hasCategories: true,
     hasLocation: true,
+    isDraft: false,
     ...overrides,
   }
 }
@@ -91,6 +92,30 @@ describe('getListingQuality', () => {
       listing: {},
       flags: { canPublish: false, isActive: false },
       expected: { flag: 'blocked', hint: /subscription required/i },
+    },
+
+    // ── AWAITING_SUBSCRIPTION (draft + no subscription) ──
+    {
+      desc: 'draft + effectiveState=blocked → awaiting_subscription',
+      listing: { isDraft: true },
+      flags: { effectiveState: 'blocked', reasonCodes: ['trial_expired'] },
+      expected: { flag: 'awaiting_subscription', hint: /subscribe/i },
+    },
+    {
+      desc: 'draft + canPublish=false, isActive=false → awaiting_subscription',
+      listing: { isDraft: true },
+      flags: { canPublish: false, isActive: false },
+      expected: { flag: 'awaiting_subscription', hint: /subscribe/i },
+    },
+    {
+      desc: 'draft + suspended → still blocked (not awaiting_subscription)',
+      listing: { isDraft: true, isSuspended: true },
+      expected: { flag: 'blocked', hint: /suspended/i },
+    },
+    {
+      desc: 'draft + deleted → still blocked',
+      listing: { isDraft: true, deleted_at: '2024-01-01T00:00:00Z' },
+      expected: { flag: 'blocked', hint: /deleted/i },
     },
 
     // ── UNDER_REVIEW ──
@@ -216,6 +241,71 @@ describe('getListingQuality', () => {
   it('blocked has red colorClass', () => {
     const result = getListingQuality(makeListing({ isSuspended: true }), makeFlags())
     expect(result.colorClass).toContain('red')
+  })
+
+  it('awaiting_subscription has blue colorClass', () => {
+    const result = getListingQuality(
+      makeListing({ isDraft: true }),
+      makeFlags({ canPublish: false, isActive: false })
+    )
+    expect(result.flag).toBe('awaiting_subscription')
+    expect(result.colorClass).toContain('blue')
+  })
+
+  it('draft + suspended → blocked overrides awaiting_subscription', () => {
+    const result = getListingQuality(
+      makeListing({ isDraft: true, isSuspended: true }),
+      makeFlags({ canPublish: false, isActive: false })
+    )
+    expect(result.flag).toBe('blocked')
+  })
+
+  // Phase 1 — draft + active sub → flag: draft (NOT complete, NOT under_review)
+  it('draft + active sub → flag: draft', () => {
+    const result = getListingQuality(
+      makeListing({ isDraft: true, isUnderReview: false }),
+      makeFlags({ canPublish: true, isActive: true, effectiveState: 'ok' })
+    )
+    expect(result.flag).toBe('draft')
+    expect(result.flag).not.toBe('under_review')
+    expect(result.flag).not.toBe('complete')
+  })
+
+  // Phase 1 — draft + no sub → awaiting_subscription
+  it('draft + no subscription → awaiting_subscription, NOT under_review', () => {
+    const result = getListingQuality(
+      makeListing({ isDraft: true, isUnderReview: false }),
+      makeFlags({ canPublish: false, isActive: false, effectiveState: 'blocked' })
+    )
+    expect(result.flag).toBe('awaiting_subscription')
+    expect(result.flag).not.toBe('under_review')
+  })
+
+  // Phase 1 — submitted (review_status='pending') + active sub → under_review
+  it('submitted (isUnderReview=true) + active sub → under_review', () => {
+    const result = getListingQuality(
+      makeListing({ isDraft: true, isUnderReview: true }),
+      makeFlags({ canPublish: true, isActive: true, effectiveState: 'ok' })
+    )
+    expect(result.flag).toBe('under_review')
+  })
+
+  // Phase 1 — published clean → complete
+  it('published clean → complete', () => {
+    const result = getListingQuality(
+      makeListing({ isDraft: false, isUnderReview: false }),
+      makeFlags({ canPublish: true, isActive: true, effectiveState: 'ok' })
+    )
+    expect(result.flag).toBe('complete')
+  })
+
+  // Phase 1 — published clean → complete
+  it('published clean → complete', () => {
+    const result = getListingQuality(
+      makeListing({ isDraft: false, isUnderReview: false }),
+      makeFlags({ canPublish: true, isActive: true, effectiveState: 'ok' })
+    )
+    expect(result.flag).toBe('complete')
   })
 })
 

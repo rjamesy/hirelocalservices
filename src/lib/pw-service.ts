@@ -507,7 +507,7 @@ export interface DerivedStatus {
   /** Mapped to old businesses.status values for backward compat */
   effectiveStatus: 'draft' | 'published' | 'paused' | 'suspended' | 'deleted'
   /** Mapped to old businesses.verification_status values for backward compat */
-  effectiveVerification: 'approved' | 'pending' | 'rejected'
+  effectiveVerification: 'approved' | 'pending' | 'rejected' | 'not_submitted'
   /** True if active W exists with change_type='edit' */
   hasPendingChanges: boolean
   /** Raw P.visibility_status (null if no P) */
@@ -563,7 +563,7 @@ export function deriveStatus(
     effectiveVerification = 'approved'
   } else {
     // No P, no pending/rejected W — new draft not yet submitted
-    effectiveVerification = 'pending'
+    effectiveVerification = 'not_submitted'
   }
 
   return {
@@ -608,7 +608,7 @@ export async function getEditGuard(businessId: string): Promise<{
       !!p &&
       (!w || w.review_status === 'draft') &&
       w?.review_status !== 'changes_required',
-    isLive: !!p && (p.visibility_status === 'live' || p.visibility_status === 'paused'),
+    isLive: !!p && (p.visibility_status === 'live' || p.visibility_status === 'paused' || p.visibility_status === 'suspended'),
     visibilityStatus: p?.visibility_status ?? null,
   }
 }

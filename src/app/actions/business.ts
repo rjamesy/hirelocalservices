@@ -581,6 +581,12 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
 
   // Check user subscription + plan tier gating via canonical gate
   const entitlements = await getUserEntitlements(supabase, user.id)
+
+  // Block publish when subscription is past due (active but payment unresolved)
+  if (!entitlements.canPublish && entitlements.isActive) {
+    return { error: 'Your subscription payment is past due. Please update your payment method to publish.' }
+  }
+
   const { computeCheckoutGate, checkPlanSufficiency } = await import('@/lib/required-plan')
   const gateResult = await computeCheckoutGate(supabase, user.id, businessId)
   const gatingError = checkPlanSufficiency(entitlements.plan, gateResult)
@@ -833,10 +839,11 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
 
   if (finalDecision === 'approved') {
     // Apply pending_changes to main columns
+    // Preserve 'suspended' status — only admin can lift suspension
     const updateData: Record<string, unknown> = {
       ...contentToValidate,
       pending_changes: null,
-      status: 'published',
+      status: guard.visibilityStatus === 'suspended' ? 'suspended' : 'published',
       verification_status: 'approved',
     }
 
@@ -1217,6 +1224,7 @@ export async function getMyBusinesses() {
         deleted_at: b.deleted_at,
         hasCategories,
         hasLocation,
+        isDraft: derived.effectiveStatus === 'draft',
       }, qualityFlags),
     }
   })

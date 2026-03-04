@@ -136,13 +136,13 @@ export default function AdminListingsPage() {
   function getTypeBadge(type: string) {
     const colors: Record<string, string> = {
       seed: 'bg-sky-100 text-sky-800',
-      claimed: 'bg-indigo-100 text-indigo-800',
+      claimed: 'bg-purple-100 text-purple-800',
       'user-created': 'bg-emerald-100 text-emerald-800',
     }
     const labels: Record<string, string> = {
       seed: 'Seed',
-      claimed: 'Claimed',
-      'user-created': 'User',
+      claimed: 'Claimed Seed',
+      'user-created': 'Manual',
     }
     return (
       <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[type] ?? 'bg-gray-100 text-gray-800'}`}>
@@ -199,9 +199,9 @@ export default function AdminListingsPage() {
           className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700"
         >
           <option value="">All Types</option>
-          <option value="seed">Seed</option>
-          <option value="claimed">Claimed</option>
-          <option value="user">User-Created</option>
+          <option value="seed">Seed (Unclaimed)</option>
+          <option value="claimed">Claimed Seed</option>
+          <option value="user">Manual</option>
         </select>
         <select
           value={verificationFilter}

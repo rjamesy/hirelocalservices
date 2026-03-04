@@ -55,6 +55,7 @@ import {
   setVisibility,
   getActiveWorking,
   getCurrentPublished,
+  getEditGuard,
   deriveStatus,
 } from '@/lib/pw-service'
 import type { PublishedListing, WorkingListing } from '@/lib/types'
@@ -430,10 +431,10 @@ describe('deriveStatus', () => {
     expect(result.hasPendingChanges).toBe(true)
   })
 
-  it('no P + W(draft, new) → draft, pending', () => {
+  it('no P + W(draft, new) → draft, not_submitted', () => {
     const result = deriveStatus(null, makeW(), biz)
     expect(result.effectiveStatus).toBe('draft')
-    expect(result.effectiveVerification).toBe('pending')
+    expect(result.effectiveVerification).toBe('not_submitted')
     expect(result.hasPendingChanges).toBe(false)
   })
 
@@ -482,12 +483,93 @@ describe('deriveStatus', () => {
     expect(result.hasPendingChanges).toBe(false)
   })
 
-  it('no P + no W → draft, pending', () => {
+  it('no P + no W → draft, not_submitted', () => {
     const result = deriveStatus(null, null, biz)
     expect(result.effectiveStatus).toBe('draft')
-    expect(result.effectiveVerification).toBe('pending')
+    expect(result.effectiveVerification).toBe('not_submitted')
     expect(result.hasPendingChanges).toBe(false)
     expect(result.visibilityStatus).toBeNull()
     expect(result.reviewStatus).toBeNull()
+  })
+})
+
+// ─── getEditGuard ─────────────────────────────────────────────────────────────
+
+describe('getEditGuard', () => {
+  it('suspended P → isLive = true (uses amendment path)', async () => {
+    // Mock published_listings → suspended P
+    tableBuilders['published_listings'] = createQueryBuilder({
+      id: 'p-1',
+      business_id: 'biz-1',
+      visibility_status: 'suspended',
+      is_current: true,
+    })
+    // Mock working_listings → no active W
+    tableBuilders['working_listings'] = createQueryBuilder(null)
+
+    const guard = await getEditGuard('biz-1')
+    expect(guard.isLive).toBe(true)
+    expect(guard.visibilityStatus).toBe('suspended')
+    expect(guard.underReview).toBe(false)
+  })
+
+  it('live P → isLive = true', async () => {
+    tableBuilders['published_listings'] = createQueryBuilder({
+      id: 'p-1',
+      business_id: 'biz-1',
+      visibility_status: 'live',
+      is_current: true,
+    })
+    tableBuilders['working_listings'] = createQueryBuilder(null)
+
+    const guard = await getEditGuard('biz-1')
+    expect(guard.isLive).toBe(true)
+    expect(guard.visibilityStatus).toBe('live')
+  })
+
+  it('paused P → isLive = true', async () => {
+    tableBuilders['published_listings'] = createQueryBuilder({
+      id: 'p-1',
+      business_id: 'biz-1',
+      visibility_status: 'paused',
+      is_current: true,
+    })
+    tableBuilders['working_listings'] = createQueryBuilder(null)
+
+    const guard = await getEditGuard('biz-1')
+    expect(guard.isLive).toBe(true)
+    expect(guard.visibilityStatus).toBe('paused')
+  })
+
+  it('no P (draft) → isLive = false', async () => {
+    tableBuilders['published_listings'] = createQueryBuilder(null)
+    tableBuilders['working_listings'] = createQueryBuilder({
+      id: 'w-1',
+      business_id: 'biz-1',
+      review_status: 'draft',
+    })
+
+    const guard = await getEditGuard('biz-1')
+    expect(guard.isLive).toBe(false)
+    expect(guard.visibilityStatus).toBeNull()
+  })
+
+  it('suspended P + pending W → underReview = true', async () => {
+    tableBuilders['published_listings'] = createQueryBuilder({
+      id: 'p-1',
+      business_id: 'biz-1',
+      visibility_status: 'suspended',
+      is_current: true,
+    })
+    tableBuilders['working_listings'] = createQueryBuilder({
+      id: 'w-1',
+      business_id: 'biz-1',
+      review_status: 'pending',
+      submitted_at: '2024-01-01T00:00:00Z',
+    })
+
+    const guard = await getEditGuard('biz-1')
+    expect(guard.isLive).toBe(true)
+    expect(guard.underReview).toBe(true)
   })
 })

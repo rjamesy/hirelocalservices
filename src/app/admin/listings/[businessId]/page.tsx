@@ -45,24 +45,13 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function TypeBadge({ isSeed, claimStatus }: { isSeed: boolean; claimStatus: string }) {
-  if (isSeed && claimStatus === 'claimed') {
-    return (
-      <span className="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-800">
-        Claimed
-      </span>
-    )
-  }
-  if (isSeed) {
-    return (
-      <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
-        Seed
-      </span>
-    )
-  }
+function SourceBadge({ listingSource }: { listingSource: string }) {
+  const isSeed = listingSource !== 'manual'
   return (
-    <span className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800">
-      User-Created
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+      isSeed ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800'
+    }`}>
+      {listingSource === 'manual' ? 'Manual' : 'Seed'}
     </span>
   )
 }
@@ -71,13 +60,24 @@ function BillingBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     active: 'bg-green-50 text-green-700',
     trial: 'bg-blue-50 text-blue-700',
+    seed: 'bg-purple-50 text-purple-700',
     billing_suspended: 'bg-red-50 text-red-700',
+    paused_subscription_expired: 'bg-red-50 text-red-700',
+    paused_payment_failed: 'bg-orange-50 text-orange-700',
+  }
+  const labels: Record<string, string> = {
+    active: 'Active',
+    trial: 'Trial',
+    seed: 'Seed',
+    billing_suspended: 'Billing Suspended',
+    paused_subscription_expired: 'Subscription Expired',
+    paused_payment_failed: 'Payment Failed',
   }
   return (
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status] ?? 'bg-gray-50 text-gray-500'}`}
     >
-      {status === 'billing_suspended' ? 'Billing Suspended' : status || 'none'}
+      {labels[status] ?? status || 'none'}
     </span>
   )
 }
@@ -262,7 +262,7 @@ export default function AdminListingDetailPage() {
 
         <div className="flex flex-wrap items-center gap-3 mt-1">
           <h1 className="text-2xl font-bold text-gray-900">{business.name}</h1>
-          <TypeBadge isSeed={business.is_seed} claimStatus={business.claim_status} />
+          <SourceBadge listingSource={business.listing_source} />
           <StatusBadge status={isDeleted ? 'deleted' : business.status} />
           <BillingBadge status={business.billing_status} />
           <VerificationBadge status={business.verification_status} />
@@ -377,6 +377,30 @@ export default function AdminListingDetailPage() {
               <div>
                 <dt className="text-gray-500 text-xs">Listing Source</dt>
                 <dd className="text-gray-900">{business.listing_source || <span className="text-gray-400 italic">Unknown</span>}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500 text-xs">Ownership Status</dt>
+                <dd className="text-gray-900">
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                    business.claim_status === 'claimed' ? 'bg-green-100 text-green-800' :
+                    business.claim_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {business.claim_status === 'claimed' ? 'Owned' : business.claim_status === 'pending' ? 'Claim Pending' : 'Unclaimed'}
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-gray-500 text-xs">Claim Request</dt>
+                <dd className="text-gray-900">
+                  {claims.filter((c: any) => c.status === 'pending').length > 0 ? (
+                    <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800">
+                      {claims.filter((c: any) => c.status === 'pending').length} pending
+                    </span>
+                  ) : (
+                    <span className="text-gray-400 italic">None</span>
+                  )}
+                </dd>
               </div>
             </dl>
           </div>

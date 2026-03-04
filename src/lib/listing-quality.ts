@@ -23,6 +23,7 @@ export interface ListingForQuality {
   deleted_at: string | null
   hasCategories: boolean
   hasLocation: boolean
+  isDraft: boolean
 }
 
 export interface QualityFlags {
@@ -34,7 +35,7 @@ export interface QualityFlags {
 }
 
 export interface QualityResult {
-  flag: 'complete' | 'needs_action' | 'under_review' | 'blocked' | 'rejected' | 'edited'
+  flag: 'complete' | 'needs_action' | 'under_review' | 'blocked' | 'rejected' | 'edited' | 'awaiting_subscription' | 'draft'
   label: string
   hint: string
   fixStep: number | null
@@ -110,7 +111,7 @@ export function getListingQuality(
 ): QualityResult {
   const f = flags ?? DEFAULT_FLAGS
 
-  // 1. BLOCKED — checked first
+  // 1. BLOCKED — checked first (reserved for suspension, deletion, policy violations)
   if (listing.isSuspended) {
     const reason = listing.suspendedReason
       ? `Suspended: ${listing.suspendedReason}`
@@ -119,6 +120,30 @@ export function getListingQuality(
   }
   if (listing.deleted_at !== null) return blocked('Listing deleted')
   if (!f.listingsEnabled) return blocked('Listings temporarily disabled')
+
+  // Drafts with no subscription → "Awaiting Subscription" (not "Blocked")
+  if (listing.isDraft && (f.effectiveState === 'blocked' || (!f.canPublish && !f.isActive))) {
+    return {
+      flag: 'awaiting_subscription',
+      label: 'Awaiting Subscription',
+      hint: 'Subscribe to a plan to publish this listing',
+      fixStep: null,
+      colorClass: 'bg-blue-100 text-blue-800',
+    }
+  }
+
+  // Drafts not yet submitted for review → "Draft" (never "complete")
+  if (listing.isDraft && !listing.isUnderReview) {
+    return {
+      flag: 'draft',
+      label: 'Draft',
+      hint: 'Finish editing and submit for review',
+      fixStep: null,
+      colorClass: 'bg-gray-100 text-gray-800',
+    }
+  }
+
+  // Published/paused listings with billing issues → truly blocked
   if (f.effectiveState === 'blocked') return blocked(getBlockedHint(f.reasonCodes))
   if (!f.canPublish && !f.isActive) return blocked('Not visible: subscription required')
 

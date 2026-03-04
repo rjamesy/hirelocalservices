@@ -276,6 +276,64 @@ describe('getUserEntitlements', () => {
 
     expect(result.canViewMetrics).toBe(false)
   })
+
+  // Phase 3A — cancelled-at-period-end
+  it('canceled in-period → canPublish true, isActive true', async () => {
+    const futureDate = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString()
+    const sub = createMockSubRow({
+      status: 'canceled',
+      plan: 'premium',
+      cancel_at_period_end: true,
+      current_period_end: futureDate,
+    })
+    const supabase = createMockSupabase({ canceledSub: sub })
+    const result = await getUserEntitlements(supabase, 'user-1')
+
+    expect(result.isActive).toBe(true)
+    expect(result.canPublish).toBe(true)
+    expect(result.cancelAtPeriodEnd).toBe(true)
+    expect(result.currentPeriodEnd).toBe(futureDate)
+    expect(result.effectiveState).toBe('ok')
+  })
+
+  it('canceled past-period → canPublish false, isActive false', async () => {
+    const pastDate = '2020-01-01T00:00:00Z'
+    const sub = createMockSubRow({
+      status: 'canceled',
+      plan: 'premium',
+      cancel_at_period_end: true,
+      current_period_end: pastDate,
+    })
+    const supabase = createMockSupabase({ canceledSub: sub })
+    const result = await getUserEntitlements(supabase, 'user-1')
+
+    expect(result.isActive).toBe(false)
+    expect(result.canPublish).toBe(false)
+    expect(result.effectiveState).toBe('blocked')
+  })
+
+  // Phase 3B — past_due
+  it('past_due → canPublish false, isActive true', async () => {
+    const sub = createMockSubRow({ status: 'past_due', plan: 'premium' })
+    const supabase = createMockSupabase({ activeSub: sub })
+    const result = await getUserEntitlements(supabase, 'user-1')
+
+    expect(result.isActive).toBe(true)
+    expect(result.canPublish).toBe(false)
+    expect(result.effectiveState).toBe('limited')
+    expect(result.reasonCodes).toContain('payment_past_due')
+  })
+
+  it('past_due → listings remain visible (billing_status stays active)', async () => {
+    const sub = createMockSubRow({ status: 'past_due', plan: 'premium' })
+    const supabase = createMockSupabase({ activeSub: sub })
+    const result = await getUserEntitlements(supabase, 'user-1')
+
+    // isActive=true means syncBusinessBillingStatus will set billing_status='active'
+    // which means search eligibility billingOk check passes
+    expect(result.isActive).toBe(true)
+    expect(result.subscriptionStatus).toBe('past_due')
+  })
 })
 
 describe('syncBusinessBillingStatus', () => {
