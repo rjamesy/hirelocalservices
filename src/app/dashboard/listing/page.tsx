@@ -1746,17 +1746,21 @@ function ListingContent() {
                 )
               }
 
+              const noSub = isDraft && entitlements?.effectiveState === 'no_plan'
+
               return (
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
                       <p className="text-sm font-medium text-gray-900">
-                        {isDraft ? 'Ready to go live?' : 'Publish your changes?'}
+                        {noSub ? 'Ready to publish?' : isDraft ? 'Ready to submit for review?' : 'Publish your changes?'}
                       </p>
                       <p className="text-sm text-gray-500">
-                        {isDraft
-                          ? 'Publishing makes your listing visible to customers across Australia.'
-                          : 'Your changes will be validated before going live.'}
+                        {noSub
+                          ? "Publish starts your submission. You'll need a plan to complete and go live."
+                          : isDraft
+                            ? "Submitting sends your listing for review. It won't be visible to customers until approved."
+                            : 'Your changes will be validated before going live.'}
                       </p>
                     </div>
                     <div className="flex flex-col items-end gap-3">
