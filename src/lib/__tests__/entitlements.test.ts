@@ -116,7 +116,7 @@ describe('getUserEntitlements', () => {
     expect(result.canPublish).toBe(false)
     expect(result.canUploadPhotos).toBe(false)
     expect(result.maxListings).toBe(1)
-    expect(result.effectiveState).toBe('blocked')
+    expect(result.effectiveState).toBe('no_plan')
     expect(result.reasonCodes).toContain('no_subscription')
   })
 
@@ -152,7 +152,7 @@ describe('getUserEntitlements', () => {
 
     expect(result.isActive).toBe(false)
     expect(result.canPublish).toBe(false)
-    expect(result.effectiveState).toBe('blocked')
+    expect(result.effectiveState).toBe('no_plan')
   })
 
   it('canCreateMore is false when at listing hard cap', async () => {
@@ -309,7 +309,7 @@ describe('getUserEntitlements', () => {
 
     expect(result.isActive).toBe(false)
     expect(result.canPublish).toBe(false)
-    expect(result.effectiveState).toBe('blocked')
+    expect(result.effectiveState).toBe('no_plan')
   })
 
   // Phase 3B — past_due

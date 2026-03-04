@@ -4,7 +4,7 @@ import type { PlanTier, SubscriptionStatus, BillingStatus } from '@/lib/types'
 
 // ─── Types ──────────────────────────────────────────────────────────
 
-export type EffectiveState = 'ok' | 'blocked' | 'limited'
+export type EffectiveState = 'ok' | 'blocked' | 'limited' | 'no_plan'
 
 export interface Entitlements {
   userId: string
@@ -208,7 +208,7 @@ function nullEntitlements(userId: string, currentListingCount: number, published
     trialEndsAt: null,
     cancelAtPeriodEnd: false,
     currentPeriodEnd: null,
-    effectiveState: 'blocked',
+    effectiveState: 'no_plan',
     reasonCodes: ['no_subscription'],
   }
 }

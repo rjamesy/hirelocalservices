@@ -128,23 +128,25 @@ export default async function DashboardPage() {
                 data-testid="dashboard-plan-badge"
                 className={cn(
                   'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-                  subStatus.color
+                  hasSub ? subStatus.color : 'bg-gray-100 text-gray-800'
                 )}
               >
                 {planDef?.name ?? 'No Plan'}
               </span>
-              <span
-                className={cn(
-                  'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-                  subStatus.color
-                )}
-              >
-                {subStatus.label}
-              </span>
+              {hasSub && (
+                <span
+                  className={cn(
+                    'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+                    subStatus.color
+                  )}
+                >
+                  {subStatus.label}
+                </span>
+              )}
             </div>
             {/* Listings used */}
             <p data-testid="dashboard-listings-used" className="text-sm text-gray-600">
-              Listings: {entitlements.currentListingCount} / {entitlements.maxListings}
+              Published: {entitlements.publishedListingCount} / {entitlements.maxListings}
             </p>
           </div>
 
@@ -164,7 +166,29 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Warning banners */}
+      {/* Banners */}
+      {entitlements.effectiveState === 'no_plan' && hasBusinesses && (
+        <div className="mt-4 rounded-lg border border-brand-200 bg-brand-50 p-4">
+          <div className="flex items-start gap-3">
+            <svg className="h-5 w-5 text-brand-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <h3 className="text-sm font-medium text-brand-900">Publish your listing to start getting enquiries</h3>
+              <p className="mt-1 text-sm text-brand-700">
+                Choose a plan to publish this listing. Basic, Premium and Annual plans available.
+              </p>
+              <Link
+                href="/dashboard/billing"
+                className="mt-3 inline-flex items-center rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
+              >
+                View Plans
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {entitlements.effectiveState === 'blocked' && (
         <div className="mt-4 rounded-lg border border-orange-200 bg-orange-50 p-4">
           <div className="flex items-start gap-3">

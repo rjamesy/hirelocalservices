@@ -275,7 +275,7 @@ describe('getListingQuality', () => {
   it('draft + no subscription → awaiting_subscription, NOT under_review', () => {
     const result = getListingQuality(
       makeListing({ isDraft: true, isUnderReview: false }),
-      makeFlags({ canPublish: false, isActive: false, effectiveState: 'blocked' })
+      makeFlags({ canPublish: false, isActive: false, effectiveState: 'no_plan' })
     )
     expect(result.flag).toBe('awaiting_subscription')
     expect(result.flag).not.toBe('under_review')

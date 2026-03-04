@@ -133,7 +133,7 @@ describe('getBatchUserEntitlements', () => {
     const ent = result.get('user-no-sub')!
     expect(ent.plan).toBeNull()
     expect(ent.isActive).toBe(false)
-    expect(ent.effectiveState).toBe('blocked')
+    expect(ent.effectiveState).toBe('no_plan')
     expect(ent.reasonCodes).toContain('no_subscription')
   })
 

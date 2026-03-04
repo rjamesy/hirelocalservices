@@ -18,7 +18,7 @@ export default async function AdminDashboardPage() {
     { count: seedCount },
     { count: activeSubsCount },
   ] = await Promise.all([
-    supabase.from('businesses').select('*', { count: 'exact', head: true }),
+    supabase.from('businesses').select('*', { count: 'exact', head: true }).is('deleted_at', null),
     supabase
       .from('businesses')
       .select('*', { count: 'exact', head: true })
@@ -44,9 +44,10 @@ export default async function AdminDashboardPage() {
       .select('*', { count: 'exact', head: true })
       .eq('status', 'pending'),
     supabase
-      .from('businesses')
+      .from('working_listings')
       .select('*', { count: 'exact', head: true })
-      .eq('verification_status', 'pending'),
+      .eq('review_status', 'pending')
+      .is('archived_at', null),
     supabase
       .from('businesses')
       .select('*', { count: 'exact', head: true })
