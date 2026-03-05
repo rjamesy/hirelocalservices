@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { PLANS, getPlanById } from '@/lib/constants'
 import type { PlanTier } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { publishChanges } from '@/app/actions/business'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 // ─── Types ─────────────────────────────────────────────────────────────
@@ -185,26 +186,81 @@ function BillingContent() {
   const [loading, setLoading] = useState(true)
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [redirecting, setRedirecting] = useState(false)
+  const [verifying, setVerifying] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const verifyingRef = useRef(false)
 
   const requiredPlan = searchParams.get('requiredPlan') as 'basic' | 'premium' | null
   const returnTo = searchParams.get('returnTo')
 
-  // ─── Check for Stripe success redirect ──────────────────────────
+  // ─── Post-checkout: poll for subscription activation + auto-publish ──
 
   useEffect(() => {
     const sessionId = searchParams.get('session_id')
-    if (sessionId && returnTo) {
-      // Redirect back to the listing preview (returnTo already has bid & step)
-      window.location.replace(returnTo)
-      return
+    if (!sessionId || verifyingRef.current) return
+    verifyingRef.current = true
+    setVerifying(true)
+
+    const TEN_MINUTES = 10 * 60 * 1000
+    const POLL_INTERVAL = 2000
+    const MAX_POLL_TIME = 15000
+
+    async function verifyAndPublish() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        window.location.replace('/dashboard')
+        return
+      }
+
+      // Poll until subscription is active/trialing
+      const startTime = Date.now()
+      let subscriptionActive = false
+
+      while (Date.now() - startTime < MAX_POLL_TIME) {
+        const { data: sub } = await supabase
+          .from('user_subscriptions')
+          .select('status')
+          .eq('user_id', user.id)
+          .maybeSingle()
+
+        if (sub && (sub.status === 'active' || sub.status === 'trialing')) {
+          subscriptionActive = true
+          break
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL))
+      }
+
+      if (!subscriptionActive) {
+        window.location.replace('/dashboard?toast=subscription_pending')
+        return
+      }
+
+      // Check for pending publish intent
+      let toastParam = 'subscribed'
+      try {
+        const raw = localStorage.getItem('pendingPublish')
+        if (raw) {
+          const pending = JSON.parse(raw) as { businessId: string; timestamp: number }
+          localStorage.removeItem('pendingPublish')
+
+          if (Date.now() - pending.timestamp < TEN_MINUTES) {
+            const result = await publishChanges(pending.businessId)
+            if (result && 'published' in result && result.published) {
+              toastParam = 'submitted'
+            }
+          }
+        }
+      } catch {
+        // Auto-submit failed — user can publish manually
+      }
+
+      window.location.replace(`/dashboard?toast=${toastParam}`)
     }
-    if (sessionId) {
-      // No returnTo — redirect to dashboard
-      window.location.replace('/dashboard')
-      return
-    }
-  }, [searchParams, returnTo])
+
+    verifyAndPublish()
+  }, [searchParams])
 
   // ─── Fetch subscription on mount ────────────────────────────────
 
@@ -314,6 +370,17 @@ function BillingContent() {
       month: 'long',
       year: 'numeric',
     })
+  }
+
+  // ─── Verifying subscription after checkout ─────────────────────
+
+  if (verifying) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-4">
+        <LoadingSpinner />
+        <p className="text-sm text-gray-600">Activating your subscription...</p>
+      </div>
+    )
   }
 
   // ─── Loading state ──────────────────────────────────────────────

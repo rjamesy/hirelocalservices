@@ -77,7 +77,7 @@ function BillingBadge({ status }: { status: string }) {
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status] ?? 'bg-gray-50 text-gray-500'}`}
     >
-      {labels[status] ?? status || 'none'}
+      {labels[status] ?? (status || 'none')}
     </span>
   )
 }

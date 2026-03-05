@@ -823,6 +823,10 @@ function ListingContent() {
       const activeTestimonials = testimonials.filter(t => t.status !== 'pending_delete').length
       const requiredPlan = (activePhotos > 0 || activeTestimonials > 0) ? 'premium' : 'basic'
       const returnTo = `/dashboard/listing?bid=${business.id}&step=6`
+      localStorage.setItem('pendingPublish', JSON.stringify({
+        businessId: business.id,
+        timestamp: Date.now(),
+      }))
       router.push(
         `/dashboard/billing?returnTo=${encodeURIComponent(returnTo)}&requiredPlan=${requiredPlan}`
       )
@@ -839,6 +843,10 @@ function ListingContent() {
           const activeTestimonials = testimonials.filter(t => t.status !== 'pending_delete').length
           const requiredPlan = (activePhotos > 0 || activeTestimonials > 0) ? 'premium' : 'basic'
           const returnTo = `/dashboard/listing?bid=${business.id}&step=6`
+          localStorage.setItem('pendingPublish', JSON.stringify({
+            businessId: business.id,
+            timestamp: Date.now(),
+          }))
           router.push(
             `/dashboard/billing?returnTo=${encodeURIComponent(returnTo)}&requiredPlan=${requiredPlan}`
           )

@@ -6,6 +6,7 @@ import { getPlanById } from '@/lib/constants'
 import { createClient } from '@/lib/supabase/server'
 import { cn } from '@/lib/utils'
 import ViewPublicProfileCard from '@/components/ViewPublicProfileCard'
+import DashboardToast from '@/components/DashboardToast'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -107,6 +108,7 @@ export default async function DashboardPage() {
             Create Listing
           </Link>
         </div>
+        <DashboardToast />
       </div>
     )
   }
@@ -345,6 +347,7 @@ export default async function DashboardPage() {
           )}
         </div>
       </div>
+      <DashboardToast />
     </div>
   )
 }
