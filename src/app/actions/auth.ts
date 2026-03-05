@@ -4,6 +4,7 @@ import { getSystemFlagsSafe, verifyCaptcha, logAbuseEvent } from '@/lib/protecti
 import { checkRateLimit, registrationLimiter, loginLimiter } from '@/lib/rate-limiter'
 import { getClientIp } from '@/lib/ip'
 import { createAdminClient } from '@/lib/supabase/admin'
+import log from '@/lib/logger'
 
 /**
  * Pre-signup check. Client calls this BEFORE supabase.auth.signUp().
@@ -18,6 +19,7 @@ export async function checkRegistrationAllowed(
 
     // Check registrations enabled
     if (!flags.registrations_enabled) {
+      log.warn('checkRegistrationAllowed: registrations disabled')
       return { allowed: false, error: 'Registrations are currently disabled. Please try again later.' }
     }
 
@@ -50,6 +52,7 @@ export async function checkRegistrationAllowed(
         })
         const row = Array.isArray(blResult) ? blResult[0] : blResult
         if (row?.is_blocked) {
+          log.warn({ email: email?.substring(0, 3) + '***' }, 'checkRegistrationAllowed: email blacklisted')
           return { allowed: false, error: 'This email address cannot be used for registration.' }
         }
       } catch {

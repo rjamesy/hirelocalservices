@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { stripe } from '@/lib/stripe'
+import log from '@/lib/logger'
 
 /**
  * changePassword — update the current user's password.
@@ -100,7 +101,7 @@ export async function deleteMyAccount(): Promise<{ success?: boolean; error?: st
     try {
       await stripe.subscriptions.cancel(sub.stripe_subscription_id)
     } catch (err) {
-      console.error('Failed to cancel Stripe subscription during account deletion:', err)
+      log.error({ error: err }, 'Failed to cancel Stripe subscription during account deletion')
       // Continue with deletion — subscription will expire naturally
     }
   }

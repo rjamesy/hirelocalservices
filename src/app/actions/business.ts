@@ -12,6 +12,7 @@ import { getUserEntitlements, type Entitlements } from '@/lib/entitlements'
 import { getListingEligibility } from '@/lib/search/eligibility'
 import { getListingQuality, type QualityFlags } from '@/lib/listing-quality'
 import * as pwService from '@/lib/pw-service'
+import log from '@/lib/logger'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -102,14 +103,18 @@ export async function createBusinessDraft(formData: FormData) {
 
   const parsed = createBusinessSchema(entitlements.descriptionLimit).safeParse(rawData)
   if (!parsed.success) {
+    log.debug({ userId: user.id, errors: parsed.error.flatten().fieldErrors }, 'createBusinessDraft validation failed')
     return { error: parsed.error.flatten().fieldErrors }
   }
 
   // Blacklist check
   const blockedTerm = quickBlacklistCheck(parsed.data.name)
   if (blockedTerm) {
+    log.warn({ userId: user.id, blockedTerm }, 'createBusinessDraft blocked by blacklist')
     return { error: `Business name contains a blocked term: "${blockedTerm}". This type of business is not permitted on our platform.` }
   }
+
+  log.info({ userId: user.id, name: parsed.data.name }, 'createBusinessDraft starting')
 
   // Generate a unique slug with retry on conflict (prevents TOCTOU race)
   let slug = slugify(parsed.data.name)
@@ -195,6 +200,7 @@ export async function createBusinessDraft(formData: FormData) {
     })
   )
 
+  log.info({ userId: user.id, businessId: business.id, slug }, 'createBusinessDraft completed')
   revalidatePath('/dashboard')
   return { data: business }
 }
@@ -825,6 +831,8 @@ export async function publishChanges(businessId: string, captchaToken?: string) 
     finalDecision = 'pending'
   }
 
+  log.info({ businessId, userId: user.id, decision: finalDecision, imageModDecision, textSafetyFail }, 'publishChanges verification result')
+
   // Create verification job
   await supabase.from('verification_jobs').insert({
     business_id: businessId,
@@ -1030,6 +1038,7 @@ export async function pauseBusiness(businessId: string) {
     pwService.setVisibility(businessId, 'paused')
   )
 
+  log.info({ businessId, userId: user.id }, 'pauseBusiness completed')
   revalidatePath('/dashboard')
   return { success: true }
 }
@@ -1084,6 +1093,7 @@ export async function unpauseBusiness(businessId: string) {
     pwService.setVisibility(businessId, 'live')
   )
 
+  log.info({ businessId, userId: user.id }, 'unpauseBusiness completed')
   revalidatePath('/dashboard')
   return { success: true }
 }
@@ -1557,7 +1567,10 @@ export async function getBusinessBySlug(slug: string) {
     .eq('slug', slug)
     .maybeSingle()
 
-  if (error || !biz) return null
+  if (error || !biz) {
+    log.debug({ slug }, 'getBusinessBySlug: business not found')
+    return null
+  }
 
   // Determine viewer identity early (needed for W fallback)
   const {
@@ -1578,6 +1591,7 @@ export async function getBusinessBySlug(slug: string) {
 
   // Fetch current published listing (P) — content source
   const p = await pwService.getCurrentPublishedTyped(biz.id)
+  log.debug({ slug, bizId: biz.id, hasP: !!p, isOwner, isAdmin }, 'getBusinessBySlug: resolved identity')
 
   // Admin/owner preview: fall back to Working listing when no P exists
   if (!p && (isAdmin || isOwner)) {

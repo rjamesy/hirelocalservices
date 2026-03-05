@@ -5,6 +5,7 @@ import { getPlanByPriceId } from '@/lib/constants'
 import type { PlanTier, BillingStatus } from '@/lib/types'
 import type Stripe from 'stripe'
 import { logPaymentEvent, getSystemFlagsSafe } from '@/lib/protection'
+import log from '@/lib/logger'
 
 // Disable Next.js body parsing so we can access the raw body for
 // Stripe signature verification.
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest) {
 
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
   if (!webhookSecret) {
-    console.error('STRIPE_WEBHOOK_SECRET environment variable is not set')
+    log.error('STRIPE_WEBHOOK_SECRET environment variable is not set')
     return NextResponse.json(
       { error: 'Webhook configuration error' },
       { status: 500 }
@@ -136,14 +137,14 @@ export async function POST(request: NextRequest) {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
-    console.error('Webhook signature verification failed:', message)
+    log.error({ message }, 'Webhook signature verification failed')
     return NextResponse.json(
       { error: `Webhook signature verification failed: ${message}` },
       { status: 400 }
     )
   }
 
-  console.log('[webhook] ✓ Event received:', event.type, event.id)
+  log.info({ type: event.type, eventId: event.id }, 'webhook event received')
 
   // Use the admin client to bypass RLS for subscription management
   const supabase = createAdminClient()
@@ -161,7 +162,7 @@ export async function POST(request: NextRequest) {
     if (paymentEvents.includes(event.type)) {
       const flags = await getSystemFlagsSafe()
       if (!flags.payments_enabled) {
-        console.warn(`[webhook] payments_enabled=false, skipping ${event.type}`)
+        log.warn({ type: event.type }, 'webhook skipped: payments_enabled=false')
         return NextResponse.json({ received: true }, { status: 200 })
       }
     }
@@ -177,7 +178,7 @@ export async function POST(request: NextRequest) {
 
         const userId = await getUserId(session.metadata, supabase)
         if (!userId) {
-          console.error('checkout.session.completed: missing user_id in metadata')
+          log.error({ sessionId: session.id }, 'checkout.session.completed: missing user_id in metadata')
           break
         }
 
@@ -187,7 +188,7 @@ export async function POST(request: NextRequest) {
             : session.subscription?.id
 
         if (!subscriptionId) {
-          console.error('checkout.session.completed: missing subscription ID')
+          log.error({ sessionId: session.id }, 'checkout.session.completed: missing subscription ID')
           break
         }
 
@@ -203,7 +204,7 @@ export async function POST(request: NextRequest) {
         const priceId = getSubscriptionPriceId(subscription)
         const planTier = getPlanTier(session.metadata, priceId)
 
-        console.log('[webhook] checkout.session.completed — userId:', userId, 'planTier:', planTier, 'status:', subscription.status)
+        log.info({ userId, planTier, status: subscription.status }, 'checkout.session.completed')
 
         // Read trial_end from Stripe subscription
         const trialEndsAt = subscription.trial_end
@@ -248,12 +249,9 @@ export async function POST(request: NextRequest) {
               .insert({ user_id: userId, ...subData })
 
         if (error) {
-          console.error(
-            'checkout.session.completed: failed to write user_subscription:',
-            error
-          )
+          log.error({ userId, error }, 'checkout.session.completed: failed to write user_subscription')
         } else {
-          console.log('[webhook] ✓ user_subscriptions written for', userId, '— plan:', planTier, 'status:', mappedStatus)
+          log.info({ userId, planTier, status: mappedStatus }, 'user_subscriptions written')
         }
 
         // Sync billing_status on all user's businesses
@@ -263,7 +261,7 @@ export async function POST(request: NextRequest) {
           await syncBusinessBillingStatus(supabase, userId, 'active')
         }
 
-        console.log('[webhook] ✓ billing_status synced for', userId, '—', mappedStatus === 'trialing' ? 'trial' : 'active')
+        log.info({ userId, billingStatus: mappedStatus === 'trialing' ? 'trial' : 'active' }, 'billing_status synced')
 
         // Log payment event
         await logPaymentEvent(userId, stripeCustomerId, subscriptionId, 'checkout.session.completed', {
@@ -313,10 +311,7 @@ export async function POST(request: NextRequest) {
           .eq('stripe_subscription_id', stripeSubscriptionId)
 
         if (error) {
-          console.error(
-            'customer.subscription.updated: failed to update user_subscription:',
-            error
-          )
+          log.error({ stripeSubscriptionId, error }, 'customer.subscription.updated: failed to update user_subscription')
         }
 
         // Sync billing_status on businesses
@@ -372,10 +367,7 @@ export async function POST(request: NextRequest) {
           .eq('stripe_subscription_id', stripeSubscriptionId)
 
         if (error) {
-          console.error(
-            'customer.subscription.deleted: failed to update user_subscription:',
-            error
-          )
+          log.error({ stripeSubscriptionId, error }, 'customer.subscription.deleted: failed to update user_subscription')
         }
 
         // Pause all user's businesses — subscription period ended
@@ -407,10 +399,7 @@ export async function POST(request: NextRequest) {
           .eq('stripe_subscription_id', subscriptionId)
 
         if (recoverError) {
-          console.error(
-            'invoice.payment_succeeded: failed to update user_subscription:',
-            recoverError
-          )
+          log.error({ subscriptionId, error: recoverError }, 'invoice.payment_succeeded: failed to update user_subscription')
         }
 
         // Sync billing to active
@@ -437,7 +426,7 @@ export async function POST(request: NextRequest) {
             : invoice.subscription?.id
 
         if (!subscriptionId) {
-          console.error('invoice.payment_failed: missing subscription ID')
+          log.error('invoice.payment_failed: missing subscription ID')
           break
         }
 
@@ -451,10 +440,7 @@ export async function POST(request: NextRequest) {
           .eq('stripe_subscription_id', subscriptionId)
 
         if (error) {
-          console.error(
-            'invoice.payment_failed: failed to update user_subscription:',
-            error
-          )
+          log.error({ subscriptionId, error }, 'invoice.payment_failed: failed to update user_subscription')
         }
 
         // On final failure, pause all listings
@@ -481,7 +467,7 @@ export async function POST(request: NextRequest) {
         break
     }
   } catch (error) {
-    console.error(`Error processing webhook event ${event.type}:`, error)
+    log.error({ type: event.type, error }, 'webhook processing failed')
     // Return 500 so Stripe retries transient failures (e.g. DB timeout).
     // Stripe retries with exponential backoff up to 72 hours.
     return NextResponse.json(

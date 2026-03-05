@@ -11,6 +11,7 @@ import {
 import { createNotification } from '@/app/actions/notifications'
 import * as pwService from '@/lib/pw-service'
 import { getBatchUserEntitlements } from '@/lib/entitlements'
+import log from '@/lib/logger'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -99,6 +100,7 @@ export async function runVerification(
 
   // Make decision
   const decision = makeVerificationDecision(deterministic, aiResult, business.name, business.description)
+  log.info({ businessId, decision }, 'runVerification pipeline completed')
 
   // Create verification job
   await supabase.from('verification_jobs').insert({
@@ -520,6 +522,8 @@ export async function adminApproveVerification(
     })
   }
 
+  log.info({ businessId, adminId: user.id }, 'adminApproveVerification completed')
+
   await logAudit(supabase, {
     action: 'verification_completed',
     entityType: 'listing',
@@ -567,7 +571,7 @@ export async function adminApproveVerification(
 
     if (!seed.is_seed) {
       // Not a seed — skip merge, log for admin visibility
-      console.warn(`[adminApproveVerification] Skipping merge: ${seedId} is not a seed listing`)
+      log.warn({ seedId, businessId }, 'adminApproveVerification: skipping merge — not a seed listing')
     } else if (seed.deleted_at) {
       // Already deleted — skip silently (another approval may have handled it)
     } else {
@@ -584,7 +588,7 @@ export async function adminApproveVerification(
 
       const { error: indexErr } = await supabase.rpc('refresh_search_index', { p_business_id: seedId })
       if (indexErr) {
-        console.error(`[adminApproveVerification] refresh_search_index failed for seed ${seedId}:`, indexErr)
+        log.error({ seedId, error: indexErr }, 'adminApproveVerification: refresh_search_index failed for seed')
       }
 
       // Record which seed was merged on the approved listing
@@ -622,7 +626,7 @@ export async function adminRejectVerification(
     .eq('id', businessId)
 
   if (rejectError) {
-    console.error('[adminRejectVerification] Failed to update verification_status:', rejectError)
+    log.error({ businessId, error: rejectError }, 'adminRejectVerification: failed to update verification_status')
     return { error: `Failed to reject listing: ${rejectError.message}` }
   }
 
@@ -634,7 +638,7 @@ export async function adminRejectVerification(
     .single()
 
   if (verifyRow?.verification_status !== 'rejected') {
-    console.error('[adminRejectVerification] Write did not stick. DB has:', verifyRow?.verification_status)
+    log.error({ businessId, dbStatus: verifyRow?.verification_status }, 'adminRejectVerification: write did not stick')
     return { error: `Rejection failed: DB still has verification_status='${verifyRow?.verification_status}'. Check RLS policies.` }
   }
 

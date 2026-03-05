@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import type { NotificationType, UserNotification } from '@/lib/types'
+import log from '@/lib/logger'
 
 type SupabaseClient = {
   from: (table: string) => any
@@ -30,7 +31,7 @@ export async function createNotification(
       metadata: params.metadata ?? {},
     })
   } catch (err) {
-    console.error('[notifications] Failed to create notification:', err)
+    log.error({ error: err }, '[notifications] Failed to create notification')
   }
 }
 

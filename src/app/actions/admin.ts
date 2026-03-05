@@ -8,6 +8,7 @@ import { getUserEntitlements, syncBusinessBillingStatus, type Entitlements } fro
 import { getListingEligibility, type ListingEligibility } from '@/lib/search/eligibility'
 import { createNotification } from '@/app/actions/notifications'
 import * as pwService from '@/lib/pw-service'
+import log from '@/lib/logger'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -100,7 +101,7 @@ export async function getAdminListings(
   const { data, count, error } = await query
 
   if (error) {
-    console.error('Admin listings query error:', error)
+    log.error({ error }, 'Admin listings query error')
     return { data: [], totalCount: 0, page, totalPages: 0 }
   }
 
@@ -157,7 +158,7 @@ export async function getAdminReports(
   const { data, count, error } = await query
 
   if (error) {
-    console.error('Admin reports query error:', error)
+    log.error({ error }, 'Admin reports query error')
     return { data: [], totalCount: 0, page, totalPages: 0 }
   }
 
@@ -637,7 +638,7 @@ export async function getAdminListingsEnhanced(
   const { data, count, error } = await query
 
   if (error) {
-    console.error('Enhanced admin listings query error:', error)
+    log.error({ error }, 'Enhanced admin listings query error')
     return { data: [], totalCount: 0, page, totalPages: 0 }
   }
 

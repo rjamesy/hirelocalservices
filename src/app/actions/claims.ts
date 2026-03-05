@@ -16,6 +16,7 @@ import { createNotification } from '@/app/actions/notifications'
 import { getSystemFlagsSafe, requireEmailVerified, verifyCaptcha, logAbuseEvent } from '@/lib/protection'
 import { checkRateLimit, claimSubmitLimiter } from '@/lib/rate-limiter'
 import { sendOTP, verifyOTP, isTwilioConfigured } from '@/lib/twilio'
+import log from '@/lib/logger'
 
 async function requireAuth() {
   const supabase = await createClient()
@@ -224,6 +225,8 @@ export async function claimBusiness(
     step = 'rejected'
   }
 
+  log.info({ businessId, userId: user.id, step, verificationMethod, score: matchScore.weighted_total }, 'claimBusiness scoring result')
+
   if (step === 'rejected') {
     return {
       step: 'rejected' as const,
@@ -267,7 +270,7 @@ export async function claimBusiness(
       .eq('id', businessId)
 
     if (bizError) {
-      console.error('[claimBusiness] Failed to transfer ownership:', bizError)
+      log.error({ businessId, userId: user.id, error: bizError }, 'claimBusiness: failed to transfer ownership')
       return { error: 'Claim approved but failed to transfer ownership. Contact support.' }
     }
 
@@ -421,7 +424,7 @@ export async function approveClaim(claimId: string, notes?: string) {
   )
 
   if (rpcError) {
-    console.error('[approveClaim] RPC error:', rpcError)
+    log.error({ claimId, error: rpcError }, 'approveClaim: RPC error')
     return { error: 'Failed to approve claim. Please try again.' }
   }
 
@@ -455,7 +458,7 @@ export async function rejectClaim(claimId: string, notes?: string) {
   )
 
   if (rpcError) {
-    console.error('[rejectClaim] RPC error:', rpcError)
+    log.error({ claimId, error: rpcError }, 'rejectClaim: RPC error')
     return { error: 'Failed to reject claim. Please try again.' }
   }
 

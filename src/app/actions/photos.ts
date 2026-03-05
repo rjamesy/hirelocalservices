@@ -6,6 +6,7 @@ import { extractStoragePath } from '@/lib/photo-utils'
 import { revalidatePath } from 'next/cache'
 import { getUserEntitlements } from '@/lib/entitlements'
 import * as pwService from '@/lib/pw-service'
+import log from '@/lib/logger'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -63,7 +64,7 @@ export async function removePhotoFromStorage(url: string) {
   if (storagePath) {
     await supabase.storage.from('photos').remove([storagePath])
   } else {
-    console.error('Failed to parse photo URL for storage deletion:', url)
+    log.error({ url }, 'removePhotoFromStorage: failed to parse photo URL')
   }
 }
 
@@ -240,7 +241,7 @@ export async function deletePhoto(photoId: string) {
     if (storagePath) {
       await supabase.storage.from('photos').remove([storagePath])
     } else {
-      console.error('Failed to parse photo URL for storage deletion:', photo.url)
+      log.error({ url: photo.url }, 'Failed to parse photo URL for storage deletion')
     }
 
     const { error: deleteError } = await supabase

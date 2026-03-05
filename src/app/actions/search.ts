@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { ITEMS_PER_PAGE } from '@/lib/constants'
 import type { ListingSource } from '@/lib/types'
+import log from '@/lib/logger'
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -147,7 +148,7 @@ export async function searchBusinesses(
   })
 
   if (error) {
-    console.error('Search RPC error:', error)
+    log.error({ error }, 'Search RPC error')
     return {
       results: [],
       totalCount: 0,

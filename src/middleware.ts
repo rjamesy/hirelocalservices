@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 import { getSystemFlagsSafe } from '@/lib/protection'
+import log from '@/lib/logger'
 
 // Paths that always pass through, even during maintenance / soft-launch
 const PASSTHROUGH_PREFIXES = [
@@ -44,6 +45,7 @@ export async function middleware(request: NextRequest) {
 
     // ── Maintenance mode (full lockout except admins) ──────────────
     if (flags.maintenance_mode) {
+      log.debug({ pathname }, 'middleware: maintenance mode active')
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')
@@ -121,6 +123,7 @@ export async function middleware(request: NextRequest) {
       .single()
 
     if (dashProfile?.suspended_at) {
+      log.warn({ userId: user.id, pathname }, 'middleware: suspended user accessing dashboard')
       // For non-page requests (e.g. server actions), return 403
       if (request.method === 'POST') {
         return NextResponse.json({ error: 'Account suspended' }, { status: 403 })

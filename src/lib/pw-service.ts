@@ -15,6 +15,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, PublishedListing, WorkingListing } from '@/lib/types'
+import log from '@/lib/logger'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -49,7 +50,7 @@ export async function dualWrite(label: string, fn: () => Promise<void>): Promise
   try {
     await fn()
   } catch (err) {
-    console.error(`[pw-service] ${label} failed (non-blocking):`, err)
+    log.error({ label, err }, 'pw-service dualWrite failed (non-blocking)')
   }
 }
 

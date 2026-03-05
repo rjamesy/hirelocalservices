@@ -11,6 +11,7 @@ import {
   type Entitlements,
 } from '@/lib/entitlements'
 import type { PlanTier, SubscriptionStatus } from '@/lib/types'
+import log from '@/lib/logger'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -136,7 +137,7 @@ export async function getAdminAccounts(
   const { data: profiles, count, error } = await query
 
   if (error || !profiles) {
-    console.error('Admin accounts query error:', error)
+    log.error({ error }, 'Admin accounts query error')
     return { data: [], totalCount: 0, page, totalPages: 0 }
   }
 
@@ -475,7 +476,7 @@ export async function internalSuspendAccount(
       const { stripe } = await import('@/lib/stripe')
       await stripe.subscriptions.cancel(sub.stripe_subscription_id)
     } catch (e) {
-      console.error('Failed to cancel Stripe subscription during suspension:', e)
+      log.error({ error: e }, 'Failed to cancel Stripe subscription during suspension')
     }
   }
 
@@ -625,7 +626,7 @@ export async function adminSuspendAccountListings(userId: string) {
       .eq('id', biz.id)
 
     if (error) {
-      console.error(`Failed to suspend business ${biz.id}:`, error)
+      log.error({ error, businessId: biz.id }, 'Failed to suspend business')
       continue
     }
 
@@ -687,7 +688,7 @@ export async function adminSoftDeleteAccount(userId: string, reason: string) {
       .eq('id', biz.id)
 
     if (error) {
-      console.error(`Failed to delete business ${biz.id}:`, error)
+      log.error({ error, businessId: biz.id }, 'Failed to delete business')
       continue
     }
 

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createNotification } from '@/app/actions/notifications'
 import type { AlertSeverity, SystemAlert } from '@/lib/types'
+import log from '@/lib/logger'
 
 // ─── Public (service-role) ──────────────────────────────────────────
 
@@ -35,7 +36,7 @@ export async function createSystemAlert(
       .single()
 
     if (error) {
-      console.error('[alerts] Failed to create system alert:', error.message)
+      log.error({ error: error.message }, '[alerts] Failed to create system alert')
       return { id: null, error: error.message }
     }
 
@@ -57,7 +58,7 @@ export async function createSystemAlert(
 
     return { id: data.id, error: null }
   } catch (err) {
-    console.error('[alerts] Unexpected error creating alert:', err)
+    log.error({ error: err }, '[alerts] Unexpected error creating alert')
     return { id: null, error: 'Unexpected error' }
   }
 }

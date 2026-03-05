@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import type { SystemSettingKey } from '@/lib/types'
+import log from '@/lib/logger'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -61,7 +62,7 @@ export async function updateSetting(key: SystemSettingKey, value: unknown) {
     )
 
   if (error) {
-    console.error('Failed to update setting:', key, error)
+    log.error({ key, error }, 'Failed to update setting')
     return { error: `Failed to update setting "${key}": ${error.message}` }
   }
 
