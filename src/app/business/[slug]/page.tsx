@@ -97,8 +97,12 @@ export default async function BusinessPage({ params }: BusinessPageProps) {
     notFound()
   }
 
-  // Track profile view (fire-and-forget)
-  trackProfileView(business.id).catch(() => {})
+  const isAdminPreview = !!business.isAdminPreview
+
+  // Don't count admin previews as real views
+  if (!isAdminPreview) {
+    trackProfileView(business.id).catch(() => {})
+  }
 
   const location = business.location
   const categories = business.categories ?? []
@@ -115,6 +119,13 @@ export default async function BusinessPage({ params }: BusinessPageProps) {
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+      {/* Preview Banner */}
+      {isAdminPreview && (
+        <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          Preview — This listing is under review and not yet visible to the public.
+        </div>
+      )}
+
       {/* Breadcrumbs */}
       <nav className="mb-6 text-sm text-gray-500" aria-label="Breadcrumb">
         <ol className="flex items-center gap-2 flex-wrap">
@@ -160,7 +171,7 @@ export default async function BusinessPage({ params }: BusinessPageProps) {
               <h1 data-testid="business-name" className="text-3xl font-bold text-gray-900 sm:text-4xl">
                 {business.name}
               </h1>
-              {business.verification_status === 'approved' && (
+              {!isAdminPreview && business.verification_status === 'approved' && (
                 <span data-testid="business-verification-badge"><VerificationBadge status="approved" /></span>
               )}
             </div>

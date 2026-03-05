@@ -1559,18 +1559,13 @@ export async function getBusinessBySlug(slug: string) {
 
   if (error || !biz) return null
 
-  // Fetch current published listing (P) — content source
-  const p = await pwService.getCurrentPublishedTyped(biz.id)
-  if (!p) return null
-
-  // Determine viewer identity
+  // Determine viewer identity early (needed for W fallback)
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
   const isOwner = !!user && user.id === biz.owner_id
 
-  // Check admin only if authenticated and not owner (avoid unnecessary DB call)
   let isAdmin = false
   if (user && !isOwner) {
     const { data: profile } = await supabase
@@ -1580,6 +1575,90 @@ export async function getBusinessBySlug(slug: string) {
       .single()
     isAdmin = profile?.role === 'admin'
   }
+
+  // Fetch current published listing (P) — content source
+  const p = await pwService.getCurrentPublishedTyped(biz.id)
+
+  // Admin/owner preview: fall back to Working listing when no P exists
+  if (!p && (isAdmin || isOwner)) {
+    const w = await pwService.getActiveWorkingTyped(biz.id)
+    if (!w) return null
+
+    // Build category_ids from W's primary + secondary
+    const catIds = [w.primary_category_id, ...w.secondary_category_ids].filter(Boolean) as string[]
+    let catSlugMap = new Map<string, string>()
+    let catNameMap = new Map<string, string>()
+    if (catIds.length > 0) {
+      const { data: catRows } = await supabase.from('categories').select('id, name, slug').in('id', catIds)
+      for (const c of catRows ?? []) {
+        catSlugMap.set(c.id, c.slug)
+        catNameMap.set(c.id, c.name)
+      }
+    }
+    const categories = catIds.map((catId: string) => ({
+      category_id: catId,
+      is_primary: catId === w.primary_category_id,
+      categories: { id: catId, name: catNameMap.get(catId) ?? '', slug: catSlugMap.get(catId) ?? '' },
+    }))
+
+    // Fetch photos from photos table
+    const { data: photoRows } = await supabase
+      .from('photos')
+      .select('id, url, sort_order')
+      .eq('business_id', biz.id)
+      .neq('status', 'pending_delete')
+      .order('sort_order')
+    const photos = (photoRows ?? []) as Array<{ id: string; url: string; sort_order: number }>
+
+    // Fetch testimonials from testimonials table
+    const { data: testimonialRows } = await supabase
+      .from('testimonials')
+      .select('id, author_name, text, rating, created_at')
+      .eq('business_id', biz.id)
+      .neq('status', 'pending_delete')
+      .order('created_at', { ascending: false })
+    const testimonials = (testimonialRows ?? []) as Array<{ id: string; author_name: string; text: string; rating: number; created_at: string }>
+
+    const avgRating =
+      testimonials.length > 0
+        ? Math.round(
+            (testimonials.reduce((sum: number, t: { rating: number }) => sum + t.rating, 0) /
+              testimonials.length) * 10
+          ) / 10
+        : null
+
+    const location = (w.suburb || w.state || w.postcode)
+      ? { suburb: w.suburb, state: w.state, postcode: w.postcode, address_text: w.address_text, service_radius_km: w.service_radius_km, lat: w.lat, lng: w.lng }
+      : null
+
+    return {
+      id: biz.id,
+      owner_id: biz.owner_id,
+      name: w.name,
+      slug: biz.slug,
+      description: w.description,
+      phone: w.phone,
+      email_contact: w.email_contact,
+      website: w.website,
+      abn: w.abn,
+      status: 'under_review' as const,
+      verification_status: 'pending' as const,
+      billing_status: biz.billing_status,
+      is_seed: biz.is_seed,
+      claim_status: biz.claim_status,
+      listing_source: biz.listing_source,
+      deleted_at: biz.deleted_at,
+      location,
+      categories,
+      photos,
+      testimonials,
+      avgRating,
+      reviewCount: testimonials.length,
+      isAdminPreview: true,
+    }
+  }
+
+  if (!p) return null
 
   // Visibility checks for non-owner, non-admin
   if (!isOwner && !isAdmin) {
@@ -1650,5 +1729,6 @@ export async function getBusinessBySlug(slug: string) {
     testimonials,
     avgRating,
     reviewCount: testimonials.length,
+    isAdminPreview: false,
   }
 }
