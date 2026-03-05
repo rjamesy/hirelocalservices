@@ -143,6 +143,8 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  console.log('[webhook] ✓ Event received:', event.type, event.id)
+
   // Use the admin client to bypass RLS for subscription management
   const supabase = createAdminClient()
 
@@ -201,43 +203,57 @@ export async function POST(request: NextRequest) {
         const priceId = getSubscriptionPriceId(subscription)
         const planTier = getPlanTier(session.metadata, priceId)
 
+        console.log('[webhook] checkout.session.completed — userId:', userId, 'planTier:', planTier, 'status:', subscription.status)
+
         // Read trial_end from Stripe subscription
         const trialEndsAt = subscription.trial_end
           ? new Date(subscription.trial_end * 1000).toISOString()
           : null
         const mappedStatus = mapStripeStatus(subscription.status)
 
-        // Upsert into user_subscriptions
+        // Insert or update user_subscriptions
+        // (Cannot use upsert — partial unique index on user_id only covers non-canceled/unpaid rows)
         const now = new Date().toISOString()
-        const { error } = await supabase
+        const subData = {
+          stripe_customer_id: stripeCustomerId,
+          stripe_subscription_id: subscriptionId,
+          status: mappedStatus as any,
+          current_period_start: new Date(
+            subscription.current_period_start * 1000
+          ).toISOString(),
+          current_period_end: new Date(
+            subscription.current_period_end * 1000
+          ).toISOString(),
+          cancel_at_period_end: subscription.cancel_at_period_end,
+          plan: planTier,
+          stripe_price_id: priceId,
+          trial_ends_at: trialEndsAt,
+          subscribed_at: now,
+          plan_changed_at: now,
+        }
+
+        const { data: existingRow } = await supabase
           .from('user_subscriptions')
-          .upsert(
-            {
-              user_id: userId,
-              stripe_customer_id: stripeCustomerId,
-              stripe_subscription_id: subscriptionId,
-              status: mappedStatus as any,
-              current_period_start: new Date(
-                subscription.current_period_start * 1000
-              ).toISOString(),
-              current_period_end: new Date(
-                subscription.current_period_end * 1000
-              ).toISOString(),
-              cancel_at_period_end: subscription.cancel_at_period_end,
-              plan: planTier,
-              stripe_price_id: priceId,
-              trial_ends_at: trialEndsAt,
-              subscribed_at: now,
-              plan_changed_at: now,
-            },
-            { onConflict: 'user_id' }
-          )
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle()
+
+        const { error } = existingRow
+          ? await supabase
+              .from('user_subscriptions')
+              .update(subData)
+              .eq('user_id', userId)
+          : await supabase
+              .from('user_subscriptions')
+              .insert({ user_id: userId, ...subData })
 
         if (error) {
           console.error(
-            'checkout.session.completed: failed to upsert user_subscription:',
+            'checkout.session.completed: failed to write user_subscription:',
             error
           )
+        } else {
+          console.log('[webhook] ✓ user_subscriptions written for', userId, '— plan:', planTier, 'status:', mappedStatus)
         }
 
         // Sync billing_status on all user's businesses
@@ -246,6 +262,8 @@ export async function POST(request: NextRequest) {
         } else {
           await syncBusinessBillingStatus(supabase, userId, 'active')
         }
+
+        console.log('[webhook] ✓ billing_status synced for', userId, '—', mappedStatus === 'trialing' ? 'trial' : 'active')
 
         // Log payment event
         await logPaymentEvent(userId, stripeCustomerId, subscriptionId, 'checkout.session.completed', {

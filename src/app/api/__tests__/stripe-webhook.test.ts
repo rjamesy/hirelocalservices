@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
 import { createMockSupabaseClient } from '@/__tests__/helpers/supabase-mock'
 
-const { client: mockAdminSupabase, upsert, update, eq } = createMockSupabaseClient()
+const { client: mockAdminSupabase, insert, update, eq } = createMockSupabaseClient()
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => mockAdminSupabase),
@@ -122,13 +122,13 @@ describe('POST /api/stripe/webhook', () => {
 
     const response = await POST(makeWebhookRequest('{}'))
     expect(response.status).toBe(200)
-    // The upsert should have status 'trialing' and trial_ends_at set
-    expect(upsert).toHaveBeenCalledWith(
+    // The insert should have status 'trialing' and trial_ends_at set
+    // (maybeSingle returns null by default → insert path)
+    expect(insert).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'trialing',
         trial_ends_at: expect.any(String),
-      }),
-      expect.any(Object)
+      })
     )
   })
 
@@ -249,8 +249,8 @@ describe('POST /api/stripe/webhook', () => {
 
     const response = await POST(makeWebhookRequest('{}'))
     expect(response.status).toBe(200)
-    // Should not have called upsert since mode !== 'subscription'
-    expect(upsert).not.toHaveBeenCalled()
+    // Should not have called insert since mode !== 'subscription'
+    expect(insert).not.toHaveBeenCalled()
   })
 
   it('uses subscription_data fallback for business_id lookup', async () => {
